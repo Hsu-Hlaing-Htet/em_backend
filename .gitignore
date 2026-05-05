@@ -1,0 +1,10 @@
+*.log
+.DS_Store
+.env
+.env.example
+/vendor
+/node_modules
+/storage/*.key
+/storage/logs
+/storage/framework
+/bootstrap/cache
