@@ -3,35 +3,27 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    use HasFactory;
-    use Notifiable;
-
-    public const ROLE_ADMIN = 'admin';
-    public const ROLE_OWNER = 'owner';
+    use HasFactory, Notifiable, SoftDeletes;
 
     /**
-     * The attributes that are mass assignable.
-     *
      * @var list<string>
      */
     protected $fillable = [
+        'role_id',
         'name',
         'email',
-        'phone',
-        'address',
-        'role',
         'password',
     ];
 
     /**
-     * The attributes that should be hidden for serialization.
-     *
      * @var list<string>
      */
     protected $hidden = [
@@ -40,55 +32,42 @@ class User extends Authenticatable
     ];
 
     /**
-     * Get the attributes that should be cast.
-     *
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
 
-    public function ownedProperties(): HasMany
+    public function role(): BelongsTo
     {
-        return $this->hasMany(Property::class, 'owner_user_id');
+        return $this->belongsTo(Role::class);
     }
 
-    public function contracts(): HasMany
+    public function profile(): HasOne
     {
-        return $this->hasMany(Contract::class, 'owner_id');
+        return $this->hasOne(Profile::class);
     }
 
-    public function invoices(): HasMany
+    public function hasRole(string $roleName): bool
     {
-        return $this->hasMany(Invoice::class);
+        return $this->role?->name === $roleName;
     }
 
-    public function recordedPayments(): HasMany
+    public function isSuperAdmin(): bool
     {
-        return $this->hasMany(Payment::class, 'recorded_by_user_id');
-    }
-
-    public function recordedMeterReadings(): HasMany
-    {
-        return $this->hasMany(MeterReading::class, 'recorded_by_user_id');
-    }
-
-    public function approvedViewingRequests(): HasMany
-    {
-        return $this->hasMany(ViewingRequest::class, 'approved_by_user_id');
+        return $this->hasRole(Role::SUPER_ADMIN);
     }
 
     public function isAdmin(): bool
     {
-        return $this->role === self::ROLE_ADMIN;
+        return $this->hasRole(Role::ADMIN);
     }
 
-    public function isOwner(): bool
+    public function isCustomer(): bool
     {
-        return $this->role === self::ROLE_OWNER;
+        return $this->hasRole(Role::CUSTOMER);
     }
 }
