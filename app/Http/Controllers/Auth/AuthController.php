@@ -4,81 +4,40 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Requests\Auth\RegisterOwnerRequest;
-use App\Models\User;
+use App\Http\Resources\Auth\AuthResource;
+use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
-    public function register(RegisterOwnerRequest $request): JsonResponse
+    public function login(LoginRequest $request, AuthService $authService): JsonResponse
     {
-        $user = User::create([
-            'name' => $request->string('name'),
-            'email' => $request->string('email'),
-            'phone' => $request->string('phone')->toString() ?: null,
-            'address' => $request->string('address')->toString() ?: null,
-            'role' => User::ROLE_OWNER,
-            'password' => Hash::make($request->string('password')),
-        ]);
-
-        Auth::login($user);
-        $request->session()->regenerate();
+        $result = $authService->login(
+            $request->validated('email'),
+            $request->validated('password')
+        );
 
         return response()->json([
-            'message' => 'Registration successful.',
-            'user' => $user,
-            'redirect_to' => '/user/dashboard',
-        ], 201);
-    }
-
-    public function login(LoginRequest $request): JsonResponse
-    {
-        $credentials = $request->safe()->only(['email', 'password']);
-
-        if (! Auth::attempt($credentials, (bool) $request->boolean('remember'))) {
-            return response()->json([
-                'message' => 'Invalid credentials.',
-            ], 422);
-        }
-
-        $request->session()->regenerate();
-
-        /** @var User $user */
-        $user = $request->user();
-
-        return response()->json([
-            'message' => 'Login successful.',
-            'user' => $user,
-            'redirect_to' => $this->redirectPath($user),
+            'message' => 'Login successful',
+            'token' => $result['token'],
+            'user' => new AuthResource($result['user']),
         ]);
     }
 
-    public function me(Request $request): JsonResponse
+    public function logout(Request $request, AuthService $authService): JsonResponse
     {
+        $authService->logout($request->user());
+
         return response()->json([
-            'user' => $request->user(),
+            'message' => 'Logout successful',
         ]);
     }
 
-    public function logout(Request $request): JsonResponse
+    public function me(Request $request, AuthService $authService): JsonResponse
     {
-        Auth::guard('web')->logout();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-
         return response()->json([
-            'message' => 'Logged out successfully.',
+            'data' => new AuthResource($authService->currentUser($request->user())),
         ]);
-    }
-
-    protected function redirectPath(User $user): string
-    {
-        return $user->role === User::ROLE_ADMIN
-            ? '/admin/dashboard'
-            : '/user/dashboard';
     }
 }
