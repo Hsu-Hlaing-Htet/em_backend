@@ -3,11 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Invoice;
-use App\Models\Payment;
-use App\Models\Property;
-use App\Models\Tenant;
-use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
 class DashboardController extends Controller

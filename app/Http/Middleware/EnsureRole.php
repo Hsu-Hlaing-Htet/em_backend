@@ -13,9 +13,10 @@ class EnsureRole
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        $user = $request->user();
+        $user = $request->user()?->loadMissing('role');
+        $roleName = $user?->role?->name;
 
-        if (! $user || ! in_array($user->role, $roles, true)) {
+        if (! $user || ! in_array($roleName, $roles, true)) {
             abort(403, 'Unauthorized role access.');
         }
 
