@@ -15,12 +15,7 @@ services:
       LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_CONNECTION: ${DB_CONNECTION:-pgsql}
-      DB_HOST: ${DB_HOST:?Set DB_HOST to your external database host}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_DATABASE: ${DB_DATABASE:?Set DB_DATABASE}
-      DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      DB_SSLMODE: ${DB_SSLMODE:-require}
+      DB_URL: ${DB_URL:-}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
     env_file:

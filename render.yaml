@@ -16,19 +16,9 @@ services:
         value: stderr
       - key: DB_CONNECTION
         value: pgsql
-      - key: DB_SSLMODE
-        value: require
+      - key: DB_URL
+        sync: false
       - key: RUN_MIGRATIONS
         value: "true"
       - key: FRONTEND_URL
-        sync: false
-      - key: DB_HOST
-        sync: false
-      - key: DB_PORT
-        value: "5432"
-      - key: DB_DATABASE
-        sync: false
-      - key: DB_USERNAME
-        sync: false
-      - key: DB_PASSWORD
         sync: false
