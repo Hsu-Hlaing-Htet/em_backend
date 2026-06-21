@@ -17,6 +17,9 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RoleSeeder::class,
             UserSeeder::class,
+            BuildingSeeder::class,
+            RoomSeeder::class,
+            RoomImageSeeder::class,
         ]);
 
         $this->command?->info('Seeded login credentials:');
