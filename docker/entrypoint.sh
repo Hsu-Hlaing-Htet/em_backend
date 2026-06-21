@@ -10,7 +10,6 @@ fi
 
 php artisan config:cache --no-ansi
 php artisan route:cache --no-ansi
-php artisan view:cache --no-ansi
 
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     php artisan migrate --force --no-ansi
