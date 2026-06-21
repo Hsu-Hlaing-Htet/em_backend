@@ -22,7 +22,23 @@ class UserFactory extends Factory
     {
         return [
             'role_id' => $this->roleId(Role::CUSTOMER),
-            'name' => fake()->name(),
+            'name' => fake()->randomElement([
+            'Aung Myat Kyaw',
+            'Thant Zin Oo',
+            'Min Khant Ko',
+            'Ye Yint Aung',
+            'Soe Min Htet',
+            'Nay Lin Tun',
+            'Hsu Hlaing Htet',
+            'Ei Mon Khaing',
+            'Thiri Shwe Sin',
+            'Yu Waddy Phyo',
+            'May Thazin Tun',
+            'Hnin Wut Yi',
+            'Moe Pwint Phyu',
+            'Su Myat Noe',
+            'Khin Thiri Aung',
+        ]),
             'email' => fake()->unique()->safeEmail(),
             'password' => static::$password ??= Hash::make('password'),
         ];
