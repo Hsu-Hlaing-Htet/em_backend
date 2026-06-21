@@ -2,9 +2,13 @@ name: Docker
 
 on:
   push:
-    branches: [main, testing]
+    branches: [testing]
+    paths-ignore:
+      - '.github/**'
   pull_request:
-    branches: [main, testing]
+    branches: [testing]
+    paths-ignore:
+      - '.github/**'
 
 permissions:
   contents: read
@@ -41,13 +45,13 @@ jobs:
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:testing
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   migrate:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/testing' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     steps:
