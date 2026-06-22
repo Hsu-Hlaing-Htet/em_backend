@@ -19,10 +19,18 @@ class ProfileFactory extends Factory
         return [
             'user_id' => User::factory(),
             'phone' => fake()->numerify('+95 9 ### #####'),
-            'nrc' => fake()->numerify('##/')
-                .fake()->randomElement(['BaKaTa', 'LaKaNa', 'MaNyaTa'])
-                .'(N)'
-                .fake()->numerify('######'),
+            'nrc' =>
+                fake()->numberBetween(1, 14)
+                . '/'
+                . fake()->randomElement([
+                    'BaKaTa',
+                    'LaKaNa',
+                    'MaNyaTa',
+                    'PaTaAh',
+                    'KaMaTa',
+                ])
+                . '(N)'
+                . fake()->numberBetween(100000, 999999),
             'dob' => fake()->dateTimeBetween('-60 years', '-18 years'),
             'gender' => fake()->randomElement(['male', 'female']),
             'address' => fake()->streetAddress().', '.fake()->city().', Myanmar',

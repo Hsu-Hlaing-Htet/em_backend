@@ -39,7 +39,7 @@ class UserFactory extends Factory
             'Su Myat Noe',
             'Khin Thiri Aung',
         ]),
-            'email' => fake()->unique()->safeEmail(),
+            'email' => strtolower(str_replace(' ', '', $name)) . rand(1, 99) . '@rosewoodroyale.com',
             'password' => static::$password ??= Hash::make('password'),
         ];
     }

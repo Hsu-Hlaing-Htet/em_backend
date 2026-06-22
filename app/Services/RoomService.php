@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Room;
 use App\Services\Concerns\AppliesListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 
 class RoomService
 {
@@ -16,7 +17,28 @@ class RoomService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = Room::query()->with(['building', 'primaryRoomImage']);
-        $this->applyListQuery($query, $params, ['room_number', 'description', 'type', 'status']);
+
+        if (! empty($params['search'])) {
+            $search = $params['search'];
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder->where('room_number', 'like', '%'.$search.'%')
+                    ->orWhereHas('building', fn (Builder $q) => $q->where('building_name', 'like', '%'.$search.'%'));
+            });
+        }
+
+        if (! empty($params['building_id'])) {
+            $query->where('building_id', (int) $params['building_id']);
+        }
+
+        if (! empty($params['type'])) {
+            $query->where('type', $params['type']);
+        }
+
+        if (! empty($params['status'])) {
+            $query->where('status', $params['status']);
+        }
+
+        $this->applyListQuery($query, $params, []);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
