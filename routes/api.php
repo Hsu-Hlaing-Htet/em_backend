@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\RoomController;
 use App\Http\Controllers\Admin\RoomImageController;
 use App\Http\Controllers\Admin\StaffController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\UtilityTypeController;
 use App\Http\Controllers\Auth\AuthController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,5 +33,9 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
         Route::apiResource('rooms', RoomController::class);
         Route::post('room-images/upload', [RoomImageController::class, 'upload']);
         Route::apiResource('room-images', RoomImageController::class);
+    });
+
+    Route::prefix('utilities')->group(function (): void {
+        Route::apiResource('types', UtilityTypeController::class);
     });
 });
