@@ -4,10 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class UtilityType extends Model
+class UtilityRate extends Model
 {
     use HasFactory, SoftDeletes;
 
@@ -19,10 +19,22 @@ class UtilityType extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'name',
-        'slug',
+        'utility_type_id',
+        'unit_price',
+        'effective_date',
         'status',
     ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'unit_price' => 'decimal:2',
+            'effective_date' => 'date',
+        ];
+    }
 
     /**
      * @return list<string>
@@ -36,10 +48,10 @@ class UtilityType extends Model
     }
 
     /**
-     * @return HasMany<UtilityRate, $this>
+     * @return BelongsTo<UtilityType, $this>
      */
-    public function utilityRates(): HasMany
+    public function utilityType(): BelongsTo
     {
-        return $this->hasMany(UtilityRate::class);
+        return $this->belongsTo(UtilityType::class);
     }
 }
