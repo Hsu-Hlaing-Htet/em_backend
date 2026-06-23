@@ -23,7 +23,7 @@ class UpdateUtilityTypeRequest extends BaseAdminFormRequest
                 'nullable',
                 'string',
                 'max:255',
-                Rule::unique('utility_types', 'slug')->ignore($this->route('type')),
+                Rule::unique('utility_types', 'slug')->ignore($this->route('utility_type')),
             ],
             'status' => ['required', 'string', Rule::in(UtilityType::statuses())],
         ];

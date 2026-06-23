@@ -39,23 +39,23 @@ class UtilityTypeController extends Controller
         ], 201);
     }
 
-    public function show(UtilityType $type): JsonResponse
+    public function show(UtilityType $utilityType): JsonResponse
     {
-        $this->authorize('view', $type);
+        $this->authorize('view', $utilityType);
 
         return response()->json([
-            'data' => new UtilityTypeResource($type),
+            'data' => new UtilityTypeResource($utilityType),
         ]);
     }
 
     public function update(
         UpdateUtilityTypeRequest $request,
-        UtilityType $type,
+        UtilityType $utilityType,
         UtilityTypeService $utilityTypeService,
     ): JsonResponse {
-        $this->authorize('update', $type);
+        $this->authorize('update', $utilityType);
 
-        $utilityType = $utilityTypeService->update($type, $request->validated());
+        $utilityType = $utilityTypeService->update($utilityType, $request->validated());
 
         return response()->json([
             'message' => 'Utility type updated successfully.',
@@ -63,11 +63,11 @@ class UtilityTypeController extends Controller
         ]);
     }
 
-    public function destroy(UtilityType $type, UtilityTypeService $utilityTypeService): JsonResponse
+    public function destroy(UtilityType $utilityType, UtilityTypeService $utilityTypeService): JsonResponse
     {
-        $this->authorize('delete', $type);
+        $this->authorize('delete', $utilityType);
 
-        $utilityTypeService->delete($type);
+        $utilityTypeService->delete($utilityType);
 
         return response()->json([
             'message' => 'Utility type deleted successfully.',

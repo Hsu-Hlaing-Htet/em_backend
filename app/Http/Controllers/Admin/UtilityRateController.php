@@ -39,25 +39,25 @@ class UtilityRateController extends Controller
         ], 201);
     }
 
-    public function show(UtilityRate $rate): JsonResponse
+    public function show(UtilityRate $utilityRate): JsonResponse
     {
-        $this->authorize('view', $rate);
+        $this->authorize('view', $utilityRate);
 
-        $rate->loadMissing('utilityType');
+        $utilityRate->loadMissing('utilityType');
 
         return response()->json([
-            'data' => new UtilityRateResource($rate),
+            'data' => new UtilityRateResource($utilityRate),
         ]);
     }
 
     public function update(
         UpdateUtilityRateRequest $request,
-        UtilityRate $rate,
+        UtilityRate $utilityRate,
         UtilityRateService $utilityRateService,
     ): JsonResponse {
-        $this->authorize('update', $rate);
+        $this->authorize('update', $utilityRate);
 
-        $utilityRate = $utilityRateService->update($rate, $request->validated());
+        $utilityRate = $utilityRateService->update($utilityRate, $request->validated());
 
         return response()->json([
             'message' => 'Utility rate updated successfully.',
@@ -65,11 +65,11 @@ class UtilityRateController extends Controller
         ]);
     }
 
-    public function destroy(UtilityRate $rate, UtilityRateService $utilityRateService): JsonResponse
+    public function destroy(UtilityRate $utilityRate, UtilityRateService $utilityRateService): JsonResponse
     {
-        $this->authorize('delete', $rate);
+        $this->authorize('delete', $utilityRate);
 
-        $utilityRateService->delete($rate);
+        $utilityRateService->delete($utilityRate);
 
         return response()->json([
             'message' => 'Utility rate deleted successfully.',
