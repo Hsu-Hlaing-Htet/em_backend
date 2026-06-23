@@ -2,12 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\UtilityType;
+use App\Models\ChargeType;
 use App\Services\Concerns\AppliesListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
-class UtilityTypeService
+class ChargeTypeService
 {
     use AppliesListQuery;
 
@@ -16,45 +16,45 @@ class UtilityTypeService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = UtilityType::query();
+        $query = ChargeType::query();
         $this->applyListQuery($query, $params, ['name', 'slug', 'status']);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
 
-    public function find(int $id): UtilityType
+    public function find(int $id): ChargeType
     {
-        return UtilityType::query()->findOrFail($id);
+        return ChargeType::query()->findOrFail($id);
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    public function create(array $data): UtilityType
+    public function create(array $data): ChargeType
     {
-        return UtilityType::query()->create($this->prepareData($data));
+        return ChargeType::query()->create($this->prepareData($data));
     }
 
     /**
      * @param  array<string, mixed>  $data
      */
-    public function update(UtilityType $utilityType, array $data): UtilityType
+    public function update(ChargeType $chargeType, array $data): ChargeType
     {
-        $utilityType->update($this->prepareData($data, $utilityType));
+        $chargeType->update($this->prepareData($data));
 
-        return $utilityType->fresh();
+        return $chargeType->fresh();
     }
 
-    public function delete(UtilityType $utilityType): void
+    public function delete(ChargeType $chargeType): void
     {
-        $utilityType->delete();
+        $chargeType->delete();
     }
 
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function prepareData(array $data, ?UtilityType $utilityType = null): array
+    private function prepareData(array $data): array
     {
         unset($data['slug']);
 

@@ -4,10 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class UtilityType extends Model
+class ChargeType extends Model
 {
     use HasFactory, SoftDeletes;
 
@@ -33,13 +32,5 @@ class UtilityType extends Model
             self::STATUS_ACTIVE,
             self::STATUS_INACTIVE,
         ];
-    }
-
-    /**
-     * @return HasMany<UtilityRate, $this>
-     */
-    public function utilityRates(): HasMany
-    {
-        return $this->hasMany(UtilityRate::class);
     }
 }
