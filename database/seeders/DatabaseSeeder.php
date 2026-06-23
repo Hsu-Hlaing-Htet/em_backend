@@ -20,6 +20,10 @@ class DatabaseSeeder extends Seeder
             BuildingSeeder::class,
             RoomSeeder::class,
             RoomImageSeeder::class,
+            UtilityTypeSeeder::class,
+            UtilityRateSeeder::class,
+            ChargeTypeSeeder::class,
+            LateFeeSeeder::class,
         ]);
 
         $this->command?->info('Seeded login credentials:');

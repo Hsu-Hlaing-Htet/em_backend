@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\BuildingController;
 use App\Http\Controllers\Admin\ChargeTypeController;
+use App\Http\Controllers\Admin\LateFeeController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ResidentController;
 use App\Http\Controllers\Admin\RoleController;
@@ -30,6 +31,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('residents', ResidentController::class)->parameters(['residents' => 'user']);
     Route::apiResource('staff', StaffController::class)->parameters(['staff' => 'user']);
     Route::apiResource('buildings', BuildingController::class);
+    Route::apiResource('rooms', RoomController::class);
     Route::post('room-images/upload', [RoomImageController::class, 'upload']);
     Route::apiResource('room-images', RoomImageController::class);
     Route::apiResource('utility-types', UtilityTypeController::class);

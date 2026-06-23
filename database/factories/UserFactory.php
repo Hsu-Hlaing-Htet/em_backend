@@ -18,31 +18,33 @@ class UserFactory extends Factory
     /**
      * @return array<string, mixed>
      */
-    public function definition(): array
-    {
-        return [
-            'role_id' => $this->roleId(Role::CUSTOMER),
-            'name' => fake()->randomElement([
-            'Aung Myat Kyaw',
-            'Thant Zin Oo',
-            'Min Khant Ko',
-            'Ye Yint Aung',
-            'Soe Min Htet',
-            'Nay Lin Tun',
-            'Hsu Hlaing Htet',
-            'Ei Mon Khaing',
-            'Thiri Shwe Sin',
-            'Yu Waddy Phyo',
-            'May Thazin Tun',
-            'Hnin Wut Yi',
-            'Moe Pwint Phyu',
-            'Su Myat Noe',
-            'Khin Thiri Aung',
-        ]),
-            'email' => strtolower(str_replace(' ', '', $name)) . rand(1, 99) . '@rosewoodroyale.com',
-            'password' => static::$password ??= Hash::make('password'),
-        ];
-    }
+public function definition(): array
+{
+    $name = fake()->randomElement([
+        'Aung Myat Kyaw',
+        'Thant Zin Oo',
+        'Min Khant Ko',
+        'Ye Yint Aung',
+        'Soe Min Htet',
+        'Nay Lin Tun',
+        'Hsu Hlaing Htet',
+        'Ei Mon Khaing',
+        'Thiri Shwe Sin',
+        'Yu Waddy Phyo',
+        'May Thazin Tun',
+        'Hnin Wut Yi',
+        'Moe Pwint Phyu',
+        'Su Myat Noe',
+        'Khin Thiri Aung',
+    ]);
+
+    return [
+        'role_id' => $this->roleId(Role::CUSTOMER),
+        'name' => $name,
+        'email' => strtolower(str_replace(' ', '', $name)) . rand(1, 99) . '@rosewoodroyale.com',
+        'password' => static::$password ??= Hash::make('password'),
+    ];
+}
 
     public function superAdmin(): static
     {
