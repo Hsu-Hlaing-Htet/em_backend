@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BuildingController;
 use App\Http\Controllers\Admin\ChargeTypeController;
 use App\Http\Controllers\Admin\LateFeeController;
+use App\Http\Controllers\Admin\PaymentMethodController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ResidentController;
 use App\Http\Controllers\Admin\RoleController;
@@ -38,4 +39,5 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('utility-rates', UtilityRateController::class);
     Route::apiResource('charge-types', ChargeTypeController::class);
     Route::apiResource('late-fees', LateFeeController::class);
+    Route::apiResource('payment-methods', PaymentMethodController::class);
 });

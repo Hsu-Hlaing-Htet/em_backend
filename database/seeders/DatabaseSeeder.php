@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             UtilityRateSeeder::class,
             ChargeTypeSeeder::class,
             LateFeeSeeder::class,
+            PaymentMethodSeeder::class,
         ]);
 
         $this->command?->info('Seeded login credentials:');
