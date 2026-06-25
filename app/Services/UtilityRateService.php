@@ -28,6 +28,10 @@ class UtilityRateService
             });
         }
 
+        if (! empty($params['status'])) {
+            $query->where('status', $params['status']);
+        }
+
         $this->applyListQuery($query, $params, []);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));

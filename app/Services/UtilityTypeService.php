@@ -4,12 +4,13 @@ namespace App\Services;
 
 use App\Models\UtilityType;
 use App\Services\Concerns\AppliesListQuery;
+use App\Services\Concerns\GuardsDeletion;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
 class UtilityTypeService
 {
-    use AppliesListQuery;
+    use AppliesListQuery, GuardsDeletion;
 
     /**
      * @param  array<string, mixed>  $params
@@ -17,6 +18,7 @@ class UtilityTypeService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = UtilityType::query();
+        $this->applyStatusFilter($query, $params);
         $this->applyListQuery($query, $params, ['name', 'slug', 'status']);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
@@ -47,6 +49,12 @@ class UtilityTypeService
 
     public function delete(UtilityType $utilityType): void
     {
+        $this->guardNoChildren(
+            $utilityType,
+            'utilityRates',
+            'Cannot delete this utility type because it has utility rates. Remove all utility rates first.',
+        );
+
         $utilityType->delete();
     }
 

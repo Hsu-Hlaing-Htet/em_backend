@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Models\Role;
 use App\Services\Concerns\AppliesListQuery;
+use App\Services\Concerns\GuardsDeletion;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\ValidationException;
 
 class RoleService
 {
-    use AppliesListQuery;
+    use AppliesListQuery, GuardsDeletion;
 
     /**
      * @param  array<string, mixed>  $params
@@ -46,6 +48,20 @@ class RoleService
 
     public function delete(Role $role): void
     {
+        $protectedRoles = [Role::SUPER_ADMIN, Role::ADMIN, Role::CUSTOMER];
+
+        if (in_array($role->name, $protectedRoles, true)) {
+            throw ValidationException::withMessages([
+                'delete' => 'Cannot delete a system role.',
+            ]);
+        }
+
+        $this->guardNoChildren(
+            $role,
+            'users',
+            'Cannot delete this role because it is assigned to users. Reassign users to another role first.',
+        );
+
         $role->delete();
     }
 }

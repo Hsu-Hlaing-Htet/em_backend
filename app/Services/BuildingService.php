@@ -4,11 +4,12 @@ namespace App\Services;
 
 use App\Models\Building;
 use App\Services\Concerns\AppliesListQuery;
+use App\Services\Concerns\GuardsDeletion;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class BuildingService
 {
-    use AppliesListQuery;
+    use AppliesListQuery, GuardsDeletion;
 
     /**
      * @param  array<string, mixed>  $params
@@ -46,6 +47,12 @@ class BuildingService
 
     public function delete(Building $building): void
     {
+        $this->guardNoChildren(
+            $building,
+            'rooms',
+            'Cannot delete this building because it has rooms. Remove or reassign all rooms first.',
+        );
+
         $building->delete();
     }
 }

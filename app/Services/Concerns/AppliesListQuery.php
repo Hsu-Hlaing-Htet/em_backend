@@ -32,4 +32,15 @@ trait AppliesListQuery
             $query->latest('id');
         }
     }
+
+    /**
+     * @param  Builder<\Illuminate\Database\Eloquent\Model>  $query
+     * @param  array<string, mixed>  $params
+     */
+    protected function applyStatusFilter(Builder $query, array $params): void
+    {
+        if (! empty($params['status'])) {
+            $query->where($query->getModel()->getTable().'.status', $params['status']);
+        }
+    }
 }

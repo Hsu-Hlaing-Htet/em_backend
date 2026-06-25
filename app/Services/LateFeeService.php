@@ -16,6 +16,7 @@ class LateFeeService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = LateFee::query();
+        $this->applyStatusFilter($query, $params);
         $this->applyListQuery($query, $params, ['name', 'type', 'value', 'per', 'grace_days', 'status']);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));

@@ -17,6 +17,7 @@ class PaymentMethodService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = PaymentMethod::query();
+        $this->applyStatusFilter($query, $params);
         $this->applyListQuery($query, $params, ['name', 'slug', 'status']);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
