@@ -1,0 +1,109 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StorePaymentRequest;
+use App\Http\Requests\Admin\UpdatePaymentRequest;
+use App\Http\Requests\Admin\UploadPaymentProofRequest;
+use App\Http\Resources\Admin\PaymentResource;
+use App\Models\Payment;
+use App\Services\PaymentService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use InvalidArgumentException;
+
+class PaymentController extends Controller
+{
+    public function index(Request $request, PaymentService $paymentService): JsonResponse
+    {
+        $paginator = $paymentService->paginate($request->all());
+
+        return response()->json([
+            'data' => [
+                'data' => PaymentResource::collection($paginator->items())->resolve(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
+    public function store(StorePaymentRequest $request, PaymentService $paymentService): JsonResponse
+    {
+        $payment = $paymentService->create($request->validated());
+
+        return response()->json([
+            'message' => 'Payment created successfully.',
+            'data' => new PaymentResource($payment),
+        ], 201);
+    }
+
+    public function show(Payment $payment): JsonResponse
+    {
+        $payment->load(['invoice.contract.user', 'invoice.contract.room', 'paymentMethod', 'creator', 'approver', 'receipt']);
+
+        return response()->json([
+            'data' => new PaymentResource($payment),
+        ]);
+    }
+
+    public function update(UpdatePaymentRequest $request, Payment $payment, PaymentService $paymentService): JsonResponse
+    {
+        try {
+            $payment = $paymentService->update($payment, $request->validated());
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Payment updated successfully.',
+            'data' => new PaymentResource($payment),
+        ]);
+    }
+
+    public function destroy(Payment $payment, PaymentService $paymentService): JsonResponse
+    {
+        $paymentService->delete($payment);
+
+        return response()->json([
+            'message' => 'Payment deleted successfully.',
+        ]);
+    }
+
+    public function approve(Payment $payment, PaymentService $paymentService): JsonResponse
+    {
+        try {
+            $payment = $paymentService->approve($payment);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Payment approved successfully.',
+            'data' => new PaymentResource($payment),
+        ]);
+    }
+
+    public function reject(Payment $payment, PaymentService $paymentService): JsonResponse
+    {
+        try {
+            $payment = $paymentService->reject($payment);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Payment rejected successfully.',
+            'data' => new PaymentResource($payment),
+        ]);
+    }
+
+    public function uploadProof(UploadPaymentProofRequest $request, Payment $payment, PaymentService $paymentService): JsonResponse
+    {
+        $payment = $paymentService->uploadProof($payment, $request->file('proof'));
+
+        return response()->json([
+            'message' => 'Payment proof uploaded successfully.',
+            'data' => new PaymentResource($payment),
+        ]);
+    }
+}

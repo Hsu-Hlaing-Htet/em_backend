@@ -1,0 +1,50 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class UtilityItem extends Model
+{
+    use HasFactory, SoftDeletes;
+
+    /**
+     * @var list<string>
+     */
+    protected $fillable = [
+        'utility_id',
+        'utility_type_id',
+        'previous_reading',
+        'current_reading',
+        'usage',
+        'unit_price',
+        'amount',
+    ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'previous_reading' => 'decimal:2',
+            'current_reading' => 'decimal:2',
+            'usage' => 'decimal:2',
+            'unit_price' => 'decimal:4',
+            'amount' => 'decimal:2',
+        ];
+    }
+
+    public function utility(): BelongsTo
+    {
+        return $this->belongsTo(Utility::class);
+    }
+
+    public function utilityType(): BelongsTo
+    {
+        return $this->belongsTo(UtilityType::class);
+    }
+}

@@ -3,35 +3,55 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Contract;
+use App\Models\Invoice;
+use App\Models\MaintenanceRequest;
+use App\Models\Payment;
+use App\Models\Role;
+use App\Models\Room;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 
 class DashboardController extends Controller
 {
     public function __invoke(): JsonResponse
     {
+        $paidTotal = (float) Payment::query()
+            ->where('status', 'approved')
+            ->sum('amount');
+
+        $invoiceTotal = (float) Invoice::query()
+            ->whereIn('status', ['issued', 'partial', 'paid', 'overdue'])
+            ->sum('total_amount');
+
         return response()->json([
-            'totals' => [
-                'properties' => Property::count(),
-                'owners' => User::where('role', User::ROLE_OWNER)->count(),
-                'tenants' => Tenant::count(),
-                'invoices' => Invoice::count(),
-                'payments' => Payment::count(),
-            ],
-            'property_status' => [
-                'available' => Property::where('status', Property::STATUS_AVAILABLE)->count(),
-                'reserved' => Property::where('status', Property::STATUS_RESERVED)->count(),
-                'occupied' => Property::where('status', Property::STATUS_OCCUPIED)->count(),
-                'sold' => Property::where('status', Property::STATUS_SOLD)->count(),
-            ],
-            'invoice_status' => [
-                'unpaid' => Invoice::where('status', Invoice::STATUS_UNPAID)->count(),
-                'partial' => Invoice::where('status', Invoice::STATUS_PARTIAL)->count(),
-                'paid' => Invoice::where('status', Invoice::STATUS_PAID)->count(),
-                'overdue' => Invoice::where('status', Invoice::STATUS_OVERDUE)->count(),
-            ],
-            'revenue' => [
-                'total_paid' => (float) Payment::sum('amount'),
-                'outstanding' => (float) Invoice::sum('total_amount') - (float) Invoice::sum('paid_amount'),
+            'data' => [
+                'totals' => [
+                    'rooms' => Room::count(),
+                    'residents' => User::query()->whereHas('role', fn ($q) => $q->where('name', Role::CUSTOMER))->count(),
+                    'contracts' => Contract::count(),
+                    'invoices' => Invoice::count(),
+                    'payments' => Payment::count(),
+                    'maintenance_requests' => MaintenanceRequest::count(),
+                ],
+                'room_status' => [
+                    'available' => Room::where('status', 'available')->count(),
+                    'reserved' => Room::where('status', 'reserved')->count(),
+                    'occupied' => Room::where('status', 'occupied')->count(),
+                    'sold' => Room::where('status', 'sold')->count(),
+                    'maintenance' => Room::where('status', 'maintenance')->count(),
+                ],
+                'invoice_status' => [
+                    'draft' => Invoice::where('status', 'draft')->count(),
+                    'issued' => Invoice::where('status', 'issued')->count(),
+                    'partial' => Invoice::where('status', 'partial')->count(),
+                    'paid' => Invoice::where('status', 'paid')->count(),
+                    'overdue' => Invoice::where('status', 'overdue')->count(),
+                ],
+                'revenue' => [
+                    'total_paid' => $paidTotal,
+                    'outstanding' => max(0, $invoiceTotal - $paidTotal),
+                ],
             ],
         ]);
     }

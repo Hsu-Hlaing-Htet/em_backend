@@ -1,0 +1,108 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreUtilityRequest;
+use App\Http\Requests\Admin\UpdateUtilityRequest;
+use App\Http\Resources\Admin\UtilityResource;
+use App\Models\Utility;
+use App\Services\UtilityService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use InvalidArgumentException;
+
+class UtilityController extends Controller
+{
+    public function index(Request $request, UtilityService $utilityService): JsonResponse
+    {
+        $paginator = $utilityService->paginate($request->all());
+
+        return response()->json([
+            'data' => [
+                'data' => UtilityResource::collection($paginator->items())->resolve(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
+    public function store(StoreUtilityRequest $request, UtilityService $utilityService): JsonResponse
+    {
+        $utility = $utilityService->create($request->validated());
+
+        return response()->json([
+            'message' => 'Utility created successfully.',
+            'data' => new UtilityResource($utility),
+        ], 201);
+    }
+
+    public function show(Utility $utility): JsonResponse
+    {
+        $utility->load(['room.building', 'items.utilityType', 'creator', 'approver']);
+
+        return response()->json([
+            'data' => new UtilityResource($utility),
+        ]);
+    }
+
+    public function update(UpdateUtilityRequest $request, Utility $utility, UtilityService $utilityService): JsonResponse
+    {
+        $utility = $utilityService->update($utility, $request->validated());
+
+        return response()->json([
+            'message' => 'Utility updated successfully.',
+            'data' => new UtilityResource($utility),
+        ]);
+    }
+
+    public function destroy(Utility $utility, UtilityService $utilityService): JsonResponse
+    {
+        $utilityService->delete($utility);
+
+        return response()->json([
+            'message' => 'Utility deleted successfully.',
+        ]);
+    }
+
+    public function submit(Utility $utility, UtilityService $utilityService): JsonResponse
+    {
+        try {
+            $utility = $utilityService->submit($utility);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Utility submitted successfully.',
+            'data' => new UtilityResource($utility),
+        ]);
+    }
+
+    public function approve(Utility $utility, UtilityService $utilityService): JsonResponse
+    {
+        try {
+            $utility = $utilityService->approve($utility);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Utility approved successfully.',
+            'data' => new UtilityResource($utility),
+        ]);
+    }
+
+    public function reject(Utility $utility, UtilityService $utilityService): JsonResponse
+    {
+        try {
+            $utility = $utilityService->reject($utility);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Utility rejected successfully.',
+            'data' => new UtilityResource($utility),
+        ]);
+    }
+}
