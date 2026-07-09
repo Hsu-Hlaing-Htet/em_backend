@@ -8,6 +8,9 @@ if [ -z "${APP_KEY:-}" ]; then
     exit 1
 fi
 
+mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
+chmod -R 775 storage bootstrap/cache
+
 php artisan config:cache --no-ansi
 php artisan route:cache --no-ansi
 
