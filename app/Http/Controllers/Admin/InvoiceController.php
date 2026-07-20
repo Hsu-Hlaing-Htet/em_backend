@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StoreInvoiceRequest;
 use App\Http\Requests\Admin\UpdateInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
 use App\Models\Contract;
 use App\Models\Invoice;
 use App\Services\InvoiceService;
+use App\Services\InvoiceDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -39,7 +41,7 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice): JsonResponse
     {
-        $invoice->load(['contract.user', 'contract.room', 'utility', 'items.chargeType', 'payments', 'creator', 'approver']);
+        $invoice->load(['contract.user.profile', 'contract.room.building', 'utility', 'items.chargeType', 'payments', 'creator', 'approver']);
 
         return response()->json([
             'data' => new InvoiceResource($invoice),
@@ -78,7 +80,7 @@ class InvoiceController extends Controller
         }
 
         return response()->json([
-            'message' => 'Invoice issued successfully.',
+            'message' => 'Invoice issued and sent to customer successfully.',
             'data' => new InvoiceResource($invoice),
         ]);
     }
@@ -95,5 +97,34 @@ class InvoiceController extends Controller
             'message' => 'Invoice generated successfully.',
             'data' => new InvoiceResource($invoice),
         ], 201);
+    }
+
+    public function downloadDocument(Invoice $invoice, InvoiceDocumentService $invoiceDocumentService)
+    {
+        return $invoiceDocumentService->downloadResponse($invoiceDocumentService->find($invoice->id));
+    }
+
+    public function exportDocument(Invoice $invoice, InvoiceDocumentService $invoiceDocumentService)
+    {
+        return $invoiceDocumentService->exportResponse($invoiceDocumentService->find($invoice->id));
+    }
+
+    public function sendDocumentEmail(
+        SendBillingDocumentRequest $request,
+        Invoice $invoice,
+        InvoiceDocumentService $invoiceDocumentService,
+    ): JsonResponse {
+        try {
+            $invoiceDocumentService->sendEmail(
+                $invoiceDocumentService->find($invoice->id),
+                $request->validated(),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Invoice document sent successfully.',
+        ]);
     }
 }

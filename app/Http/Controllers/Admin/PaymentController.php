@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StorePaymentRequest;
 use App\Http\Requests\Admin\UpdatePaymentRequest;
 use App\Http\Requests\Admin\UploadPaymentProofRequest;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Models\Payment;
+use App\Services\PaymentDocumentService;
 use App\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,7 +41,14 @@ class PaymentController extends Controller
 
     public function show(Payment $payment): JsonResponse
     {
-        $payment->load(['invoice.contract.user', 'invoice.contract.room', 'paymentMethod', 'creator', 'approver', 'receipt']);
+        $payment->load([
+            'invoice.contract.user.profile',
+            'invoice.contract.room.building',
+            'paymentMethod',
+            'creator',
+            'approver',
+            'receipt',
+        ]);
 
         return response()->json([
             'data' => new PaymentResource($payment),
@@ -78,7 +87,7 @@ class PaymentController extends Controller
         }
 
         return response()->json([
-            'message' => 'Payment approved successfully.',
+            'message' => 'Payment approved successfully. A draft receipt has been created for review.',
             'data' => new PaymentResource($payment),
         ]);
     }
@@ -104,6 +113,35 @@ class PaymentController extends Controller
         return response()->json([
             'message' => 'Payment proof uploaded successfully.',
             'data' => new PaymentResource($payment),
+        ]);
+    }
+
+    public function downloadDocument(Payment $payment, PaymentDocumentService $paymentDocumentService)
+    {
+        return $paymentDocumentService->downloadResponse($paymentDocumentService->find($payment->id));
+    }
+
+    public function exportDocument(Payment $payment, PaymentDocumentService $paymentDocumentService)
+    {
+        return $paymentDocumentService->exportResponse($paymentDocumentService->find($payment->id));
+    }
+
+    public function sendDocumentEmail(
+        SendBillingDocumentRequest $request,
+        Payment $payment,
+        PaymentDocumentService $paymentDocumentService,
+    ): JsonResponse {
+        try {
+            $paymentDocumentService->sendEmail(
+                $paymentDocumentService->find($payment->id),
+                $request->validated(),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Payment confirmation document sent successfully.',
         ]);
     }
 }

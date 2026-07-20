@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StoreReceiptRequest;
 use App\Http\Requests\Admin\UpdateReceiptRequest;
 use App\Http\Resources\Admin\ReceiptResource;
 use App\Models\Receipt;
 use App\Services\ReceiptService;
+use App\Services\ReceiptDocumentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use InvalidArgumentException;
 
 class ReceiptController extends Controller
@@ -42,7 +45,7 @@ class ReceiptController extends Controller
 
     public function show(Receipt $receipt): JsonResponse
     {
-        $receipt->load(['payment.invoice.contract.user', 'payment.paymentMethod', 'creator', 'approver']);
+        $receipt->load(['payment.invoice.contract.user.profile', 'payment.invoice.contract.room.building', 'payment.paymentMethod', 'creator', 'approver']);
 
         return response()->json([
             'data' => new ReceiptResource($receipt),
@@ -81,22 +84,42 @@ class ReceiptController extends Controller
         }
 
         return response()->json([
-            'message' => 'Receipt issued successfully.',
+            'message' => 'Receipt issued and sent to customer successfully.',
             'data' => new ReceiptResource($receipt),
         ]);
     }
 
-    public function pdf(Receipt $receipt, ReceiptService $receiptService)
+    public function pdf(Receipt $receipt, ReceiptDocumentService $receiptDocumentService): Response
     {
-        $receipt = $receiptService->find($receipt->id);
+        return $receiptDocumentService->downloadResponse($receiptDocumentService->find($receipt->id));
+    }
 
-        if (! $receipt->receipt_pdf_path || ! \Illuminate\Support\Facades\Storage::disk('public')->exists($receipt->receipt_pdf_path)) {
-            return response()->json(['message' => 'Receipt PDF not found.'], 404);
+    public function downloadDocument(Receipt $receipt, ReceiptDocumentService $receiptDocumentService): Response
+    {
+        return $receiptDocumentService->downloadResponse($receiptDocumentService->find($receipt->id));
+    }
+
+    public function exportDocument(Receipt $receipt, ReceiptDocumentService $receiptDocumentService): Response
+    {
+        return $receiptDocumentService->exportResponse($receiptDocumentService->find($receipt->id));
+    }
+
+    public function sendDocumentEmail(
+        SendBillingDocumentRequest $request,
+        Receipt $receipt,
+        ReceiptDocumentService $receiptDocumentService,
+    ): JsonResponse {
+        try {
+            $receiptDocumentService->sendEmail(
+                $receiptDocumentService->find($receipt->id),
+                $request->validated(),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        return \Illuminate\Support\Facades\Storage::disk('public')->download(
-            $receipt->receipt_pdf_path,
-            $receipt->receipt_number.'.html'
-        );
+        return response()->json([
+            'message' => 'Receipt document sent successfully.',
+        ]);
     }
 }

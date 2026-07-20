@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Profile;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\Support\MyanmarSampleData;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 
@@ -20,10 +21,14 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $customers = MyanmarSampleData::customers();
+        $customer = fake()->randomElement($customers);
+        $localPart = strtolower(str_replace([' ', '.'], '', explode('@', $customer['email'])[0]));
+
         return [
             'role_id' => $this->roleId(Role::CUSTOMER),
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
+            'name' => $customer['name'],
+            'email' => $localPart.'.'.fake()->unique()->numerify('##').'@rosewoodroyale.com',
             'password' => static::$password ??= Hash::make('password'),
         ];
     }
@@ -32,6 +37,8 @@ class UserFactory extends Factory
     {
         return $this->state(fn () => [
             'role_id' => $this->roleId(Role::SUPER_ADMIN),
+            'name' => 'U Kyaw Swar',
+            'email' => 'kyawswar@rosewoodroyale.com',
         ]);
     }
 
@@ -39,6 +46,8 @@ class UserFactory extends Factory
     {
         return $this->state(fn () => [
             'role_id' => $this->roleId(Role::ADMIN),
+            'name' => 'Daw Theingi',
+            'email' => 'theingi@rosewoodroyale.com',
         ]);
     }
 

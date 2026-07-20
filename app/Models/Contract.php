@@ -24,6 +24,7 @@ class Contract extends Model
         'approved_by',
         'approved_at',
         'contract_total',
+        'deposit_amount',
         'type',
         'payment_type',
         'duration_months',
@@ -41,6 +42,7 @@ class Contract extends Model
     {
         return [
             'contract_total' => 'decimal:2',
+            'deposit_amount' => 'decimal:2',
             'start_date' => 'date',
             'end_date' => 'date',
             'approved_at' => 'datetime',

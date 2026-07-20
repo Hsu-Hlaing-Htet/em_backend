@@ -16,6 +16,7 @@ class ReceiptService
 
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly ReceiptDocumentService $receiptDocumentService,
     ) {}
 
     /**
@@ -95,17 +96,24 @@ class ReceiptService
             'receipt_pdf_path' => $pdfPath,
         ]);
 
-        return $receipt->fresh(['payment.invoice', 'payment.paymentMethod', 'approver']);
+        $receipt = $receipt->fresh(['payment.invoice.contract.user', 'payment.paymentMethod', 'approver']);
+        $this->notifyCustomerOfIssuedReceipt($receipt);
+
+        return $receipt;
+    }
+
+    private function notifyCustomerOfIssuedReceipt(Receipt $receipt): void
+    {
+        try {
+            $this->receiptDocumentService->sendEmail($receipt, []);
+        } catch (\Throwable) {
+            // Email delivery should not block receipt issuance.
+        }
     }
 
     public function generatePdf(Receipt $receipt): string
     {
-        $receipt->load(['payment.invoice.contract.user', 'payment.paymentMethod']);
-
-        $html = view('receipts.template', [
-            'receipt' => $receipt,
-        ])->render();
-
+        $html = $this->receiptDocumentService->renderHtml($receipt);
         $path = 'receipts/'.$receipt->receipt_number.'.html';
         Storage::disk('public')->put($path, $html);
 

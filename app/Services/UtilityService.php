@@ -7,6 +7,7 @@ use App\Models\Utility;
 use App\Models\UtilityItem;
 use App\Services\Concerns\AppliesListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -27,6 +28,16 @@ class UtilityService
         $query = Utility::query()->with(['room', 'items.utilityType']);
 
         $this->applyListQuery($query, $params, []);
+
+        if (! empty($params['search'])) {
+            $search = $params['search'];
+
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder->whereHas('room', function (Builder $roomQuery) use ($search): void {
+                    $roomQuery->where('room_number', 'like', '%'.$search.'%');
+                })->orWhere('billing_month', 'like', '%'.$search.'%');
+            });
+        }
 
         if (! empty($params['status'])) {
             $query->where('status', $params['status']);

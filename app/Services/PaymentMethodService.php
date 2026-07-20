@@ -18,6 +18,10 @@ class PaymentMethodService
         $query = PaymentMethod::query();
         $this->applyListQuery($query, $params, ['name', 'type', 'status']);
 
+        if (! empty($params['status'])) {
+            $query->where('status', $params['status']);
+        }
+
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
 

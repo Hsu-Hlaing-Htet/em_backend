@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StoreUtilityRequest;
 use App\Http\Requests\Admin\UpdateUtilityRequest;
 use App\Http\Resources\Admin\UtilityResource;
 use App\Models\Utility;
+use App\Services\UtilityDocumentService;
 use App\Services\UtilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -103,6 +105,35 @@ class UtilityController extends Controller
         return response()->json([
             'message' => 'Utility rejected successfully.',
             'data' => new UtilityResource($utility),
+        ]);
+    }
+
+    public function downloadDocument(Utility $utility, UtilityDocumentService $utilityDocumentService)
+    {
+        return $utilityDocumentService->downloadResponse($utilityDocumentService->find($utility->id));
+    }
+
+    public function exportDocument(Utility $utility, UtilityDocumentService $utilityDocumentService)
+    {
+        return $utilityDocumentService->exportResponse($utilityDocumentService->find($utility->id));
+    }
+
+    public function sendDocumentEmail(
+        SendBillingDocumentRequest $request,
+        Utility $utility,
+        UtilityDocumentService $utilityDocumentService,
+    ): JsonResponse {
+        try {
+            $utilityDocumentService->sendEmail(
+                $utilityDocumentService->find($utility->id),
+                $request->validated(),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Utility bill document sent successfully.',
         ]);
     }
 }

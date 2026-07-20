@@ -19,6 +19,7 @@ class InvoiceService
 
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly InvoiceDocumentService $invoiceDocumentService,
     ) {}
 
     /**
@@ -26,7 +27,7 @@ class InvoiceService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = Invoice::query()->with(['contract.user', 'contract.room', 'items.chargeType']);
+        $query = Invoice::query()->with(['contract.user', 'contract.room', 'items.chargeType', 'creator', 'approver']);
 
         $this->applyListQuery($query, $params, ['invoice_number']);
 
@@ -106,7 +107,19 @@ class InvoiceService
             'issued_date' => $invoice->issued_date ?? now()->toDateString(),
         ]);
 
-        return $invoice->fresh(['contract.user', 'contract.room', 'items.chargeType', 'approver']);
+        $invoice = $invoice->fresh(['contract.user', 'contract.room', 'items.chargeType', 'approver']);
+        $this->notifyCustomerOfIssuedInvoice($invoice);
+
+        return $invoice;
+    }
+
+    private function notifyCustomerOfIssuedInvoice(Invoice $invoice): void
+    {
+        try {
+            $this->invoiceDocumentService->sendEmail($invoice, []);
+        } catch (\Throwable) {
+            // Email delivery should not block invoice issuance.
+        }
     }
 
     public function mergeUtilityCharges(Utility $utility): Invoice

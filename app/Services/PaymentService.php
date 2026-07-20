@@ -17,6 +17,7 @@ class PaymentService
 
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly ReceiptService $receiptService,
     ) {}
 
     /**
@@ -84,14 +85,19 @@ class PaymentService
     {
         $payment = $this->approvalService->approve($payment);
         $this->syncInvoicePaymentStatus($payment->invoice);
+        $this->ensureReceiptForPayment($payment);
 
-        return $payment->fresh(['invoice', 'paymentMethod', 'approver']);
+        return $payment->fresh(['invoice', 'paymentMethod', 'approver', 'receipt']);
     }
 
     public function reject(Payment $payment): Payment
     {
-        return $this->approvalService->reject($payment)
+        $payment = $this->approvalService->reject($payment)
             ->load(['invoice', 'paymentMethod', 'approver']);
+
+        $this->syncInvoicePaymentStatus($payment->invoice);
+
+        return $payment;
     }
 
     public function uploadProof(Payment $payment, UploadedFile $file): Payment
@@ -104,6 +110,19 @@ class PaymentService
         $payment->update(['proof_image_path' => $path]);
 
         return $payment->fresh(['invoice', 'paymentMethod']);
+    }
+
+    private function ensureReceiptForPayment(Payment $payment): void
+    {
+        $payment->loadMissing('receipt');
+
+        if ($payment->receipt) {
+            return;
+        }
+
+        $this->receiptService->create([
+            'payment_id' => $payment->id,
+        ]);
     }
 
     public function syncInvoicePaymentStatus(Invoice $invoice): Invoice

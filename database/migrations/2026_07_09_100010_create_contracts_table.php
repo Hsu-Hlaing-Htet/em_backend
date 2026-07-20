@@ -18,6 +18,7 @@ return new class extends Migration
             $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('approved_at')->nullable();
             $table->decimal('contract_total', 14, 2)->default(0);
+            $table->decimal('deposit_amount', 14, 2)->default(0);
             $table->string('type')->default('rent');
             $table->string('payment_type')->default('full');
             $table->unsignedInteger('duration_months')->nullable();
