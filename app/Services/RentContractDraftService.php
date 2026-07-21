@@ -1,0 +1,80 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Contract;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+
+class RentContractDraftService
+{
+    public function __construct(
+        private readonly TypedContractDraftService $typedContractDraftService,
+    ) {}
+
+    private function service(): TypedContractDraftService
+    {
+        return $this->typedContractDraftService->for('rent');
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    public function paginate(array $params): LengthAwarePaginator
+    {
+        return $this->service()->paginate($params);
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    public function paginateActive(array $params): LengthAwarePaginator
+    {
+        return $this->service()->paginateActive($params);
+    }
+
+    public function find(int $id): Contract
+    {
+        return $this->service()->find($id);
+    }
+
+    public function findActive(int $id): Contract
+    {
+        return $this->service()->findActive($id);
+    }
+
+    public function approve(Contract $contract): Contract
+    {
+        return $this->service()->approve($contract);
+    }
+
+    public function reject(Contract $contract, ?string $reason = null): Contract
+    {
+        return $this->service()->reject($contract, $reason);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function create(array $data): Contract
+    {
+        return $this->service()->create($data);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function update(Contract $contract, array $data): Contract
+    {
+        return $this->service()->update($contract, $data);
+    }
+
+    public function delete(Contract $contract): void
+    {
+        $this->service()->delete($contract);
+    }
+
+    public function generateContractNumber(): string
+    {
+        return $this->service()->generateContractNumber();
+    }
+}

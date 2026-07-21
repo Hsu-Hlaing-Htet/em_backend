@@ -18,12 +18,23 @@ class UtilityTypeFactory extends Factory
      */
     public function definition(): array
     {
-        $name = fake()->unique()->words(2, true);
+        $name = fake()->unique()->randomElement([
+            'Electricity',
+            'Water',
+            'Gas',
+            'Internet',
+            'Generator',
+        ]).' '.fake()->numerify('##');
 
         return [
-            'name' => ucwords($name),
+            'name' => $name,
             'slug' => Str::slug($name),
-            'status' => fake()->randomElement(UtilityType::statuses()),
+            'status' => fake()->randomElement(['active', 'inactive']),
         ];
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn () => ['status' => 'active']);
     }
 }

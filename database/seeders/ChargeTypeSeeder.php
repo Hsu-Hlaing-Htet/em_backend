@@ -3,32 +3,33 @@
 namespace Database\Seeders;
 
 use App\Models\ChargeType;
-use App\Services\ChargeTypeService;
 use Illuminate\Database\Seeder;
 
 class ChargeTypeSeeder extends Seeder
 {
+    /**
+     * Run the database seeds.
+     */
     public function run(): void
     {
-        $service = app(ChargeTypeService::class);
-
-        $items = [
-            ['name' => 'Rent', 'status' => 'active'],
-            ['name' => 'Utility', 'status' => 'active'],
-            ['name' => 'Deposit', 'status' => 'active'],
-            ['name' => 'Maintenance Fee', 'status' => 'active'],
-            ['name' => 'Late Fee', 'status' => 'active'],
-            ['name' => 'Other Charges', 'status' => 'active'],
+        $chargeTypes = [
+            ['name' => 'Monthly Rent', 'slug' => 'monthly-rent', 'status' => 'active'],
+            ['name' => 'Security Deposit', 'slug' => 'security-deposit', 'status' => 'active'],
+            ['name' => 'Utility Charges', 'slug' => 'utility-charges', 'status' => 'active'],
+            ['name' => 'Late Payment Fee', 'slug' => 'late-payment-fee', 'status' => 'active'],
+            ['name' => 'Maintenance Fee', 'slug' => 'maintenance-fee', 'status' => 'active'],
+            ['name' => 'Sale Installment', 'slug' => 'sale-installment', 'status' => 'active'],
+            ['name' => 'Booking Deposit', 'slug' => 'booking-deposit', 'status' => 'active'],
         ];
 
-        foreach ($items as $item) {
-            $existing = ChargeType::query()->where('name', $item['name'])->first();
-
-            if ($existing) {
-                $service->update($existing, $item);
-            } else {
-                $service->create($item);
-            }
+        foreach ($chargeTypes as $chargeType) {
+            ChargeType::query()->updateOrCreate(
+                ['slug' => $chargeType['slug']],
+                [
+                    'name' => $chargeType['name'],
+                    'status' => $chargeType['status'],
+                ]
+            );
         }
     }
 }

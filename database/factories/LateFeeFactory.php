@@ -17,13 +17,22 @@ class LateFeeFactory extends Factory
      */
     public function definition(): array
     {
+        $type = fake()->randomElement(['fixed', 'percentage']);
+
         return [
             'name' => fake()->words(3, true),
-            'type' => fake()->randomElement(LateFee::types()),
-            'value' => fake()->randomFloat(2, 1, 10000),
-            'per' => fake()->randomElement(LateFee::perOptions()),
-            'grace_days' => fake()->numberBetween(0, 14),
-            'status' => fake()->randomElement(LateFee::statuses()),
+            'type' => $type,
+            'value' => $type === 'percentage'
+                ? fake()->randomFloat(2, 1, 10)
+                : fake()->randomFloat(2, 5000, 50000),
+            'per' => fake()->randomElement(['day', 'month']),
+            'grace_days' => fake()->numberBetween(0, 7),
+            'status' => fake()->randomElement(['active', 'inactive']),
         ];
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn () => ['status' => 'active']);
     }
 }

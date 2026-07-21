@@ -23,7 +23,12 @@ class ChargeTypeFactory extends Factory
         return [
             'name' => ucwords($name),
             'slug' => Str::slug($name),
-            'status' => fake()->randomElement(ChargeType::statuses()),
+            'status' => fake()->randomElement(['active', 'inactive']),
         ];
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn () => ['status' => 'active']);
     }
 }

@@ -19,18 +19,24 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             BuildingSeeder::class,
             RoomSeeder::class,
-            RoomImageSeeder::class,
+            PaymentPlanSeeder::class,
+            ChargeTypeSeeder::class,
+            PaymentMethodSeeder::class,
+            LateFeeSeeder::class,
             UtilityTypeSeeder::class,
             UtilityRateSeeder::class,
-            ChargeTypeSeeder::class,
-            LateFeeSeeder::class,
-            PaymentMethodSeeder::class,
+            ContractSeeder::class,
+            UtilitySeeder::class,
+            InvoiceSeeder::class,
+            PaymentSeeder::class,
+            ReceiptSeeder::class,
+            MaintenanceRequestSeeder::class,
         ]);
 
         $this->command?->info('Seeded login credentials:');
         $this->command?->table(
             ['Role', 'Name', 'Email', 'Password'],
-            UserSeeder::credentials()
+            collect(UserSeeder::credentials())->take(5)->all()
         );
     }
 }

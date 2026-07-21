@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Profile;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\Support\MyanmarSampleData;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 
@@ -18,38 +19,26 @@ class UserFactory extends Factory
     /**
      * @return array<string, mixed>
      */
-public function definition(): array
-{
-    $name = fake()->randomElement([
-        'Aung Myat Kyaw',
-        'Thant Zin Oo',
-        'Min Khant Ko',
-        'Ye Yint Aung',
-        'Soe Min Htet',
-        'Nay Lin Tun',
-        'Hsu Hlaing Htet',
-        'Ei Mon Khaing',
-        'Thiri Shwe Sin',
-        'Yu Waddy Phyo',
-        'May Thazin Tun',
-        'Hnin Wut Yi',
-        'Moe Pwint Phyu',
-        'Su Myat Noe',
-        'Khin Thiri Aung',
-    ]);
+    public function definition(): array
+    {
+        $customers = MyanmarSampleData::customers();
+        $customer = fake()->randomElement($customers);
+        $localPart = strtolower(str_replace([' ', '.'], '', explode('@', $customer['email'])[0]));
 
-    return [
-        'role_id' => $this->roleId(Role::CUSTOMER),
-        'name' => $name,
-        'email' => strtolower(str_replace(' ', '', $name)) . rand(1, 99) . '@rosewoodroyale.com',
-        'password' => static::$password ??= Hash::make('password'),
-    ];
-}
+        return [
+            'role_id' => $this->roleId(Role::CUSTOMER),
+            'name' => $customer['name'],
+            'email' => $localPart.'.'.fake()->unique()->numerify('##').'@rosewoodroyale.com',
+            'password' => static::$password ??= Hash::make('password'),
+        ];
+    }
 
     public function superAdmin(): static
     {
         return $this->state(fn () => [
             'role_id' => $this->roleId(Role::SUPER_ADMIN),
+            'name' => 'U Kyaw Swar',
+            'email' => 'kyawswar@rosewoodroyale.com',
         ]);
     }
 
@@ -57,6 +46,8 @@ public function definition(): array
     {
         return $this->state(fn () => [
             'role_id' => $this->roleId(Role::ADMIN),
+            'name' => 'Daw Theingi',
+            'email' => 'theingi@rosewoodroyale.com',
         ]);
     }
 

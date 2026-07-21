@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Building;
+use Database\Seeders\Support\MyanmarSampleData;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -17,20 +18,15 @@ class BuildingFactory extends Factory
      */
     public function definition(): array
     {
-        $names = [
-            'Rosewood Residences',
-            'Royale Court',
-            'Emerald Plaza',
-            'Sapphire Heights',
-            'Golden Lotus Tower',
-        ];
-
-        $cities = ['Yangon', 'Mandalay', 'Naypyidaw', 'Bago', 'Taunggyi'];
+        static $index = 0;
+        $buildings = MyanmarSampleData::buildings();
+        $building = $buildings[$index % count($buildings)];
+        $index++;
 
         return [
-            'building_name' => fake()->randomElement($names).' '.fake()->unique()->numberBetween(1, 9),
-            'location' => fake()->randomElement($cities).', Myanmar',
-            'description' => fake()->paragraph(),
+            'building_name' => $building['building_name'].' '.fake()->unique()->numerify('##'),
+            'location' => $building['location'],
+            'description' => $building['description'],
         ];
     }
 }

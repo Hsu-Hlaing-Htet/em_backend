@@ -8,50 +8,41 @@ use Illuminate\Database\Seeder;
 
 class RoomSeeder extends Seeder
 {
+    /**
+     * Run the database seeds.
+     */
     public function run(): void
     {
-        $buildings = Building::query()->get();
+        $buildings = Building::query()->orderBy('id')->get();
 
         if ($buildings->isEmpty()) {
+            $this->command?->warn('No buildings found. Run BuildingSeeder first.');
+
             return;
         }
 
-        foreach ($buildings as $building) {
-            Room::query()->updateOrCreate(
-                [
-                    'building_id' => $building->id,
-                    'room_number' => 'A-'.$building->id.'01',
-                ],
-                [
-                    'floor_number' => 1,
-                    'area_sqft' => 850.50,
-                    'description' => 'Corner unit with natural light.',
-                    'type' => Room::TYPE_RENT,
-                    'status' => Room::STATUS_AVAILABLE,
-                    'sale_price' => 0,
-                    'rent_price' => 1200,
-                    'rent_deposit_price' => 1200,
-                    'booking_deposit_price' => 500,
-                ],
-            );
+        $remaining = 200;
+        $buildingCount = $buildings->count();
 
-            Room::query()->updateOrCreate(
-                [
+        foreach ($buildings as $index => $building) {
+            $roomsForBuilding = (int) floor(200 / $buildingCount);
+            $roomsForBuilding += $index < (200 % $buildingCount) ? 1 : 0;
+
+            Room::factory()
+                ->count($roomsForBuilding)
+                ->create([
                     'building_id' => $building->id,
-                    'room_number' => 'B-'.$building->id.'02',
-                ],
-                [
-                    'floor_number' => 2,
-                    'area_sqft' => 1100.75,
-                    'description' => 'Premium suite with balcony access.',
-                    'type' => Room::TYPE_BOTH,
-                    'status' => Room::STATUS_AVAILABLE,
-                    'sale_price' => 250000,
-                    'rent_price' => 1800,
-                    'rent_deposit_price' => 1800,
-                    'booking_deposit_price' => 1000,
-                ],
-            );
+                ]);
+
+            $remaining -= $roomsForBuilding;
+        }
+
+        if ($remaining > 0) {
+            Room::factory()
+                ->count($remaining)
+                ->create([
+                    'building_id' => $buildings->random()->id,
+                ]);
         }
     }
 }

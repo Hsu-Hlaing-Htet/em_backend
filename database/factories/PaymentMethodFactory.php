@@ -18,12 +18,17 @@ class PaymentMethodFactory extends Factory
      */
     public function definition(): array
     {
-        $name = fake()->unique()->words(2, true);
+        $name = fake()->unique()->company().' '.fake()->randomElement(['Transfer', 'Pay', 'Cash']);
 
         return [
-            'name' => ucwords($name),
+            'name' => $name,
             'slug' => Str::slug($name),
-            'status' => fake()->randomElement(PaymentMethod::statuses()),
+            'status' => fake()->randomElement(['active', 'inactive']),
         ];
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn () => ['status' => 'active']);
     }
 }

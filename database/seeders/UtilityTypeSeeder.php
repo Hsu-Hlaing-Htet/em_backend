@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\UtilityType;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class UtilityTypeSeeder extends Seeder
 {
@@ -14,18 +13,20 @@ class UtilityTypeSeeder extends Seeder
     public function run(): void
     {
         $types = [
-            'Electricity',
-            'Water',
-            'Gas',
+            ['name' => 'Electricity', 'slug' => 'electricity', 'status' => 'active'],
+            ['name' => 'Water', 'slug' => 'water', 'status' => 'active'],
+            ['name' => 'Gas', 'slug' => 'gas', 'status' => 'active'],
+            ['name' => 'Internet', 'slug' => 'internet', 'status' => 'active'],
+            ['name' => 'Generator Fuel', 'slug' => 'generator-fuel', 'status' => 'inactive'],
         ];
 
-        foreach ($types as $name) {
+        foreach ($types as $type) {
             UtilityType::query()->updateOrCreate(
-                ['slug' => Str::slug($name)],
+                ['slug' => $type['slug']],
                 [
-                    'name' => $name,
-                    'status' => UtilityType::STATUS_ACTIVE,
-                ],
+                    'name' => $type['name'],
+                    'status' => $type['status'],
+                ]
             );
         }
     }

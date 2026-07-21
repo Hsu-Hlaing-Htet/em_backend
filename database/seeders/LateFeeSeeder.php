@@ -7,40 +7,27 @@ use Illuminate\Database\Seeder;
 
 class LateFeeSeeder extends Seeder
 {
+    /**
+     * Run the database seeds.
+     */
     public function run(): void
     {
         $lateFees = [
             [
-                'name' => 'Standard Daily Fee',
-                'type' => LateFee::TYPE_FIXED,
-                'value' => 5000,
-                'per' => LateFee::PER_DAY,
+                'name' => 'Standard Late Fee',
+                'type' => 'fixed',
+                'value' => 10000,
+                'per' => 'day',
                 'grace_days' => 3,
-                'status' => LateFee::STATUS_ACTIVE,
+                'status' => 'active',
             ],
             [
-                'name' => 'Standard Monthly Fee',
-                'type' => LateFee::TYPE_FIXED,
-                'value' => 50000,
-                'per' => LateFee::PER_MONTH,
-                'grace_days' => 7,
-                'status' => LateFee::STATUS_ACTIVE,
-            ],
-            [
-                'name' => 'Premium Daily Fee',
-                'type' => LateFee::TYPE_PERCENTAGE,
-                'value' => 2,
-                'per' => LateFee::PER_DAY,
-                'grace_days' => 3,
-                'status' => LateFee::STATUS_ACTIVE,
-            ],
-            [
-                'name' => 'Premium Monthly Fee',
-                'type' => LateFee::TYPE_PERCENTAGE,
-                'value' => 5,
-                'per' => LateFee::PER_MONTH,
-                'grace_days' => 7,
-                'status' => LateFee::STATUS_INACTIVE,
+                'name' => 'Monthly Percentage Penalty',
+                'type' => 'percentage',
+                'value' => 2.5,
+                'per' => 'month',
+                'grace_days' => 5,
+                'status' => 'active',
             ],
         ];
 
