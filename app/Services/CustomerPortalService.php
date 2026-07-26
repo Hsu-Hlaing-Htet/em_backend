@@ -33,6 +33,11 @@ class CustomerPortalService
             ->whereIn('status', ['approved', 'active'])
             ->count();
 
+        $completedContracts = Contract::query()
+            ->where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->count();
+
         $invoiceQuery = $this->customerInvoiceQuery($user->id);
 
         $unpaidInvoices = (clone $invoiceQuery)
@@ -43,8 +48,24 @@ class CustomerPortalService
             ->where('status', 'paid')
             ->count();
 
-        $recentPayments = Payment::query()
-            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
+        $paymentQuery = Payment::query()
+            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id));
+
+        $totalPayments = (clone $paymentQuery)->count();
+
+        $pendingPayments = (clone $paymentQuery)
+            ->where('status', 'pending')
+            ->count();
+
+        $completedPayments = (clone $paymentQuery)
+            ->whereIn('status', ['approved', 'completed'])
+            ->count();
+
+        $totalPaidAmount = (float) (clone $paymentQuery)
+            ->whereIn('status', ['approved', 'completed'])
+            ->sum('amount');
+
+        $recentPayments = (clone $paymentQuery)
             ->with(['invoice', 'paymentMethod'])
             ->latest('payment_date')
             ->limit(5)
@@ -52,8 +73,13 @@ class CustomerPortalService
 
         return [
             'active_contracts' => $activeContracts,
+            'completed_contracts' => $completedContracts,
             'unpaid_invoices' => $unpaidInvoices,
             'paid_invoices' => $paidInvoices,
+            'total_payments' => $totalPayments,
+            'pending_payments' => $pendingPayments,
+            'completed_payments' => $completedPayments,
+            'total_paid_amount' => $totalPaidAmount,
             'recent_payments' => PaymentResource::collection($recentPayments)->resolve(),
         ];
     }
@@ -79,10 +105,14 @@ class CustomerPortalService
         $query = Contract::query()
             ->with(['user.profile', 'room.building', 'paymentPlan'])
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active']);
+            ->whereIn('status', ['approved', 'active', 'completed']);
 
         if (! empty($params['type'])) {
             $query->where('type', $params['type']);
+        }
+
+        if (! empty($params['status'])) {
+            $query->where('status', $params['status']);
         }
 
         return $query->latest('id')->paginate((int) ($params['per_page'] ?? 10));
@@ -93,7 +123,7 @@ class CustomerPortalService
         return Contract::query()
             ->with(['user.profile', 'room.building', 'paymentPlan'])
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active'])
+            ->whereIn('status', ['approved', 'active', 'completed'])
             ->findOrFail($contractId);
     }
 
@@ -107,6 +137,14 @@ class CustomerPortalService
 
         if (! empty($params['status'])) {
             $query->where('status', $params['status']);
+        }
+
+        if (! empty($params['search'])) {
+            $search = $params['search'];
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder->where('invoice_number', 'like', '%'.$search.'%')
+                    ->orWhere('type', 'like', '%'.$search.'%');
+            });
         }
 
         return $query->latest('id')->paginate((int) ($params['per_page'] ?? 10));
@@ -137,6 +175,20 @@ class CustomerPortalService
 
         if (! empty($params['invoice_id'])) {
             $query->where('invoice_id', $params['invoice_id']);
+        }
+
+        if (! empty($params['status'])) {
+            $query->where('status', $params['status']);
+        }
+
+        if (! empty($params['search'])) {
+            $search = $params['search'];
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder->where('note', 'like', '%'.$search.'%')
+                    ->orWhere('payment_number', 'like', '%'.$search.'%')
+                    ->orWhereHas('invoice', fn (Builder $invoiceQuery) => $invoiceQuery->where('invoice_number', 'like', '%'.$search.'%'))
+                    ->orWhereHas('paymentMethod', fn (Builder $methodQuery) => $methodQuery->where('name', 'like', '%'.$search.'%'));
+            });
         }
 
         return $query->latest('payment_date')->paginate((int) ($params['per_page'] ?? 10));
@@ -279,7 +331,7 @@ class CustomerPortalService
         $recentContracts = Contract::query()
             ->with('room')
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active'])
+            ->whereIn('status', ['approved', 'active', 'completed'])
             ->latest('updated_at')
             ->limit(5)
             ->get();

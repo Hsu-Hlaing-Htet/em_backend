@@ -36,6 +36,8 @@ class Room extends Model
         'building_id',
         'room_number',
         'floor_number',
+        'width_ft',
+        'length_ft',
         'area_sqft',
         'description',
         'type',
@@ -53,6 +55,8 @@ class Room extends Model
     {
         return [
             'floor_number' => 'integer',
+            'width_ft' => 'decimal:2',
+            'length_ft' => 'decimal:2',
             'area_sqft' => 'decimal:2',
             'sale_price' => 'decimal:2',
             'rent_price' => 'decimal:2',
@@ -74,5 +78,10 @@ class Room extends Model
     public function primaryRoomImage(): HasOne
     {
         return $this->hasOne(RoomImage::class)->where('is_primary', true);
+    }
+
+    public function contracts(): HasMany
+    {
+        return $this->hasMany(Contract::class);
     }
 }

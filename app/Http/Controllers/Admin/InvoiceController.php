@@ -47,7 +47,7 @@ class InvoiceController extends Controller
             'contract.room.building',
             'utility',
             'items.chargeType',
-            'payments',
+            'payments.paymentMethod',
             'creator',
             'approver',
         ]);

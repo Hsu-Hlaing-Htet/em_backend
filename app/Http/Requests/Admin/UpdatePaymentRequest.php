@@ -22,6 +22,7 @@ class UpdatePaymentRequest extends BaseAdminFormRequest
             'amount' => ['sometimes', 'numeric', 'gt:0'],
             'payment_date' => ['sometimes', 'date'],
             'note' => ['nullable', 'string'],
+            'payment_number' => ['prohibited'],
             'status' => ['prohibited'],
             'created_by' => ['prohibited'],
             'approved_by' => ['prohibited'],

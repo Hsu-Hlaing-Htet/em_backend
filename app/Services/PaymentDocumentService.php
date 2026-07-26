@@ -113,7 +113,7 @@ class PaymentDocumentService
 
     private function referenceNumber(Payment $payment): string
     {
-        return sprintf('PAY-%05d', $payment->id);
+        return $payment->payment_number ?? sprintf('PAY-%06d', $payment->id);
     }
 
     private function filename(Payment $payment): string

@@ -21,6 +21,8 @@ class UpdateRoomRequest extends BaseAdminFormRequest
             'building_id' => ['required', 'integer', 'exists:buildings,id'],
             'room_number' => ['required', 'string', 'max:255'],
             'floor_number' => ['required', 'integer', 'min:0'],
+            'width_ft' => ['nullable', 'numeric', 'min:0'],
+            'length_ft' => ['nullable', 'numeric', 'min:0'],
             'area_sqft' => ['required', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'type' => ['required', 'string', Rule::in([Room::TYPE_SALE, Room::TYPE_RENT, Room::TYPE_BOTH])],

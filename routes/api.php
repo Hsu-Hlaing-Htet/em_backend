@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\BuildingController;
 use App\Http\Controllers\Admin\ChargeTypeController;
 use App\Http\Controllers\Admin\InvoiceController;
@@ -58,6 +59,7 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
 
 
 Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function (): void {
+    Route::get('admin/dashboard/charts', [DashboardController::class, 'charts']);
     Route::apiResource('roles', RoleController::class);
     Route::apiResource('users', UserController::class);
     Route::apiResource('profiles', ProfileController::class);

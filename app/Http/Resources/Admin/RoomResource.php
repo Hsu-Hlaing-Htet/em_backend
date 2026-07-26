@@ -24,6 +24,8 @@ class RoomResource extends JsonResource
             'building_name' => $this->whenLoaded('building', fn () => $this->building?->building_name),
             'room_number' => $this->room_number,
             'floor_number' => $this->floor_number,
+            'width_ft' => $this->width_ft,
+            'length_ft' => $this->length_ft,
             'area_sqft' => $this->area_sqft,
             'description' => $this->description,
             'type' => $this->type,

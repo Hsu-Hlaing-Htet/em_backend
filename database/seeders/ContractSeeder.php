@@ -7,10 +7,15 @@ use App\Models\PaymentPlan;
 use App\Models\Role;
 use App\Models\Room;
 use App\Models\User;
+use Database\Seeders\Support\CustomerHistoryProfiles;
 use Illuminate\Database\Seeder;
 
 class ContractSeeder extends Seeder
 {
+    private int $saleSequence = 0;
+
+    private int $rentSequence = 0;
+
     /**
      * Run the database seeds.
      */
@@ -22,8 +27,8 @@ class ContractSeeder extends Seeder
 
         $customers = User::query()
             ->whereHas('role', fn ($query) => $query->where('name', Role::CUSTOMER))
-            ->orderBy('id')
-            ->get();
+            ->get()
+            ->keyBy('email');
 
         if (! $admin || $customers->isEmpty()) {
             $this->command?->warn('Users must be seeded before contracts. Run UserSeeder first.');
@@ -35,118 +40,285 @@ class ContractSeeder extends Seeder
         $installmentPlan = PaymentPlan::query()
             ->where('payment_type', 'installment')
             ->where('status', 'active')
+            ->where('duration_months', 12)
             ->first();
 
         $saleRooms = Room::query()
             ->whereIn('type', ['sale', 'both'])
             ->where('status', 'available')
             ->orderBy('id')
-            ->take(15)
             ->get();
 
         $rentRooms = Room::query()
             ->whereIn('type', ['rent', 'both'])
             ->where('status', 'available')
             ->orderBy('id')
-            ->take(20)
             ->get();
 
-        if ($saleRooms->count() < 15 || $rentRooms->count() < 20) {
+        if ($saleRooms->count() < 12 || $rentRooms->count() < 12) {
             $this->command?->warn('Not enough available rooms for contracts. Run RoomSeeder first.');
 
             return;
         }
 
-        $saleStatuses = array_merge(
-            array_fill(0, 3, 'draft'),
-            array_fill(0, 2, 'pending'),
-            array_fill(0, 8, 'approved'),
-            array_fill(0, 2, 'rejected'),
-        );
+        $profiles = CustomerHistoryProfiles::emailsByPersona();
+        $saleRoomIndex = 0;
+        $rentRoomIndex = 0;
 
-        $rentStatuses = array_merge(
-            array_fill(0, 3, 'draft'),
-            array_fill(0, 2, 'pending'),
-            array_fill(0, 12, 'active'),
-            array_fill(0, 3, 'rejected'),
-        );
+        foreach ($profiles['active_rent'] as $index => $email) {
+            $customer = $customers->get($email);
+            $room = $rentRooms[$rentRoomIndex++];
 
-        foreach ($saleRooms as $index => $room) {
-            $status = $saleStatuses[$index] ?? 'draft';
-            $customer = $customers[$index % $customers->count()];
-            $useInstallment = $index % 3 === 0 && $installmentPlan;
-            $isApproved = $status === 'approved';
+            if (! $customer || ! $room) {
+                continue;
+            }
 
-            Contract::query()->create([
-                'contract_number' => 'S-'.str_pad((string) ($index + 1), 6, '0', STR_PAD_LEFT),
-                'user_id' => $customer->id,
-                'room_id' => $room->id,
-                'payment_plan_id' => $useInstallment ? $installmentPlan->id : $fullPaymentPlan?->id,
-                'created_by' => $admin->id,
-                'approved_by' => $isApproved ? $admin->id : ($status === 'rejected' ? $admin->id : null),
-                'approved_at' => in_array($status, ['approved', 'rejected'], true)
-                    ? now()->subDays(fake()->numberBetween(5, 90))
-                    : null,
-                'contract_total' => $room->sale_price,
-                'deposit_amount' => $room->booking_deposit_price,
-                'type' => 'sale',
-                'payment_type' => $useInstallment ? 'installment' : 'full',
-                'duration_months' => $useInstallment ? $installmentPlan->duration_months : null,
-                'start_date' => now()->subMonths(2)->toDateString(),
-                'end_date' => $useInstallment ? now()->addMonths($installmentPlan->duration_months)->toDateString() : null,
-                'billing_day' => $useInstallment ? fake()->numberBetween(1, 28) : null,
-                'status' => $status,
-                'remark' => match ($status) {
+            $useInstallment = $index === 1 && $installmentPlan;
+
+            $this->createRentContract(
+                admin: $admin,
+                customer: $customer,
+                room: $room,
+                status: 'active',
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: $useInstallment ? $installmentPlan : null,
+                startDate: now()->subMonths(6),
+                endDate: now()->addMonths(6),
+                remark: 'Active rental agreement with monthly billing.',
+                occupyRoom: true,
+            );
+        }
+
+        foreach ($profiles['former_rent'] as $index => $email) {
+            $customer = $customers->get($email);
+            $room = $rentRooms[$rentRoomIndex++];
+
+            if (! $customer || ! $room) {
+                continue;
+            }
+
+            $startDate = now()->subMonths(18);
+            $endDate = now()->subMonths(6);
+
+            $this->createRentContract(
+                admin: $admin,
+                customer: $customer,
+                room: $room,
+                status: 'completed',
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: $index === 0 ? $installmentPlan : null,
+                startDate: $startDate,
+                endDate: $endDate,
+                remark: 'Lease completed. Security deposit returned and unit released.',
+                occupyRoom: false,
+            );
+        }
+
+        foreach ($profiles['active_sale'] as $index => $email) {
+            $customer = $customers->get($email);
+            $room = $saleRooms[$saleRoomIndex++];
+
+            if (! $customer || ! $room) {
+                continue;
+            }
+
+            $useInstallment = $index === 2 && $installmentPlan;
+
+            $this->createSaleContract(
+                admin: $admin,
+                customer: $customer,
+                room: $room,
+                status: 'approved',
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: $useInstallment ? $installmentPlan : null,
+                startDate: now()->subMonths(4),
+                endDate: $useInstallment ? now()->addMonths(8) : null,
+                remark: 'Approved sale contract with active payment schedule.',
+                markRoomSold: true,
+            );
+        }
+
+        foreach ($profiles['former_sale'] as $index => $email) {
+            $customer = $customers->get($email);
+            $room = $saleRooms[$saleRoomIndex++];
+
+            if (! $customer || ! $room) {
+                continue;
+            }
+
+            $startDate = now()->subMonths(24);
+            $endDate = now()->subMonths(12);
+            $useInstallment = $index === 1 && $installmentPlan;
+
+            $this->createSaleContract(
+                admin: $admin,
+                customer: $customer,
+                room: $room,
+                status: 'completed',
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: $useInstallment ? $installmentPlan : null,
+                startDate: $startDate,
+                endDate: $endDate,
+                remark: 'Sale completed. Full purchase amount received and title transferred.',
+                markRoomSold: true,
+            );
+        }
+
+        $pipelineCustomers = collect($profiles['pipeline'])
+            ->map(fn (string $email) => $customers->get($email))
+            ->filter()
+            ->values();
+
+        $salePipelineStatuses = ['draft', 'draft', 'pending', 'pending', 'approved', 'rejected', 'rejected'];
+        $rentPipelineStatuses = ['draft', 'draft', 'pending', 'pending', 'active', 'active', 'rejected', 'rejected'];
+
+        foreach ($salePipelineStatuses as $index => $status) {
+            $room = $saleRooms[$saleRoomIndex++] ?? null;
+            $customer = $pipelineCustomers[$index % max($pipelineCustomers->count(), 1)] ?? null;
+
+            if (! $room || ! $customer) {
+                continue;
+            }
+
+            $this->createSaleContract(
+                admin: $admin,
+                customer: $customer,
+                room: $room,
+                status: $status,
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: $index % 3 === 0 ? $installmentPlan : null,
+                startDate: now()->subMonths(2),
+                endDate: null,
+                remark: match ($status) {
                     'draft' => 'Sale draft awaiting customer confirmation.',
                     'pending' => 'Submitted for management approval.',
-                    'approved' => 'Approved sale contract.',
+                    'approved' => 'Approved sale contract in onboarding pipeline.',
                     default => 'Rejected due to incomplete documentation.',
                 },
-            ]);
-
-            if ($isApproved) {
-                $room->update(['status' => 'sold']);
-            }
+                markRoomSold: $status === 'approved',
+            );
         }
 
-        foreach ($rentRooms as $index => $room) {
-            $status = $rentStatuses[$index] ?? 'draft';
-            $customer = $customers[($index + $saleRooms->count()) % $customers->count()];
-            $useInstallment = $index % 4 === 0 && $installmentPlan;
-            $isActive = $status === 'active';
+        foreach ($rentPipelineStatuses as $index => $status) {
+            $room = $rentRooms[$rentRoomIndex++] ?? null;
+            $customer = $pipelineCustomers[($index + 2) % max($pipelineCustomers->count(), 1)] ?? null;
 
-            Contract::query()->create([
-                'contract_number' => 'R-'.str_pad((string) ($index + 1), 6, '0', STR_PAD_LEFT),
-                'user_id' => $customer->id,
-                'room_id' => $room->id,
-                'payment_plan_id' => $useInstallment ? $installmentPlan->id : null,
-                'created_by' => $admin->id,
-                'approved_by' => in_array($status, ['active', 'rejected'], true) ? $admin->id : null,
-                'approved_at' => in_array($status, ['active', 'rejected'], true)
-                    ? now()->subDays(fake()->numberBetween(5, 90))
-                    : null,
-                'contract_total' => $useInstallment
-                    ? round($room->rent_price * ($installmentPlan->duration_months ?? 12), 2)
-                    : round($room->rent_price * 12, 2),
-                'deposit_amount' => $room->rent_deposit_price,
-                'type' => 'rent',
-                'payment_type' => $useInstallment ? 'installment' : 'full',
-                'duration_months' => $useInstallment ? $installmentPlan->duration_months : null,
-                'start_date' => now()->subMonths(3)->toDateString(),
-                'end_date' => now()->addMonths(9)->toDateString(),
-                'billing_day' => $useInstallment ? fake()->numberBetween(1, 28) : null,
-                'status' => $status,
-                'remark' => match ($status) {
+            if (! $room || ! $customer) {
+                continue;
+            }
+
+            $this->createRentContract(
+                admin: $admin,
+                customer: $customer,
+                room: $room,
+                status: $status,
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: $index % 4 === 0 ? $installmentPlan : null,
+                startDate: now()->subMonths(3),
+                endDate: now()->addMonths(9),
+                remark: match ($status) {
                     'draft' => 'Rent draft pending tenant review.',
                     'pending' => 'Awaiting lease approval.',
-                    'active' => 'Active rental agreement.',
+                    'active' => 'Active rental agreement in admin pipeline.',
                     default => 'Rejected due to failed background check.',
                 },
-            ]);
-
-            if ($isActive) {
-                $room->update(['status' => 'occupied']);
-            }
+                occupyRoom: $status === 'active',
+            );
         }
+    }
+
+    private function createSaleContract(
+        User $admin,
+        User $customer,
+        Room $room,
+        string $status,
+        ?PaymentPlan $fullPaymentPlan,
+        ?PaymentPlan $installmentPlan,
+        \DateTimeInterface $startDate,
+        ?\DateTimeInterface $endDate,
+        string $remark,
+        bool $markRoomSold,
+    ): Contract {
+        $useInstallment = $installmentPlan !== null;
+        $plan = $useInstallment ? $installmentPlan : $fullPaymentPlan;
+        $isApproved = in_array($status, ['approved', 'completed'], true);
+        $approvedAt = in_array($status, ['approved', 'completed', 'rejected'], true)
+            ? $startDate
+            : null;
+
+        $contract = Contract::query()->create([
+            'contract_number' => 'S-'.str_pad((string) (++$this->saleSequence), 6, '0', STR_PAD_LEFT),
+            'user_id' => $customer->id,
+            'room_id' => $room->id,
+            'payment_plan_id' => $plan?->id,
+            'created_by' => $admin->id,
+            'approved_by' => in_array($status, ['approved', 'completed', 'rejected'], true) ? $admin->id : null,
+            'approved_at' => $approvedAt,
+            'contract_total' => $room->sale_price,
+            'deposit_amount' => $room->booking_deposit_price,
+            'type' => 'sale',
+            'payment_type' => $useInstallment ? 'installment' : 'full',
+            'duration_months' => $useInstallment ? $installmentPlan->duration_months : null,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'billing_day' => $useInstallment ? 5 : null,
+            'status' => $status,
+            'remark' => $remark,
+        ]);
+
+        if ($markRoomSold) {
+            $room->update(['status' => 'sold']);
+        }
+
+        return $contract;
+    }
+
+    private function createRentContract(
+        User $admin,
+        User $customer,
+        Room $room,
+        string $status,
+        ?PaymentPlan $fullPaymentPlan,
+        ?PaymentPlan $installmentPlan,
+        \DateTimeInterface $startDate,
+        \DateTimeInterface $endDate,
+        string $remark,
+        bool $occupyRoom,
+    ): Contract {
+        $useInstallment = $installmentPlan !== null;
+        $plan = $useInstallment ? $installmentPlan : $fullPaymentPlan;
+        $durationMonths = $useInstallment
+            ? $installmentPlan->duration_months
+            : max(1, (int) ceil($startDate->diff($endDate)->days / 30));
+
+        $contract = Contract::query()->create([
+            'contract_number' => 'R-'.str_pad((string) (++$this->rentSequence), 6, '0', STR_PAD_LEFT),
+            'user_id' => $customer->id,
+            'room_id' => $room->id,
+            'payment_plan_id' => $plan?->id,
+            'created_by' => $admin->id,
+            'approved_by' => in_array($status, ['active', 'completed', 'rejected'], true) ? $admin->id : null,
+            'approved_at' => in_array($status, ['active', 'completed', 'rejected'], true)
+                ? $startDate
+                : null,
+            'contract_total' => round($room->rent_price * $durationMonths, 2),
+            'deposit_amount' => $room->rent_deposit_price,
+            'type' => 'rent',
+            'payment_type' => $useInstallment ? 'installment' : 'full',
+            'duration_months' => $useInstallment ? $installmentPlan->duration_months : $durationMonths,
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'billing_day' => 5,
+            'status' => $status,
+            'remark' => $remark,
+        ]);
+
+        if ($occupyRoom) {
+            $room->update(['status' => 'occupied']);
+        } elseif ($status === 'completed') {
+            $room->update(['status' => 'available']);
+        }
+
+        return $contract;
     }
 }

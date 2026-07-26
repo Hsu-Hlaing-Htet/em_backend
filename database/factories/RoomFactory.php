@@ -21,11 +21,16 @@ class RoomFactory extends Factory
         $salePrice = fake()->randomFloat(2, 500000000, 1500000000);
         $rentPrice = fake()->randomFloat(2, 300000, 2500000);
 
+        $width = fake()->randomFloat(2, 15, 50);
+        $length = fake()->randomFloat(2, 15, 50);
+
         return [
             'building_id' => Building::factory(),
             'room_number' => strtoupper(fake()->unique()->bothify('?-###')),
             'floor_number' => fake()->numberBetween(1, 20),
-            'area_sqft' => fake()->randomFloat(2, 600, 2200),
+            'width_ft' => $width,
+            'length_ft' => $length,
+            'area_sqft' => round($width * $length, 2),
             'description' => fake()->optional(0.6)->sentence(12),
             'type' => fake()->randomElement(['sale', 'rent', 'both']),
             'status' => 'available',

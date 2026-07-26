@@ -24,8 +24,13 @@ it('returns customer dashboard data', function (): void {
         ->assertJsonStructure([
             'data' => [
                 'active_contracts',
+                'completed_contracts',
                 'unpaid_invoices',
                 'paid_invoices',
+                'total_payments',
+                'pending_payments',
+                'completed_payments',
+                'total_paid_amount',
                 'recent_payments',
             ],
         ]);

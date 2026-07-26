@@ -24,16 +24,115 @@ class PaymentService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = Payment::query()->with(['invoice.contract.user', 'paymentMethod', 'receipt']);
+        $query = Payment::query()->with([
+            'invoice.contract.user.profile',
+            'invoice.contract.room.building',
+            'invoice.items.chargeType',
+            'invoice.payments',
+            'paymentMethod',
+            'receipt',
+        ]);
 
         if (! empty($params['invoice_id'])) {
             $query->where('invoice_id', $params['invoice_id']);
         }
 
+        $this->applyBillingStatusFilter($query, $params);
+        $this->applyPaymentTypeFilter($query, $params);
         $this->applyStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, ['note']);
+        $this->applyPaymentSearch($query, $params);
+        $this->applyListQuery($query, $params, []);
 
         return $query->latest('payment_date')->paginate((int) ($params['per_page'] ?? 10));
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Payment>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyPaymentSearch($query, array $params): void
+    {
+        if (empty($params['search'])) {
+            return;
+        }
+
+        $search = $params['search'];
+
+        $query->where(function ($builder) use ($search): void {
+            $builder->where('payment_number', 'like', '%'.$search.'%')
+                ->orWhere('note', 'like', '%'.$search.'%')
+                ->orWhereHas('invoice', fn ($invoiceQuery) => $invoiceQuery
+                    ->where('invoice_number', 'like', '%'.$search.'%'))
+                ->orWhereHas('invoice.contract.user', fn ($userQuery) => $userQuery
+                    ->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%'))
+                ->orWhereHas('invoice.contract.room', fn ($roomQuery) => $roomQuery
+                    ->where('room_number', 'like', '%'.$search.'%')
+                    ->orWhereHas('building', fn ($buildingQuery) => $buildingQuery
+                        ->where('building_name', 'like', '%'.$search.'%')))
+                ->orWhereHas('paymentMethod', fn ($methodQuery) => $methodQuery
+                    ->where('name', 'like', '%'.$search.'%'));
+        });
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Payment>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyBillingStatusFilter($query, array $params): void
+    {
+        if (empty($params['billing_status'])) {
+            return;
+        }
+
+        $billingStatus = $params['billing_status'];
+
+        if ($billingStatus === 'pending') {
+            $query->where('status', 'pending');
+
+            return;
+        }
+
+        $query->whereHas('invoice', fn ($invoiceQuery) => $invoiceQuery->where('status', $billingStatus));
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Payment>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyPaymentTypeFilter($query, array $params): void
+    {
+        if (empty($params['payment_type'])) {
+            return;
+        }
+
+        $paymentType = $params['payment_type'];
+
+        if ($paymentType === 'rent') {
+            $query->whereHas('invoice', fn ($invoiceQuery) => $invoiceQuery->where('type', 'rent'));
+
+            return;
+        }
+
+        if ($paymentType === 'utility') {
+            $query->whereHas('invoice', fn ($invoiceQuery) => $invoiceQuery->where('type', 'utility'));
+
+            return;
+        }
+
+        if ($paymentType === 'maintenance') {
+            $query->whereHas('invoice.items.chargeType', fn ($chargeQuery) => $chargeQuery
+                ->where('slug', 'maintenance-fee'));
+
+            return;
+        }
+
+        $query->whereHas('invoice', function ($invoiceQuery): void {
+            $invoiceQuery
+                ->whereNotIn('type', ['rent', 'utility'])
+                ->whereDoesntHave('items.chargeType', fn ($chargeQuery) => $chargeQuery
+                    ->where('slug', 'maintenance-fee'));
+        });
     }
 
     public function find(int $id): Payment
@@ -50,6 +149,7 @@ class PaymentService
     {
         return Payment::query()->create([
             ...$data,
+            'payment_number' => $data['payment_number'] ?? $this->generatePaymentNumber(),
             'status' => 'pending',
             'created_by' => Auth::id(),
         ]);
@@ -139,5 +239,16 @@ class PaymentService
         }
 
         return $invoice->fresh();
+    }
+
+    public function generatePaymentNumber(): string
+    {
+        $lastSequence = Payment::query()
+            ->where('payment_number', 'like', 'PAY-%')
+            ->pluck('payment_number')
+            ->map(fn (string $number): int => (int) substr($number, 4))
+            ->max() ?? 0;
+
+        return 'PAY-'.str_pad((string) ($lastSequence + 1), 6, '0', STR_PAD_LEFT);
     }
 }

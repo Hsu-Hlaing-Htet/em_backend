@@ -46,6 +46,8 @@ class PublicPropertyResource extends JsonResource
             'bedrooms' => $this->resolveBedrooms(),
             'bathrooms' => $this->resolveBathrooms(),
             'area_sqft' => $this->area_sqft,
+            'width_ft' => $this->width_ft,
+            'length_ft' => $this->length_ft,
             'purpose' => 'sale',
             'sale_price' => $salePrice,
             'featured_image' => $primaryImage?->image_path,

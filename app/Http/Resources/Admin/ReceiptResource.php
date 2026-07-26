@@ -13,6 +13,7 @@ class ReceiptResource extends JsonResource
         return [
             'id' => $this->id,
             'payment_id' => $this->payment_id,
+            'payment_number' => $this->whenLoaded('payment', fn () => $this->payment?->payment_number),
             'receipt_number' => $this->receipt_number,
             'status' => $this->status,
             'issued_at' => $this->issued_at?->toDateTimeString(),

@@ -3,9 +3,10 @@
 namespace Database\Seeders;
 
 use App\Models\Payment;
-use App\Models\Receipt;
 use App\Models\Role;
 use App\Models\User;
+use Carbon\Carbon;
+use Database\Seeders\Support\BillingSeederSupport;
 use Illuminate\Database\Seeder;
 
 class ReceiptSeeder extends Seeder
@@ -25,74 +26,36 @@ class ReceiptSeeder extends Seeder
             return;
         }
 
-        $receiptSequence = 1;
-
         $approvedPayments = Payment::query()
             ->where('status', 'approved')
             ->whereDoesntHave('receipt')
             ->with('invoice')
+            ->orderBy('payment_date')
             ->orderBy('id')
             ->get();
 
         foreach ($approvedPayments as $payment) {
-            if ($receiptSequence > 25) {
-                break;
-            }
-
             if (! $payment->invoice) {
                 continue;
             }
 
-            if (! in_array($payment->invoice->status, ['paid', 'partial', 'issued', 'overdue'], true)) {
-                if ((float) $payment->amount >= (float) $payment->invoice->total_amount) {
-                    $payment->invoice->update(['status' => 'paid']);
-                } else {
-                    continue;
-                }
-            }
-
-            if ($payment->invoice->status === 'issued' && (float) $payment->amount >= (float) $payment->invoice->total_amount) {
-                $payment->invoice->update(['status' => 'paid']);
-            }
-
-            Receipt::query()->create([
-                'payment_id' => $payment->id,
-                'receipt_number' => 'RCP-'.str_pad((string) $receiptSequence, 6, '0', STR_PAD_LEFT),
-                'receipt_pdf_path' => 'receipts/RCP-'.str_pad((string) $receiptSequence, 6, '0', STR_PAD_LEFT).'.pdf',
-                'status' => 'issued',
-                'issued_at' => now()->subDays(fake()->numberBetween(1, 10)),
-                'created_by' => $admin->id,
-                'approved_by' => $admin->id,
-            ]);
-
-            $receiptSequence++;
-        }
-
-        while ($receiptSequence <= 25) {
-            $payment = Payment::query()
+            $invoice = $payment->invoice;
+            $approvedTotal = (float) Payment::query()
+                ->where('invoice_id', $invoice->id)
                 ->where('status', 'approved')
-                ->whereDoesntHave('receipt')
-                ->with('invoice')
-                ->orderBy('id')
-                ->first();
+                ->sum('amount');
 
-            if (! $payment || ! $payment->invoice) {
-                break;
+            if ($approvedTotal + 0.009 >= (float) $invoice->total_amount) {
+                $invoice->update(['status' => 'paid']);
+            } elseif ($approvedTotal > 0) {
+                $invoice->update(['status' => 'partial']);
             }
 
-            $payment->invoice->update(['status' => 'paid']);
-
-            Receipt::query()->create([
-                'payment_id' => $payment->id,
-                'receipt_number' => 'RCP-'.str_pad((string) $receiptSequence, 6, '0', STR_PAD_LEFT),
-                'receipt_pdf_path' => 'receipts/RCP-'.str_pad((string) $receiptSequence, 6, '0', STR_PAD_LEFT).'.pdf',
-                'status' => 'issued',
-                'issued_at' => now(),
-                'created_by' => $admin->id,
-                'approved_by' => $admin->id,
-            ]);
-
-            $receiptSequence++;
+            BillingSeederSupport::createIssuedReceipt(
+                $admin,
+                $payment,
+                Carbon::parse($payment->payment_date)->addDay(),
+            );
         }
     }
 }

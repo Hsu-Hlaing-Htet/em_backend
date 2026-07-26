@@ -38,5 +38,17 @@ class DatabaseSeeder extends Seeder
             ['Role', 'Name', 'Email', 'Password'],
             collect(UserSeeder::credentials())->take(5)->all()
         );
+
+        $this->command?->info('Customer history personas (password: p@ssword for all):');
+        $this->command?->table(
+            ['Persona', 'Email'],
+            [
+                ['Active rent', 'mgmg@rosewoodroyale.com'],
+                ['Active sale', 'susu@rosewoodroyale.com'],
+                ['Former rent (completed)', 'zawzaw@rosewoodroyale.com'],
+                ['Former sale (completed)', 'nwenwe@rosewoodroyale.com'],
+                ['Registered only', 'tuntun@rosewoodroyale.com'],
+            ]
+        );
     }
 }
