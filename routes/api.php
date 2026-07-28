@@ -100,6 +100,9 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::get('rent-contracts/active/{rent_contract}/document/export', [RentContractDraftController::class, 'exportActiveDocument']);
     Route::post('rent-contracts/active/{rent_contract}/document/email', [RentContractDraftController::class, 'sendActiveDocumentEmail']);
 
+    Route::get('utilities/form-data', [UtilityController::class, 'formData']);
+    Route::get('utilities/active-rate', [UtilityController::class, 'activeRate']);
+    Route::post('utilities/batch', [UtilityController::class, 'storeBatch']);
     Route::post('utilities/{utility}/submit', [UtilityController::class, 'submit']);
     Route::post('utilities/{utility}/approve', [UtilityController::class, 'approve']);
     Route::post('utilities/{utility}/reject', [UtilityController::class, 'reject']);

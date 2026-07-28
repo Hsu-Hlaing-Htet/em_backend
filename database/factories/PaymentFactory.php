@@ -6,7 +6,6 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\User;
-use App\Services\PaymentService;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -15,15 +14,6 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class PaymentFactory extends Factory
 {
     protected $model = Payment::class;
-
-    public function configure(): static
-    {
-        return $this->afterMaking(function (Payment $payment): void {
-            if (empty($payment->payment_number)) {
-                $payment->payment_number = app(PaymentService::class)->generatePaymentNumber();
-            }
-        });
-    }
 
     /**
      * @return array<string, mixed>

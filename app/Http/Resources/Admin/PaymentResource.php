@@ -23,7 +23,6 @@ class PaymentResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'payment_number' => $this->payment_number,
             'invoice_id' => $this->invoice_id,
             'invoice_number' => $this->whenLoaded('invoice', fn () => $this->invoice?->invoice_number),
             'invoice_type' => $this->whenLoaded('invoice', fn () => $this->invoice?->type),
@@ -36,7 +35,7 @@ class PaymentResource extends JsonResource
             'balance' => $balance,
             'display_status' => $this->resolveDisplayStatus(),
             'property_unit' => $this->resolvePropertyUnit(),
-            'reference_number' => $this->payment_number,
+            'reference_number' => $this->whenLoaded('invoice', fn () => $this->invoice?->invoice_number),
             'proof_image_path' => $this->proof_image_path,
             'proof_image_url' => $this->proof_image_path
                 ? Storage::disk('public')->url($this->proof_image_path)

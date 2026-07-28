@@ -29,6 +29,7 @@ class UtilityResource extends JsonResource
             'customer_name' => $occupant?->name,
             'customer_email' => $occupant?->email,
             'customer_phone' => $occupant?->profile?->phone,
+            'customer_address' => $occupant?->profile?->address,
             'customer_nrc' => $occupant?->profile?->nrc,
             'created_by_name' => $this->whenLoaded('creator', fn () => $this->creator?->name),
             'approved_by_name' => $this->whenLoaded('approver', fn () => $this->approver?->name),

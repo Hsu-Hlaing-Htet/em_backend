@@ -85,6 +85,9 @@ class UtilityDocumentService
     {
         $room = $utility->room;
         $occupant = $this->resolveOccupant($utility);
+        $billingMonth = optional($utility->billing_month)->format('F Y') ?? '-';
+        $createdAt = optional($utility->created_at)->format('d M Y, H:i') ?? '-';
+        $approvedBy = $utility->approver?->name ?? '—';
 
         return [
             'header' => [
@@ -92,15 +95,22 @@ class UtilityDocumentService
                 'issuedDate' => optional($utility->approved_at ?? $utility->created_at)->format('Y-m-d H:i') ?? '-',
             ],
             'footerAddress' => $this->footerAddress(),
-            'details' => [
-                ['label' => 'Customer', 'value' => $this->customerName($occupant)],
-                ['label' => 'Building', 'value' => $room?->building?->building_name ?? '-'],
-                ['label' => 'Room / Unit', 'value' => $room?->room_number ?? '-'],
-                ['label' => 'Billing Month', 'value' => optional($utility->billing_month)->format('F Y') ?? '-'],
-                ['label' => 'Status', 'value' => $this->statusLabel($utility->status)],
-                ['label' => 'Prepared By', 'value' => $utility->creator?->name ?? '-'],
-                ['label' => 'Approved By', 'value' => $utility->approver?->name ?? 'Pending'],
+            'customerInfo' => [
+                'name' => $this->customerName($occupant),
+                'address' => $occupant?->profile?->address ?? '-',
+                'phone' => $occupant?->profile?->phone ?? '-',
+                'email' => $occupant?->email ?? '-',
+                'building' => $room?->building?->building_name ?? '-',
+                'room' => $room?->room_number ?? '-',
+                'issuedDate' => optional($utility->approved_at ?? $utility->created_at)->format('d M Y, H:i') ?? '-',
             ],
+            'summaryNote' => sprintf(
+                'This Utility is for the month of %s and was created on %s by %s and approved by %s.',
+                $billingMonth,
+                $createdAt,
+                $utility->creator?->name ?? '-',
+                $approvedBy,
+            ),
             'readings' => $utility->items->map(fn ($item) => [
                 'utility_type' => $item->utilityType?->name ?? '-',
                 'previous_reading' => number_format((float) $item->previous_reading, 2),

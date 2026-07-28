@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SendBillingDocumentRequest;
+use App\Http\Requests\Admin\StoreUtilityBatchRequest;
 use App\Http\Requests\Admin\StoreUtilityRequest;
 use App\Http\Requests\Admin\UpdateUtilityRequest;
 use App\Http\Resources\Admin\UtilityResource;
@@ -27,6 +28,63 @@ class UtilityController extends Controller
                 'total' => $paginator->total(),
             ],
         ]);
+    }
+
+    public function formData(Request $request, UtilityService $utilityService): JsonResponse
+    {
+        $validated = $request->validate([
+            'utility_type_id' => ['required', 'integer', 'exists:utility_types,id'],
+            'billing_month' => ['required', 'date'],
+            'room_ids' => ['required', 'array', 'min:1'],
+            'room_ids.*' => ['integer', 'exists:rooms,id'],
+        ]);
+
+        try {
+            $data = $utilityService->formData(
+                (int) $validated['utility_type_id'],
+                $validated['billing_month'],
+                array_map('intval', $validated['room_ids']),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function activeRate(Request $request, UtilityService $utilityService): JsonResponse
+    {
+        $validated = $request->validate([
+            'utility_type_id' => ['required', 'integer', 'exists:utility_types,id'],
+        ]);
+
+        try {
+            $unitPrice = $utilityService->activeRateForType((int) $validated['utility_type_id']);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => [
+                'unit_price' => $unitPrice,
+            ],
+        ]);
+    }
+
+    public function storeBatch(StoreUtilityBatchRequest $request, UtilityService $utilityService): JsonResponse
+    {
+        try {
+            $utilities = $utilityService->createBatch($request->validated());
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => count($utilities) === 1
+                ? 'Utility bill created successfully.'
+                : sprintf('%d utility bills created successfully.', count($utilities)),
+            'data' => UtilityResource::collection($utilities)->resolve(),
+        ], 201);
     }
 
     public function store(StoreUtilityRequest $request, UtilityService $utilityService): JsonResponse
@@ -105,7 +163,7 @@ class UtilityController extends Controller
         }
 
         return response()->json([
-            'message' => 'Utility bill approved successfully.',
+            'message' => 'Utility bill approved and invoice generated successfully.',
             'data' => new UtilityResource($utility),
         ]);
     }

@@ -3,8 +3,11 @@
 namespace App\Services;
 
 use App\Mail\InvoiceDocumentMail;
+use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
+use App\Models\Utility;
 use App\Services\Concerns\AppliesListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -100,6 +103,54 @@ class InvoiceService
             'status' => 'draft',
             'created_by' => Auth::id(),
         ])->load(['contract.user', 'items.chargeType']);
+    }
+
+    public function generateFromUtility(Utility $utility): Invoice
+    {
+        $utility->load(['room', 'items.utilityType']);
+
+        if (Invoice::query()->where('utility_id', $utility->id)->exists()) {
+            throw new InvalidArgumentException('An invoice already exists for this utility bill.');
+        }
+
+        $contract = Contract::query()
+            ->where('room_id', $utility->room_id)
+            ->where('type', 'rent')
+            ->whereIn('status', ['active', 'completed'])
+            ->latest('id')
+            ->first();
+
+        if (! $contract) {
+            throw new InvalidArgumentException('No active rent contract found for this room.');
+        }
+
+        $chargeType = ChargeType::query()->where('slug', 'utility-charges')->first();
+
+        $invoice = Invoice::query()->create([
+            'contract_id' => $contract->id,
+            'utility_id' => $utility->id,
+            'invoice_number' => $this->generateInvoiceNumber(),
+            'type' => 'utility',
+            'status' => 'draft',
+            'due_date' => now()->addDays(14)->toDateString(),
+            'total_amount' => $utility->total_amount,
+            'created_by' => Auth::id(),
+        ]);
+
+        foreach ($utility->items as $item) {
+            InvoiceItem::query()->create([
+                'invoice_id' => $invoice->id,
+                'charge_type_id' => $chargeType?->id,
+                'description' => sprintf(
+                    'Utility bill for %s — %s',
+                    $utility->billing_month?->format('F Y'),
+                    $item->utilityType?->name ?? 'Utility',
+                ),
+                'amount' => $item->amount,
+            ]);
+        }
+
+        return $invoice->fresh(['contract.user', 'items.chargeType', 'utility']);
     }
 
     /**

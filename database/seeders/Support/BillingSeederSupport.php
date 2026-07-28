@@ -15,14 +15,11 @@ final class BillingSeederSupport
 {
     private static int $invoiceSequence = 0;
 
-    private static int $paymentSequence = 0;
-
     private static int $receiptSequence = 0;
 
     public static function resetSequences(): void
     {
         self::$invoiceSequence = 0;
-        self::$paymentSequence = 0;
         self::$receiptSequence = 0;
     }
 
@@ -31,13 +28,6 @@ final class BillingSeederSupport
         self::$invoiceSequence++;
 
         return 'INV-'.str_pad((string) self::$invoiceSequence, 6, '0', STR_PAD_LEFT);
-    }
-
-    public static function nextPaymentNumber(): string
-    {
-        self::$paymentSequence++;
-
-        return 'PAY-'.str_pad((string) self::$paymentSequence, 6, '0', STR_PAD_LEFT);
     }
 
     public static function nextReceiptNumber(): string
@@ -103,7 +93,6 @@ final class BillingSeederSupport
             'created_by' => $admin->id,
             'approved_by' => $admin->id,
             'approved_at' => $paymentDate->copy()->addDay(),
-            'payment_number' => self::nextPaymentNumber(),
             'amount' => round($amount, 2),
             'proof_image_path' => 'payments/proof-'.$invoice->invoice_number.'.jpg',
             'note' => $note ?? 'Payment verified and approved.',
@@ -125,7 +114,6 @@ final class BillingSeederSupport
             'created_by' => $admin->id,
             'approved_by' => null,
             'approved_at' => null,
-            'payment_number' => self::nextPaymentNumber(),
             'amount' => round($amount, 2),
             'proof_image_path' => null,
             'note' => 'Payment submitted and awaiting verification.',

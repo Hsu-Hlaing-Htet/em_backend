@@ -185,7 +185,6 @@ class CustomerPortalService
             $search = $params['search'];
             $query->where(function (Builder $builder) use ($search): void {
                 $builder->where('note', 'like', '%'.$search.'%')
-                    ->orWhere('payment_number', 'like', '%'.$search.'%')
                     ->orWhereHas('invoice', fn (Builder $invoiceQuery) => $invoiceQuery->where('invoice_number', 'like', '%'.$search.'%'))
                     ->orWhereHas('paymentMethod', fn (Builder $methodQuery) => $methodQuery->where('name', 'like', '%'.$search.'%'));
             });

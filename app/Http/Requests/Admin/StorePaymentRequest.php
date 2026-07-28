@@ -19,7 +19,6 @@ class StorePaymentRequest extends BaseAdminFormRequest
             'amount' => ['required', 'numeric', 'gt:0'],
             'payment_date' => ['required', 'date'],
             'note' => ['nullable', 'string'],
-            'payment_number' => ['prohibited'],
             'proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'status' => ['prohibited'],
             'created_by' => ['prohibited'],

@@ -59,8 +59,7 @@ class PaymentService
         $search = $params['search'];
 
         $query->where(function ($builder) use ($search): void {
-            $builder->where('payment_number', 'like', '%'.$search.'%')
-                ->orWhere('note', 'like', '%'.$search.'%')
+            $builder->where('note', 'like', '%'.$search.'%')
                 ->orWhereHas('invoice', fn ($invoiceQuery) => $invoiceQuery
                     ->where('invoice_number', 'like', '%'.$search.'%'))
                 ->orWhereHas('invoice.contract.user', fn ($userQuery) => $userQuery
@@ -149,7 +148,6 @@ class PaymentService
     {
         return Payment::query()->create([
             ...$data,
-            'payment_number' => $data['payment_number'] ?? $this->generatePaymentNumber(),
             'status' => 'pending',
             'created_by' => Auth::id(),
         ]);
@@ -239,16 +237,5 @@ class PaymentService
         }
 
         return $invoice->fresh();
-    }
-
-    public function generatePaymentNumber(): string
-    {
-        $lastSequence = Payment::query()
-            ->where('payment_number', 'like', 'PAY-%')
-            ->pluck('payment_number')
-            ->map(fn (string $number): int => (int) substr($number, 4))
-            ->max() ?? 0;
-
-        return 'PAY-'.str_pad((string) ($lastSequence + 1), 6, '0', STR_PAD_LEFT);
     }
 }

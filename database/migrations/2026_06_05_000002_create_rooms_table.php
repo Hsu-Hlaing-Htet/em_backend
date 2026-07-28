@@ -13,6 +13,8 @@ return new class extends Migration
             $table->foreignId('building_id')->constrained('buildings')->cascadeOnDelete();
             $table->string('room_number');
             $table->unsignedInteger('floor_number');
+            $table->decimal('width_ft', 10, 2)->nullable();
+            $table->decimal('length_ft', 10, 2)->nullable();
             $table->decimal('area_sqft', 10, 2);
             $table->text('description')->nullable();
             $table->string('type');
