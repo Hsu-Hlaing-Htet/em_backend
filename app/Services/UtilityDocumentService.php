@@ -7,6 +7,7 @@ use App\Models\Contract;
 use App\Models\Utility;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
+use App\Support\DocumentFilename;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
 use InvalidArgumentException;
@@ -44,7 +45,7 @@ class UtilityDocumentService
 
     public function downloadResponse(Utility $utility): Response
     {
-        return $this->downloadHtmlResponse(
+        return $this->downloadPdfResponse(
             $this->renderHtml($utility),
             $this->filename($utility),
         );
@@ -54,7 +55,7 @@ class UtilityDocumentService
     {
         return $this->exportHtmlResponse(
             $this->renderHtml($utility),
-            $this->filename($utility),
+            $this->htmlFilename($utility),
         );
     }
 
@@ -72,9 +73,13 @@ class UtilityDocumentService
             throw new InvalidArgumentException('Occupant email is required to send the utility bill document.');
         }
 
+        $filename = $this->filename($utility);
+
         Mail::to($email)->send(new UtilityDocumentMail(
             $utility,
-            $this->renderHtml($utility),
+            $this->renderPdfBinary($this->renderHtml($utility)),
+            $filename,
+            $this->referenceNumber($utility),
         ));
     }
 
@@ -144,13 +149,23 @@ class UtilityDocumentService
 
     private function referenceNumber(Utility $utility): string
     {
-        $month = optional($utility->billing_month)->format('Y-m') ?? '0000-00';
-        $room = $utility->room?->room_number ?? $utility->room_id;
-
-        return sprintf('UTL-%s-%s', $month, $room);
+        return rtrim(DocumentFilename::utility(
+            $utility->billing_month,
+            $utility->room?->room_number ?? (string) $utility->room_id,
+        ), '.pdf');
     }
 
     private function filename(Utility $utility): string
+    {
+        $utility->loadMissing(['room']);
+
+        return DocumentFilename::utility(
+            $utility->billing_month,
+            $utility->room?->room_number ?? (string) $utility->room_id,
+        );
+    }
+
+    private function htmlFilename(Utility $utility): string
     {
         return $this->referenceNumber($utility).'.html';
     }

@@ -6,13 +6,13 @@ use App\Models\Receipt;
 
 class ReceiptDocumentMail extends HtmlDocumentMail
 {
-    public function __construct(Receipt $receipt, string $documentHtml)
+    public function __construct(Receipt $receipt, string $documentPdf, string $filename)
     {
         parent::__construct(
             referenceNumber: $receipt->receipt_number,
-            documentHtml: $documentHtml,
+            documentPdf: $documentPdf,
             subjectPrefix: 'Payment Receipt',
-            filename: ($receipt->receipt_number ?: 'receipt').'.html',
+            filename: $filename,
         );
     }
 }

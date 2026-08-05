@@ -19,6 +19,7 @@ class StorePaymentMethodRequest extends BaseAdminFormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'type' => ['nullable', 'string', 'max:50'],
             'status' => ['required', 'string', Rule::in(PaymentMethod::statuses())],
         ];
     }

@@ -1,0 +1,1251 @@
+html {
+    box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: inherit;
+}
+
+body {
+    margin: 0;
+    background: #ece9e4;
+}
+
+.pdf-sheet {
+    --pdf-ink: #1c1c1c;
+    --pdf-muted: #6b6560;
+    --pdf-line: rgba(28, 28, 28, 0.12);
+    --pdf-accent: rgba(122, 49, 73, 0.55);
+
+    width: 210mm;
+    max-width: 210mm;
+    min-height: 297mm;
+    margin: 24px auto;
+    padding: 3.25rem 3rem 2.75rem;
+    color: var(--pdf-ink);
+    border: 1px solid #d8d4cf;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    background: #ffffff;
+    box-sizing: border-box;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: 10.5pt;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-wrap: anywhere;
+}
+
+.pdf-head {
+    margin-bottom: 2.5rem;
+}
+
+.pdf-head-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.pdf-brand {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.pdf-logo {
+    width: 2.5rem;
+    height: 2.5rem;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.pdf-company {
+    margin: 0;
+    font-size: 11.5pt;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--pdf-ink);
+}
+
+.pdf-company-sub {
+    margin: 0.3rem 0 0;
+    font-size: 8.5pt;
+    letter-spacing: 0.04em;
+    color: var(--pdf-muted);
+}
+
+.pdf-head-meta {
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.pdf-meta-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.15rem;
+    margin-bottom: 0.85rem;
+}
+
+.pdf-meta-item:last-child {
+    margin-bottom: 0;
+}
+
+.pdf-meta-label {
+    font-size: 7.5pt;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.pdf-meta-value {
+    font-size: 10pt;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    color: var(--pdf-ink);
+}
+
+.pdf-doc-title {
+    margin: 0;
+    font-size: 17pt;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--pdf-ink);
+    text-align: center;
+}
+
+.pdf-rule {
+    height: 1px;
+    margin-top: 0.85rem;
+    background: var(--pdf-line);
+}
+
+.pdf-rule--accent {
+    width: 4.5rem;
+    margin: 1.25rem auto 0;
+    background: var(--pdf-accent);
+}
+
+.pdf-preamble {
+    margin: 2.5rem 0 3rem;
+    font-size: 10.5pt;
+    line-height: 1.75;
+    text-align: justify;
+    color: #3a3a3a;
+}
+
+.pdf-doc-note {
+    margin: 0 0 2rem;
+    color: var(--pdf-muted);
+    font-size: 9pt;
+    line-height: 1.6;
+}
+
+.pdf-rows--compact {
+    grid-template-columns: minmax(7rem, 11rem) 1fr;
+}
+
+.pdf-block {
+    margin-bottom: 2.75rem;
+}
+
+.pdf-block-title {
+    margin: 0;
+    font-size: 9pt;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #5c3d47;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.pdf-parties {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.5rem;
+    margin-top: 1.5rem;
+}
+
+.pdf-party-label {
+    margin: 0 0 1rem;
+    font-size: 8pt;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.pdf-rows {
+    margin: 1.25rem 0 0;
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 32%) 1fr;
+    gap: 0;
+    column-gap: 1.75rem;
+}
+
+.pdf-party .pdf-rows {
+    margin-top: 0;
+    grid-template-columns: 1fr;
+    row-gap: 0.85rem;
+}
+
+.pdf-party .pdf-rows dt {
+    margin-bottom: 0.1rem;
+}
+
+.pdf-party .pdf-rows dd {
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--pdf-line);
+}
+
+.pdf-party .pdf-rows dd:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.pdf-rows dt {
+    margin: 0;
+    padding: 0.55rem 0;
+    font-size: 7.5pt;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    border-bottom: 1px solid var(--pdf-line);
+}
+
+.pdf-rows dd {
+    margin: 0;
+    padding: 0.55rem 0;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    color: var(--pdf-ink);
+    border-bottom: 1px solid var(--pdf-line);
+}
+
+.pdf-row-full {
+    grid-column: 1 / -1;
+    padding-top: 0.75rem;
+    line-height: 1.7;
+    text-align: justify;
+    border-bottom: none;
+}
+
+.pdf-witness {
+    margin: 1.5rem 0 2.5rem;
+    font-size: 10.5pt;
+    line-height: 1.75;
+    text-align: justify;
+    font-style: italic;
+    color: #3a3a3a;
+}
+
+.pdf-signs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3.5rem;
+}
+
+.pdf-sign {
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.pdf-sign-line {
+    height: 1px;
+    margin-top: 5rem;
+    background: var(--pdf-ink);
+}
+
+.pdf-sign-name {
+    margin: 0.85rem 0 0.25rem;
+    font-size: 10.5pt;
+    font-weight: 400;
+    color: var(--pdf-ink);
+}
+
+.pdf-sign-role,
+.pdf-sign-date {
+    margin: 0.2rem 0 0;
+    font-size: 8.5pt;
+    letter-spacing: 0.04em;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.pdf-block--amount {
+    margin-bottom: 2rem;
+}
+
+.pdf-amount-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--pdf-line);
+    background: rgba(122, 49, 73, 0.04);
+}
+
+.pdf-amount-summary__details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.pdf-amount-summary__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 9.5pt;
+}
+
+.pdf-amount-summary__label,
+.pdf-amount-summary__total-label {
+    color: var(--pdf-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 8pt;
+}
+
+.pdf-amount-summary__total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--pdf-line);
+}
+
+.pdf-amount-summary__total-value {
+    font-size: 13pt;
+    letter-spacing: 0.04em;
+    color: var(--pdf-ink);
+}
+
+.pdf-block--exec {
+    margin-bottom: 3rem;
+}
+
+.pdf-foot {
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--pdf-line);
+}
+
+.pdf-foot-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 1.5rem;
+    align-items: center;
+    font-size: 7.5pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.pdf-foot-page {
+    text-align: center;
+}
+
+.pdf-foot-address {
+    text-align: right;
+    text-transform: none;
+    letter-spacing: 0.02em;
+    font-size: 7.5pt;
+    line-height: 1.45;
+    color: #7a746e;
+}
+
+.doc-table-wrap {
+    margin-top: 1.5rem;
+    overflow-x: auto;
+}
+
+.doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.doc-table th,
+.doc-table td {
+    border: 1px solid var(--pdf-line);
+    padding: 0.55rem 0.65rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.doc-table th {
+    font-size: 7.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+    background: rgba(122, 49, 73, 0.06);
+}
+
+.doc-table td {
+    color: var(--pdf-ink);
+    font-size: 9pt;
+}
+
+.utility-doc-body,
+.billing-doc-body {
+    margin-top: 0.5rem;
+}
+
+.utility-doc-customer,
+.billing-doc-customer {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.utility-doc-customer__name,
+.billing-doc-customer__name {
+    margin-top: 1.25rem;
+    font-size: 10pt;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--pdf-ink);
+    word-break: break-word;
+}
+
+.utility-doc-customer__muted,
+.billing-doc-customer__muted {
+    margin-top: 0.375rem;
+    font-size: 9.375pt;
+    line-height: 1.6;
+    color: var(--pdf-ink);
+    opacity: 0.75;
+    word-break: break-word;
+}
+
+.utility-doc-customer__line,
+.billing-doc-customer__line {
+    margin-top: 1.25rem;
+    font-size: 9.375pt;
+    line-height: 1.5;
+    color: var(--pdf-ink);
+    word-break: break-word;
+}
+
+.utility-doc-customer__line--wrap,
+.billing-doc-customer__line--wrap {
+    margin-top: 0.375rem;
+    word-break: break-all;
+}
+
+.utility-doc-customer__line--first,
+.billing-doc-customer__line--first {
+    margin-top: 1.25rem;
+}
+
+.utility-doc-customer__line--spaced,
+.billing-doc-customer__line--spaced {
+    margin-top: 1.25rem;
+}
+
+.utility-doc-customer__date,
+.billing-doc-customer__date {
+    font-size: 8.75pt;
+    line-height: 1.5;
+    color: var(--pdf-ink);
+    opacity: 0.7;
+}
+
+.utility-doc-divider,
+.billing-doc-divider {
+    margin: 0 0 1.25rem;
+    border-top: 1px solid var(--pdf-line);
+}
+
+.utility-doc-summary,
+.billing-doc-summary {
+    margin: 2.5rem 0 0;
+    font-size: 8.75pt;
+    line-height: 1.6;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.billing-doc-amounts,
+.billing-doc-authorization {
+    margin-top: 1.5rem;
+    font-size: 8.75pt;
+    line-height: 1.6;
+    color: var(--pdf-muted);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.billing-doc-amounts__row,
+.billing-doc-authorization__row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.2rem 0;
+}
+
+.billing-doc-amounts__label,
+.billing-doc-authorization__label {
+    font-weight: 600;
+    color: var(--pdf-text);
+}
+
+.billing-doc-amounts__value,
+.billing-doc-authorization__value {
+    text-align: right;
+}
+
+.billing-doc-authorization__row + .billing-doc-authorization__row {
+    margin-top: 0.35rem;
+}
+
+.utility-doc-table-wrap,
+.billing-doc-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.utility-doc-table,
+.billing-doc-table {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.utility-doc-table__head,
+.utility-doc-table__cell,
+.billing-doc-table__head,
+.billing-doc-table__cell {
+    padding: 0.55rem 0.35rem;
+    border-bottom: 1px solid var(--pdf-line);
+    text-align: left;
+    font-size: 8pt;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.utility-doc-table__head,
+.billing-doc-table__head {
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--pdf-muted);
+}
+
+.utility-doc-table__cell,
+.billing-doc-table__cell {
+    color: var(--pdf-ink);
+}
+
+.utility-doc-table__numeric,
+.billing-doc-table__numeric {
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.utility-doc-table__empty,
+.billing-doc-table__empty {
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid var(--pdf-line);
+    text-align: center;
+    color: var(--pdf-muted);
+    font-size: 8.75pt;
+}
+
+.utility-doc-table tfoot td,
+.billing-doc-table tfoot td {
+    border-bottom: none;
+    padding-top: 1rem;
+}
+
+.utility-doc-table__total-label,
+.billing-doc-table__total-label {
+    text-align: right;
+    font-weight: 600;
+    color: var(--pdf-ink);
+}
+
+.utility-doc-table__total-value,
+.billing-doc-table__total-value {
+    font-weight: 600;
+    color: #7a3149;
+}
+
+.billing-doc-table-wrap--receipt {
+    overflow-x: visible;
+    max-width: 100%;
+}
+
+.billing-doc-table--receipt {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+}
+
+.billing-doc-table--receipt .billing-doc-table__head,
+.billing-doc-table--receipt .billing-doc-table__cell {
+    padding: 5px 4px;
+    font-size: 8.5px;
+    line-height: 1.25;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+.billing-doc-table--receipt .billing-doc-table__head {
+    white-space: normal;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+.billing-doc-table--receipt .billing-doc-table__numeric {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.doc-table--receipt {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    font-size: 8.5px;
+}
+
+.doc-table-wrap--receipt {
+    overflow-x: visible !important;
+    max-width: 100%;
+}
+
+.doc-table--receipt th,
+.doc-table--receipt td {
+    padding: 5px 4px;
+    font-size: 8.5px;
+    line-height: 1.25;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+.doc-table--receipt th {
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: normal;
+}
+
+.doc-table--receipt .is-numeric {
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.contract-doc-sheet {
+    --contract-burgundy: #7a3149;
+    --contract-burgundy-light: rgba(122, 49, 73, 0.12);
+
+    width: 210mm;
+    max-width: 210mm;
+    min-height: auto;
+    margin: 24px auto;
+    padding: 18mm 15mm 16mm;
+    font-family: Georgia, 'Times New Roman', Times, serif;
+    font-size: 11pt;
+    line-height: 1.6;
+}
+
+.contract-doc-head {
+    margin-bottom: 1.75rem;
+    text-align: center;
+}
+
+.contract-doc-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 1.25rem;
+}
+
+.contract-doc-logo {
+    width: 3rem;
+    height: 3rem;
+    object-fit: cover;
+    border-radius: 0.15rem;
+}
+
+.contract-doc-company {
+    margin: 0.5rem 0 0;
+    font-size: 12pt;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--pdf-ink);
+}
+
+.contract-doc-tagline {
+    margin: 0;
+    font-size: 9pt;
+    font-style: italic;
+    letter-spacing: 0.03em;
+    color: var(--contract-burgundy);
+}
+
+.contract-doc-meta-bar {
+    margin: 1rem 0 1.5rem;
+}
+
+.contract-doc-meta-line {
+    height: 1px;
+    background: var(--contract-burgundy);
+}
+
+.contract-doc-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.65rem 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 8.5pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.contract-doc-meta-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    color: var(--pdf-ink);
+}
+
+.contract-doc-meta-item--right {
+    margin-left: auto;
+}
+
+.contract-doc-meta-label {
+    color: var(--pdf-muted);
+    font-weight: 400;
+}
+
+.contract-doc-meta-item strong {
+    font-weight: 600;
+    letter-spacing: 0.06em;
+}
+
+.contract-doc-title {
+    margin: 0;
+    font-size: 16pt;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--pdf-ink);
+}
+
+.contract-doc-title-rule {
+    width: 4.5rem;
+    height: 2px;
+    margin: 0.85rem auto 0;
+    background: var(--contract-burgundy);
+}
+
+.contract-doc-preamble {
+    margin: 1.75rem 0 2rem;
+    font-size: 11pt;
+    line-height: 1.7;
+    text-align: justify;
+    color: #3a3a3a;
+}
+
+.contract-doc-body {
+    margin-top: 0.5rem;
+}
+
+.contract-doc-section {
+    margin-bottom: 1.75rem;
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+}
+
+.contract-doc-section-title {
+    margin: 0 0 1rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--contract-burgundy);
+    break-after: avoid;
+    page-break-after: avoid;
+}
+
+.contract-doc-parties {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.contract-doc-party-divider {
+    width: 1px;
+    min-height: 100%;
+    background: var(--pdf-line);
+}
+
+.contract-doc-party-role {
+    margin: 0 0 0.85rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--contract-burgundy);
+}
+
+.contract-doc-party {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
+.contract-doc-party-name {
+    margin: 0 0 0.65rem;
+    font-size: 11pt;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--pdf-ink);
+}
+
+.contract-doc-party-line {
+    margin: 0 0 0.35rem;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: var(--pdf-ink);
+}
+
+.contract-doc-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.contract-doc-field,
+.contract-doc-row {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 38%) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--pdf-line);
+}
+
+.contract-doc-field-label,
+.contract-doc-row-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 8pt;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+}
+
+.contract-doc-field-value,
+.contract-doc-row-value {
+    font-size: 10pt;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--pdf-ink);
+    text-align: right;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.contract-doc-rows {
+    border-top: 1px solid var(--pdf-line);
+}
+
+.contract-doc-rows--property {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+}
+
+.contract-doc-rows--property .contract-doc-row {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+}
+
+.contract-doc-covenants {
+    margin: 0;
+    padding-left: 1.15rem;
+    font-size: 10.5pt;
+    line-height: 1.7;
+    text-align: justify;
+    color: #3a3a3a;
+}
+
+.contract-doc-covenants li + li {
+    margin-top: 0.85rem;
+}
+
+.contract-doc-witness {
+    margin: 0 0 1.5rem;
+    font-size: 10pt;
+    line-height: 1.75;
+    text-align: justify;
+    font-style: italic;
+    color: #3a3a3a;
+}
+
+.contract-doc-signatures {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem;
+    margin-top: 1.5rem;
+}
+
+.contract-doc-signature-line {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pdf-muted);
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+}
+
+.contract-doc-signature-label {
+    margin-right: 0.35rem;
+}
+
+.contract-doc-signature-blank {
+    color: var(--pdf-ink);
+    letter-spacing: 0.18em;
+}
+
+.contract-doc-foot {
+    margin-top: 2rem;
+    padding-top: 0.5rem;
+}
+
+.contract-doc-foot-line {
+    height: 1px;
+    margin-bottom: 0.65rem;
+    background: var(--contract-burgundy);
+}
+
+.contract-doc-foot-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 1rem;
+    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 7pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.contract-doc-foot-brand {
+    color: var(--contract-burgundy);
+    font-weight: 600;
+}
+
+.contract-doc-foot-contract {
+    text-align: center;
+    color: var(--pdf-muted);
+}
+
+.contract-doc-foot-page {
+    text-align: right;
+    color: var(--pdf-muted);
+}
+
+.contract-doc-foot-page::after {
+    content: 'Page 1';
+}
+
+@media print {
+    html {
+        counter-reset: page;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+
+    #pdf-print.contract-doc-sheet {
+        width: 210mm;
+        max-width: 210mm;
+        min-height: auto;
+        margin: 0 auto;
+        padding: 15mm 12mm 22mm;
+        border: none;
+        box-shadow: none;
+        font-size: 11pt;
+        line-height: 1.6;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-foot {
+        position: fixed;
+        bottom: 8mm;
+        left: 12mm;
+        right: 12mm;
+        width: calc(210mm - 24mm);
+        margin: 0;
+        padding-top: 0;
+        background: #ffffff;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-section {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-parties {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+        gap: 1.5rem;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-party-divider {
+        display: block;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-rows--property {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-rows--property .contract-doc-row {
+        break-inside: avoid-page;
+        page-break-inside: avoid;
+    }
+
+    #pdf-print.contract-doc-sheet .contract-doc-preamble,
+    #pdf-print.contract-doc-sheet .contract-doc-witness,
+    #pdf-print.contract-doc-sheet .contract-doc-covenants li {
+        orphans: 3;
+        widows: 3;
+    }
+
+    .contract-doc-foot-page::after {
+        content: 'Page ' counter(page);
+    }
+}
+
+@media (max-width: 768px) {
+    .contract-doc-parties {
+        grid-template-columns: 1fr;
+    }
+
+    .contract-doc-party-divider {
+        display: none;
+    }
+
+    .contract-doc-signatures {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .contract-doc-foot-row {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .contract-doc-foot-page {
+        text-align: center;
+    }
+
+    .contract-doc-field,
+    .contract-doc-row {
+        grid-template-columns: 1fr;
+    }
+
+    .contract-doc-field-value,
+    .contract-doc-row-value {
+        text-align: left;
+    }
+}
+
+@media (min-width: 768px) {
+    .utility-doc-customer,
+    .billing-doc-customer {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 2rem;
+        align-items: start;
+    }
+
+    .utility-doc-customer__date,
+    .billing-doc-customer__date {
+        text-align: right;
+        padding-top: 1.25rem;
+    }
+}
+
+@media print {
+    @page {
+        size: A4 portrait;
+        margin: 0;
+    }
+
+    html,
+    body {
+        margin: 0;
+        background: #ffffff !important;
+    }
+
+    #pdf-print:not(.contract-doc-sheet) {
+        width: 210mm;
+        max-width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 16mm 14mm;
+        border: none;
+        box-shadow: none;
+        box-sizing: border-box;
+        background: #ffffff !important;
+        color: #000000;
+        font-size: 10.5pt;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    #pdf-print .pdf-document-lead {
+        break-inside: avoid-page;
+    }
+
+    #pdf-print .pdf-block {
+        break-inside: auto;
+        break-before: auto;
+        break-after: auto;
+    }
+
+    #pdf-print .pdf-block-title,
+    #pdf-print .pdf-party-label,
+    #pdf-print .pdf-rows dt {
+        break-after: avoid;
+    }
+
+    #pdf-print .pdf-party,
+    #pdf-print .pdf-sign,
+    #pdf-print .pdf-foot {
+        break-inside: avoid;
+    }
+
+    #pdf-print .doc-table thead {
+        display: table-header-group;
+    }
+
+    #pdf-print .doc-table tr {
+        break-inside: avoid;
+    }
+
+    #pdf-print .utility-doc-table thead,
+    #pdf-print .billing-doc-table thead,
+    #pdf-print .doc-table--receipt thead {
+        display: table-header-group;
+    }
+
+    #pdf-print .utility-doc-table tr,
+    #pdf-print .billing-doc-table tr,
+    #pdf-print .doc-table--receipt tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    #pdf-print .billing-doc-table-wrap--receipt,
+    #pdf-print .doc-table-wrap--receipt {
+        overflow: visible !important;
+    }
+
+    #pdf-print .billing-doc-table--receipt,
+    #pdf-print .doc-table--receipt {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+    }
+
+    #pdf-print .billing-doc-table--receipt th,
+    #pdf-print .billing-doc-table--receipt td,
+    #pdf-print .doc-table--receipt th,
+    #pdf-print .doc-table--receipt td {
+        font-size: 8.5px;
+        padding: 4px 3px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    #pdf-print .pdf-preamble,
+    #pdf-print .pdf-witness,
+    #pdf-print .pdf-rows dd {
+        orphans: 3;
+        widows: 3;
+    }
+}
+
+@media (max-width: 768px) {
+    .pdf-sheet {
+        width: calc(100% - 32px);
+        max-width: 210mm;
+        margin: 24px auto;
+        padding: 2rem 1.25rem;
+        box-sizing: border-box;
+    }
+
+    .pdf-head-row {
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .pdf-head-meta {
+        text-align: left;
+    }
+
+    .pdf-meta-item {
+        align-items: flex-start;
+    }
+
+    .pdf-parties {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+
+    .pdf-rows {
+        grid-template-columns: 1fr;
+    }
+
+    .pdf-rows dt {
+        padding-bottom: 0.15rem;
+        border-bottom: none;
+    }
+
+    .pdf-signs {
+        grid-template-columns: 1fr;
+    }
+
+    .pdf-foot-row {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .pdf-foot-address {
+        text-align: center;
+    }
+}

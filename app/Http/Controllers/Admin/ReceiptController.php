@@ -27,17 +27,37 @@ class ReceiptController extends Controller
         ]);
     }
 
-    public function show(Receipt $receipt): JsonResponse
+    public function show(Receipt $receipt, ReceiptService $receiptService): JsonResponse
     {
-        $receipt->load([
-            'payment.invoice.contract.user.profile',
-            'payment.invoice.contract.room.building',
-            'payment.paymentMethod',
-            'creator',
-            'approver',
+        return response()->json([
+            'data' => new ReceiptResource($receiptService->find($receipt->id)),
         ]);
+    }
+
+    public function approve(Receipt $receipt, ReceiptService $receiptService): JsonResponse
+    {
+        try {
+            $receipt = $receiptService->approve($receipt);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
 
         return response()->json([
+            'message' => 'Receipt approved successfully.',
+            'data' => new ReceiptResource($receipt),
+        ]);
+    }
+
+    public function reject(Receipt $receipt, ReceiptService $receiptService): JsonResponse
+    {
+        try {
+            $receipt = $receiptService->reject($receipt);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Receipt rejected successfully.',
             'data' => new ReceiptResource($receipt),
         ]);
     }
@@ -50,17 +70,9 @@ class ReceiptController extends Controller
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        $receipt->load([
-            'payment.invoice.contract.user.profile',
-            'payment.invoice.contract.room.building',
-            'payment.paymentMethod',
-            'creator',
-            'approver',
-        ]);
-
         return response()->json([
-            'message' => 'Receipt issued and sent to customer successfully.',
-            'data' => new ReceiptResource($receipt),
+            'message' => 'Receipt issued successfully.',
+            'data' => new ReceiptResource($receiptService->find($receipt->id)),
         ]);
     }
 

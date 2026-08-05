@@ -47,8 +47,10 @@ class PaymentFactory extends Factory
     {
         return $this->state(fn () => [
             'status' => 'pending',
+            'amount' => null,
             'approved_by' => null,
             'approved_at' => null,
+            'rejection_reason' => null,
         ]);
     }
 }

@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\Building;
+use App\Models\Contract;
 use App\Models\Invoice;
-use App\Models\MaintenanceRequest;
 use App\Models\Payment;
-use App\Models\Role;
+use App\Models\Receipt;
 use App\Models\Room;
-use App\Models\User;
+use App\Models\Utility;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -22,6 +23,11 @@ class AdminDashboardService
             'kpi_stats' => $this->kpiStats(),
             'revenue_summary' => $this->revenueSummary(),
             'revenue_chart' => $this->revenueChart(),
+            'revenue_collections' => $this->revenueCollections(),
+            'receivable_aging' => $this->receivableAging(),
+            'occupancy_by_building' => $this->occupancyByBuilding(),
+            'upcoming_contracts' => $this->upcomingContracts(),
+            'pending_approval_breakdown' => $this->pendingApprovalBreakdown(),
             'property_stats' => $this->propertyStats(),
             'invoice_stats' => $this->invoiceStats(),
         ];
@@ -32,54 +38,59 @@ class AdminDashboardService
      */
     private function kpiStats(): array
     {
-        $totalPaid = $this->approvedPaymentTotal();
-        $roomCount = Room::query()->count();
-        $clientCount = User::query()
-            ->whereHas('role', fn ($query) => $query->where('name', Role::CUSTOMER))
-            ->count();
-        $pendingMaintenance = MaintenanceRequest::query()
-            ->where('status', 'pending')
-            ->count();
-        $newRoomsThisWeek = Room::query()
-            ->where('created_at', '>=', now()->subWeek())
-            ->count();
-        $newClientsThisWeek = User::query()
-            ->whereHas('role', fn ($query) => $query->where('name', Role::CUSTOMER))
-            ->where('created_at', '>=', now()->subWeek())
-            ->count();
+        $revenueSeries = $this->revenueSparklineSeries();
+        $occupancySeries = $this->occupancySparklineSeries();
+        $outstandingSeries = $this->outstandingSparklineSeries();
+        $approvalsSeries = $this->pendingApprovalsSparklineSeries();
+
+        $totalRevenue = $this->approvedPaymentTotal();
+        $occupancyRate = $this->currentOccupancyRate();
+        $outstanding = $this->outstandingAmount();
+        $pendingApprovals = $this->pendingApprovalsCount();
 
         return [
             [
                 'key' => 'revenue',
-                'label' => 'Total Revenue',
-                'value' => $this->formatMoney($totalPaid),
+                'label' => 'Revenue',
+                'value' => $this->formatMoney($totalRevenue),
                 'change' => $this->revenueChangeLabel(),
-                'detail' => 'Approved payments across sale and rent portfolios total '.$this->formatMoney($totalPaid).'.',
-                'icon' => 'pi pi-wallet',
+                'trend' => $this->trendFromChangePercent($this->revenueChangePercent()),
+                'detail' => 'Approved payments across sale and rent portfolios total '.$this->formatMoney($totalRevenue).'.',
+                'sparkline' => $revenueSeries,
+                'sparkline_period' => '6m',
             ],
             [
-                'key' => 'properties',
-                'label' => 'Properties',
-                'value' => (string) $roomCount,
-                'change' => $newRoomsThisWeek > 0 ? "{$newRoomsThisWeek} new this week" : 'No new listings this week',
-                'detail' => "{$roomCount} luxury units are actively managed across Rosewood Royale towers.",
-                'icon' => 'pi pi-building',
+                'key' => 'occupancy',
+                'label' => 'Occupancy',
+                'value' => $this->formatPercent($occupancyRate),
+                'change' => $this->occupancyChangeLabel($occupancySeries),
+                'trend' => $this->trendFromSeries($occupancySeries),
+                'detail' => 'Current occupancy across managed rooms is '.$this->formatPercent($occupancyRate).'.',
+                'sparkline' => $occupancySeries,
+                'sparkline_period' => '6m',
             ],
             [
-                'key' => 'clients',
-                'label' => 'Clients',
-                'value' => (string) $clientCount,
-                'change' => $newClientsThisWeek > 0 ? "+{$newClientsThisWeek} this week" : 'No new clients this week',
-                'detail' => "{$clientCount} resident and owner profiles are registered in the customer portal.",
-                'icon' => 'pi pi-users',
+                'key' => 'outstanding',
+                'label' => 'Outstanding Balance',
+                'value' => $this->formatMoney($outstanding),
+                'change' => $this->outstandingChangeLabel($outstandingSeries),
+                'trend' => $this->invertTrend($this->trendFromSeries($outstandingSeries)),
+                'detail' => 'Open invoice balances currently total '.$this->formatMoney($outstanding).'.',
+                'sparkline' => $outstandingSeries,
+                'sparkline_period' => '6m',
             ],
             [
-                'key' => 'inquiries',
-                'label' => 'Open Requests',
-                'value' => (string) $pendingMaintenance,
-                'change' => $pendingMaintenance > 0 ? "{$pendingMaintenance} awaiting action" : 'All caught up',
-                'detail' => "{$pendingMaintenance} maintenance requests are currently pending review.",
-                'icon' => 'pi pi-inbox',
+                'key' => 'pending_approvals',
+                'label' => 'Pending Approvals',
+                'value' => (string) $pendingApprovals,
+                'change' => $pendingApprovals > 0
+                    ? "{$pendingApprovals} awaiting action"
+                    : 'All caught up',
+                'trend' => $pendingApprovals > 0 ? 'down' : 'up',
+                'detail' => "{$pendingApprovals} items are waiting in Approvals queues.",
+                'sparkline' => $approvalsSeries,
+                'sparkline_period' => '7d',
+                'to' => '/admin/approvals/sale-contracts',
             ],
         ];
     }
@@ -101,6 +112,235 @@ class AdminDashboardService
             'outstanding' => $this->outstandingAmount(),
             'collected_this_month' => $collectedThisMonth,
             'growth_percent' => $growthPercent,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function revenueCollections(): array
+    {
+        $start = now()->subMonths(5)->startOfMonth();
+        $points = [];
+        $totalBilled = 0.0;
+        $totalCollected = 0.0;
+
+        for ($index = 0; $index < 6; $index++) {
+            $monthStart = $start->copy()->addMonths($index);
+            $monthEnd = $monthStart->copy()->endOfMonth();
+
+            $billed = (float) Invoice::query()
+                ->where('status', '!=', 'draft')
+                ->where(function ($query) use ($monthStart, $monthEnd): void {
+                    $query->whereBetween('issued_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+                        ->orWhere(function ($inner) use ($monthStart, $monthEnd): void {
+                            $inner->whereNull('issued_date')
+                                ->whereBetween('created_at', [$monthStart, $monthEnd]);
+                        });
+                })
+                ->sum('total_amount');
+
+            $collected = (float) Payment::query()
+                ->whereIn('status', ['approved', 'completed'])
+                ->whereBetween('payment_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+                ->sum('amount');
+
+            $totalBilled += $billed;
+            $totalCollected += $collected;
+
+            $points[] = [
+                'month' => $monthStart->format('M'),
+                'billed' => $billed,
+                'collected' => $collected,
+            ];
+        }
+
+        $collectionRate = $totalBilled > 0
+            ? round(($totalCollected / $totalBilled) * 100)
+            : 0;
+
+        return [
+            'collection_rate' => $collectionRate,
+            'points' => $points,
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function receivableAging(): array
+    {
+        $buckets = [
+            'current' => ['label' => 'Current', 'amount' => 0.0, 'highlight' => false],
+            '1_30' => ['label' => '1–30 days', 'amount' => 0.0, 'highlight' => false],
+            '31_60' => ['label' => '31–60 days', 'amount' => 0.0, 'highlight' => false],
+            '60_plus' => ['label' => '60+ days', 'amount' => 0.0, 'highlight' => true],
+        ];
+
+        $today = now()->startOfDay();
+
+        Invoice::query()
+            ->where('status', '!=', 'draft')
+            ->whereNotIn('status', ['paid', 'cancelled'])
+            ->withSum(['payments as paid_total' => fn ($query) => $query->whereIn('status', ['approved', 'completed'])], 'amount')
+            ->get()
+            ->each(function (Invoice $invoice) use (&$buckets, $today): void {
+                $balance = max(
+                    (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0) - (float) ($invoice->paid_total ?? 0),
+                    0,
+                );
+
+                if ($balance <= 0) {
+                    return;
+                }
+
+                $dueDate = $invoice->due_date?->copy()->startOfDay();
+
+                if (! $dueDate || $dueDate->greaterThanOrEqualTo($today)) {
+                    $buckets['current']['amount'] += $balance;
+
+                    return;
+                }
+
+                $daysPastDue = $dueDate->diffInDays($today);
+
+                if ($daysPastDue <= 30) {
+                    $buckets['1_30']['amount'] += $balance;
+                } elseif ($daysPastDue <= 60) {
+                    $buckets['31_60']['amount'] += $balance;
+                } else {
+                    $buckets['60_plus']['amount'] += $balance;
+                }
+            });
+
+        $total = array_sum(array_column($buckets, 'amount'));
+
+        return array_map(
+            fn (string $key, array $bucket) => [
+                'key' => $key,
+                'label' => $bucket['label'],
+                'amount' => round($bucket['amount'], 2),
+                'amount_label' => $this->formatMoney($bucket['amount']),
+                'percent' => $total > 0 ? round(($bucket['amount'] / $total) * 100) : 0,
+                'highlight' => $bucket['highlight'],
+            ],
+            array_keys($buckets),
+            $buckets,
+        );
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function occupancyByBuilding(): array
+    {
+        return Building::query()
+            ->withCount([
+                'rooms',
+                'rooms as occupied_count' => fn ($query) => $query->where('status', 'occupied'),
+            ])
+            ->orderByDesc('rooms_count')
+            ->orderBy('building_name')
+            ->limit(5)
+            ->get()
+            ->map(function (Building $building) {
+                $total = max((int) $building->rooms_count, 0);
+                $occupied = min((int) $building->occupied_count, $total);
+                $percent = $total > 0 ? round(($occupied / $total) * 100) : 0;
+
+                return [
+                    'key' => 'building_'.$building->id,
+                    'label' => $building->building_name,
+                    'occupied' => $occupied,
+                    'total' => $total,
+                    'percent' => $percent,
+                    'ratio_label' => "{$occupied}/{$total}",
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function upcomingContracts(): array
+    {
+        $windowEnd = now()->addDays(60)->endOfDay();
+
+        return Contract::query()
+            ->with(['room.building'])
+            ->where('status', 'active')
+            ->whereNotNull('end_date')
+            ->whereDate('end_date', '>=', now()->toDateString())
+            ->whereDate('end_date', '<=', $windowEnd->toDateString())
+            ->orderBy('end_date')
+            ->limit(5)
+            ->get()
+            ->map(function (Contract $contract) {
+                $buildingName = $contract->room?->building?->building_name ?? '—';
+                $roomNumber = $contract->room?->room_number ?? '—';
+                $endDate = $contract->end_date;
+                $daysLeft = $endDate
+                    ? max(now()->startOfDay()->diffInDays($endDate->copy()->startOfDay(), false), 0)
+                    : 0;
+
+                return [
+                    'id' => $contract->id,
+                    'number' => $contract->contract_number,
+                    'property' => "{$buildingName} · {$roomNumber}",
+                    'end_date' => $endDate?->format('d M Y') ?? '—',
+                    'days_left' => $daysLeft,
+                    'to' => $contract->type === 'sale'
+                        ? "/admin/sale-contracts/{$contract->id}"
+                        : "/admin/rent-contracts/{$contract->id}",
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pendingApprovalBreakdown(): array
+    {
+        $items = [
+            [
+                'key' => 'payments',
+                'label' => 'Payments',
+                'icon' => 'pi pi-wallet',
+                'count' => Payment::query()->where('status', 'pending')->count(),
+                'to' => '/admin/payments/approval',
+            ],
+            [
+                'key' => 'invoices',
+                'label' => 'Invoices',
+                'icon' => 'pi pi-receipt',
+                'count' => Invoice::query()->where('status', 'draft')->count(),
+                'to' => '/admin/invoices/approval',
+            ],
+            [
+                'key' => 'utilities',
+                'label' => 'Utilities',
+                'icon' => 'pi pi-bolt',
+                'count' => Utility::query()->where('status', 'pending')->count(),
+                'to' => '/admin/utilities/approval',
+            ],
+            [
+                'key' => 'others',
+                'label' => 'Others',
+                'icon' => 'pi pi-ellipsis-h',
+                'count' => $this->pendingSaleContractCount()
+                    + $this->pendingRentContractCount()
+                    + Receipt::query()->where('approval_status', Receipt::APPROVAL_PENDING)->count(),
+                'to' => '/admin/approvals/sale-contracts',
+            ],
+        ];
+
+        return [
+            'total' => array_sum(array_column($items, 'count')),
+            'items' => $items,
         ];
     }
 
@@ -184,6 +424,183 @@ class AdminDashboardService
         );
     }
 
+    /**
+     * Last six months of approved payment totals.
+     *
+     * @return list<float>
+     */
+    private function revenueSparklineSeries(): array
+    {
+        $series = [];
+
+        for ($offset = 5; $offset >= 0; $offset--) {
+            $series[] = $this->approvedPaymentTotalForMonth(now()->subMonths($offset));
+        }
+
+        return $series;
+    }
+
+    /**
+     * Last six months of occupancy rate based on active rent contracts.
+     *
+     * @return list<float>
+     */
+    private function occupancySparklineSeries(): array
+    {
+        $totalRooms = max(Room::query()->count(), 1);
+        $series = [];
+
+        for ($offset = 5; $offset >= 0; $offset--) {
+            $monthEnd = now()->subMonths($offset)->endOfMonth();
+            $occupied = $this->activeRentRoomsAsOf($monthEnd);
+            $series[] = round(($occupied / $totalRooms) * 100, 1);
+        }
+
+        return $series;
+    }
+
+    /**
+     * Reconstructed outstanding balance at each of the last six month-ends.
+     *
+     * @return list<float>
+     */
+    private function outstandingSparklineSeries(): array
+    {
+        $series = [];
+
+        for ($offset = 5; $offset >= 0; $offset--) {
+            $monthEnd = now()->subMonths($offset)->endOfMonth();
+            $series[] = $this->outstandingAmountAsOf($monthEnd);
+        }
+
+        return $series;
+    }
+
+    /**
+     * New pending-approval items created on each of the last seven days.
+     *
+     * @return list<float>
+     */
+    private function pendingApprovalsSparklineSeries(): array
+    {
+        $series = [];
+
+        for ($offset = 6; $offset >= 0; $offset--) {
+            $day = now()->subDays($offset);
+            $series[] = (float) $this->pendingApprovalsCreatedOn($day);
+        }
+
+        return $series;
+    }
+
+    private function pendingApprovalsCount(): int
+    {
+        return $this->pendingSaleContractCount()
+            + $this->pendingRentContractCount()
+            + Utility::query()->where('status', 'pending')->count()
+            + Invoice::query()->where('status', 'draft')->count()
+            + Payment::query()->where('status', 'pending')->count()
+            + Receipt::query()->where('approval_status', Receipt::APPROVAL_PENDING)->count();
+    }
+
+    private function pendingApprovalsCreatedOn(Carbon $day): int
+    {
+        $start = $day->copy()->startOfDay();
+        $end = $day->copy()->endOfDay();
+
+        return Contract::query()
+            ->where('type', 'sale')
+            ->where('status', 'draft')
+            ->whereBetween('created_at', [$start, $end])
+            ->count()
+            + Contract::query()
+                ->where('type', 'rent')
+                ->where('status', 'draft')
+                ->whereBetween('created_at', [$start, $end])
+                ->count()
+            + Utility::query()
+                ->where('status', 'pending')
+                ->whereBetween('updated_at', [$start, $end])
+                ->count()
+            + Invoice::query()
+                ->where('status', 'draft')
+                ->whereBetween('created_at', [$start, $end])
+                ->count()
+            + Payment::query()
+                ->where('status', 'pending')
+                ->whereBetween('created_at', [$start, $end])
+                ->count()
+            + Receipt::query()
+                ->where('approval_status', Receipt::APPROVAL_PENDING)
+                ->whereBetween('created_at', [$start, $end])
+                ->count();
+    }
+
+    private function pendingSaleContractCount(): int
+    {
+        return Contract::query()
+            ->where('type', 'sale')
+            ->where('status', 'draft')
+            ->count();
+    }
+
+    private function pendingRentContractCount(): int
+    {
+        return Contract::query()
+            ->where('type', 'rent')
+            ->where('status', 'draft')
+            ->count();
+    }
+
+    private function currentOccupancyRate(): float
+    {
+        $totalRooms = Room::query()->count();
+
+        if ($totalRooms === 0) {
+            return 0.0;
+        }
+
+        $occupied = Room::query()->where('status', 'occupied')->count();
+
+        return round(($occupied / $totalRooms) * 100, 1);
+    }
+
+    private function activeRentRoomsAsOf(Carbon $asOf): int
+    {
+        return (int) Contract::query()
+            ->where('type', 'rent')
+            ->where('status', 'active')
+            ->whereDate('start_date', '<=', $asOf->toDateString())
+            ->where(function ($query) use ($asOf): void {
+                $query->whereNull('end_date')
+                    ->orWhereDate('end_date', '>=', $asOf->toDateString());
+            })
+            ->distinct('room_id')
+            ->count('room_id');
+    }
+
+    private function outstandingAmountAsOf(Carbon $asOf): float
+    {
+        $invoiced = (float) Invoice::query()
+            ->where(function ($query) use ($asOf): void {
+                $query->whereDate('issued_date', '<=', $asOf->toDateString())
+                    ->orWhere(function ($inner) use ($asOf): void {
+                        $inner->whereNull('issued_date')
+                            ->whereDate('created_at', '<=', $asOf->toDateString());
+                    });
+            })
+            ->where('status', '!=', 'draft')
+            ->get()
+            ->sum(fn (Invoice $invoice) => (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0));
+
+        $paid = (float) Payment::query()
+            ->whereIn('status', ['approved', 'completed'])
+            ->whereDate('payment_date', '<=', $asOf->toDateString())
+            ->sum('amount');
+
+        return max(round($invoiced - $paid, 2), 0);
+    }
+
     private function approvedPaymentTotal(): float
     {
         return (float) Payment::query()
@@ -205,28 +622,127 @@ class AdminDashboardService
     private function outstandingAmount(): float
     {
         return (float) Invoice::query()
+            ->where('status', '!=', 'draft')
             ->withSum(['payments as paid_total' => fn ($query) => $query->whereIn('status', ['approved', 'completed'])], 'amount')
             ->get()
-            ->sum(fn (Invoice $invoice) => max((float) $invoice->total_amount - (float) ($invoice->paid_total ?? 0), 0));
+            ->sum(function (Invoice $invoice) {
+                $due = (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0);
+
+                return max($due - (float) ($invoice->paid_total ?? 0), 0);
+            });
+    }
+
+    private function revenueChangePercent(): float
+    {
+        $current = $this->approvedPaymentTotalForMonth(now());
+        $previous = $this->approvedPaymentTotalForMonth(now()->subMonth());
+
+        if ($previous <= 0) {
+            return $current > 0 ? 100.0 : 0.0;
+        }
+
+        return round((($current - $previous) / $previous) * 100, 1);
     }
 
     private function revenueChangeLabel(): string
     {
-        $current = $this->approvedPaymentTotalForMonth(now());
-        $previous = $this->approvedPaymentTotalForMonth(now()->subMonth());
+        $change = $this->revenueChangePercent();
+        $prefix = $change > 0 ? '+' : '';
+
+        return "{$prefix}{$change}% vs last month";
+    }
+
+    /**
+     * @param  list<float>  $series
+     */
+    private function occupancyChangeLabel(array $series): string
+    {
+        if (count($series) < 2) {
+            return '0% vs last month';
+        }
+
+        $current = (float) $series[count($series) - 1];
+        $previous = (float) $series[count($series) - 2];
+        $delta = round($current - $previous, 1);
+        $prefix = $delta > 0 ? '+' : '';
+
+        return "{$prefix}{$delta} pts vs last month";
+    }
+
+    /**
+     * @param  list<float>  $series
+     */
+    private function outstandingChangeLabel(array $series): string
+    {
+        if (count($series) < 2) {
+            return '0% vs last month';
+        }
+
+        $current = (float) $series[count($series) - 1];
+        $previous = (float) $series[count($series) - 2];
 
         if ($previous <= 0) {
             return $current > 0 ? '+100% vs last month' : '0% vs last month';
         }
 
         $change = round((($current - $previous) / $previous) * 100, 1);
-        $prefix = $change >= 0 ? '+' : '';
+        $prefix = $change > 0 ? '+' : '';
 
         return "{$prefix}{$change}% vs last month";
+    }
+
+    /**
+     * @param  list<float>  $series
+     */
+    private function trendFromSeries(array $series): string
+    {
+        if (count($series) < 2) {
+            return 'neutral';
+        }
+
+        $current = (float) $series[count($series) - 1];
+        $previous = (float) $series[count($series) - 2];
+
+        if ($current > $previous) {
+            return 'up';
+        }
+
+        if ($current < $previous) {
+            return 'down';
+        }
+
+        return 'neutral';
+    }
+
+    private function trendFromChangePercent(float $change): string
+    {
+        if ($change > 0) {
+            return 'up';
+        }
+
+        if ($change < 0) {
+            return 'down';
+        }
+
+        return 'neutral';
+    }
+
+    private function invertTrend(string $trend): string
+    {
+        return match ($trend) {
+            'up' => 'down',
+            'down' => 'up',
+            default => 'neutral',
+        };
     }
 
     private function formatMoney(float $amount): string
     {
         return 'MMK '.number_format($amount, 0);
+    }
+
+    private function formatPercent(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 1), '0'), '.').'%';
     }
 }

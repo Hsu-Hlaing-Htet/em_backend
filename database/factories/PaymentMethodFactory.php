@@ -23,6 +23,7 @@ class PaymentMethodFactory extends Factory
         return [
             'name' => $name,
             'slug' => Str::slug($name),
+            'type' => fake()->randomElement(['cash', 'bank_transfer', 'mobile_wallet', 'cheque', 'other']),
             'status' => fake()->randomElement(['active', 'inactive']),
         ];
     }

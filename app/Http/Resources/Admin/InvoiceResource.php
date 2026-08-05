@@ -35,7 +35,21 @@ class InvoiceResource extends JsonResource
             'payment_method_name' => $this->resolvePaymentMethodName(),
             'notes' => $this->resolveNotes(),
             'contract' => $this->whenLoaded('contract', fn () => new ContractResource($this->contract)),
-            'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
+            'items' => $this->whenLoaded('items', function () {
+                $this->items->each(function ($item): void {
+                    $item->setRelation('invoice', $this->resource);
+
+                    if ($this->relationLoaded('utility')) {
+                        $item->invoice->setRelation('utility', $this->utility);
+                    }
+
+                    if ($this->relationLoaded('items')) {
+                        $item->invoice->setRelation('items', $this->items);
+                    }
+                });
+
+                return InvoiceItemResource::collection($this->items);
+            }),
             'customer_name' => $this->whenLoaded('contract', fn () => $this->contract?->user?->name),
             'customer_email' => $this->whenLoaded('contract', fn () => $this->contract?->user?->email),
             'customer_phone' => $this->when(
@@ -77,7 +91,7 @@ class InvoiceResource extends JsonResource
 
         return (float) $this->payments
             ->whereIn('status', ['approved', 'completed'])
-            ->sum('amount');
+            ->sum(fn ($payment) => (float) ($payment->amount ?? 0));
     }
 
     private function resolvePaymentStatus(): string

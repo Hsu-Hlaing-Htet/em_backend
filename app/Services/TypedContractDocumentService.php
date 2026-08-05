@@ -3,14 +3,18 @@
 namespace App\Services;
 
 use App\Models\Contract;
+use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\ContractDocumentProfile;
 use App\Support\ContractDraftProfile;
+use App\Support\DocumentFilename;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
 use InvalidArgumentException;
 
 class TypedContractDocumentService
 {
+    use ServesHtmlDocument;
+
     private ContractDocumentProfile $profile;
 
     public function __construct(
@@ -48,24 +52,18 @@ class TypedContractDocumentService
 
     public function downloadResponse(Contract $contract): Response
     {
-        $html = $this->renderHtml($contract);
-        $filename = $this->filename($contract);
-
-        return response($html, 200, [
-            'Content-Type' => 'text/html; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-        ]);
+        return $this->downloadPdfResponse(
+            $this->renderHtml($contract),
+            $this->filename($contract),
+        );
     }
 
     public function exportResponse(Contract $contract): Response
     {
-        $html = $this->renderHtml($contract);
-        $filename = $this->filename($contract);
-
-        return response($html, 200, [
-            'Content-Type' => 'text/html; charset=UTF-8',
-            'Content-Disposition' => 'inline; filename="'.$filename.'"',
-        ]);
+        return $this->exportHtmlResponse(
+            $this->renderHtml($contract),
+            $this->htmlFilename($contract),
+        );
     }
 
     /**
@@ -73,18 +71,18 @@ class TypedContractDocumentService
      */
     public function sendEmail(Contract $contract, array $data): void
     {
-        $contract->loadMissing(['user.profile']);
+        $contract->loadMissing(['user.profile', 'room']);
         $email = $data['email'] ?? $contract->user?->email;
 
         if (! $email) {
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
         }
 
-        $html = $this->renderHtml($contract);
-
+        $filename = $this->filename($contract);
+        $pdf = $this->renderPdfBinary($this->renderHtml($contract));
         $mailClass = $this->profile->mailClass;
 
-        Mail::to($email)->send(new $mailClass($contract, $html));
+        Mail::to($email)->send(new $mailClass($contract, $pdf, $filename));
     }
 
     /**
@@ -200,6 +198,25 @@ class TypedContractDocumentService
     }
 
     private function filename(Contract $contract): string
+    {
+        $contract->loadMissing(['room']);
+
+        if ($contract->type === 'rent') {
+            return DocumentFilename::rentContract(
+                $contract->start_date ?? $contract->created_at,
+                $contract->room?->room_number,
+                $contract->contract_number,
+            );
+        }
+
+        return DocumentFilename::saleContract(
+            $contract->start_date ?? $contract->created_at,
+            $contract->room?->room_number,
+            $contract->contract_number,
+        );
+    }
+
+    private function htmlFilename(Contract $contract): string
     {
         return ($contract->contract_number ?: $this->profile->defaultFilename).'.html';
     }

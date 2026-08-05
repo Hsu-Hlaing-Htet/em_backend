@@ -71,9 +71,11 @@ class PaymentDocumentService
             throw new InvalidArgumentException('Customer email is required to send the payment confirmation document.');
         }
 
+        // Payment has no customer-facing document download; email remains unused via HTTP.
         Mail::to($email)->send(new PaymentDocumentMail(
             $payment,
-            $this->renderHtml($payment),
+            $this->renderPdfBinary($this->renderHtml($payment)),
+            $this->filename($payment),
         ));
     }
 
@@ -118,6 +120,6 @@ class PaymentDocumentService
 
     private function filename(Payment $payment): string
     {
-        return $this->referenceNumber($payment).'.html';
+        return sprintf('PAY-%05d.pdf', $payment->id);
     }
 }

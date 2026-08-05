@@ -3,17 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\SendBillingDocumentRequest;
+use App\Http\Requests\Admin\ApprovePaymentRequest;
+use App\Http\Requests\Admin\RejectPaymentRequest;
 use App\Http\Requests\Admin\StorePaymentRequest;
 use App\Http\Requests\Admin\UpdatePaymentRequest;
 use App\Http\Requests\Admin\UploadPaymentProofRequest;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Models\Payment;
-use App\Services\PaymentDocumentService;
 use App\Services\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use InvalidArgumentException;
 
 class PaymentController extends Controller
@@ -45,6 +44,8 @@ class PaymentController extends Controller
         $payment->load([
             'invoice.contract.user.profile',
             'invoice.contract.room.building',
+            'invoice.items.chargeType',
+            'invoice.payments',
             'paymentMethod',
             'receipt',
         ]);
@@ -60,6 +61,8 @@ class PaymentController extends Controller
         $payment->load([
             'invoice.contract.user.profile',
             'invoice.contract.room.building',
+            'invoice.items.chargeType',
+            'invoice.payments',
             'paymentMethod',
             'creator',
             'approver',
@@ -101,10 +104,13 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function approve(Payment $payment, PaymentService $paymentService): JsonResponse
-    {
+    public function approve(
+        ApprovePaymentRequest $request,
+        Payment $payment,
+        PaymentService $paymentService,
+    ): JsonResponse {
         try {
-            $payment = $paymentService->approve($payment);
+            $payment = $paymentService->approve($payment, $request->validated('amount'));
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -112,6 +118,8 @@ class PaymentController extends Controller
         $payment->load([
             'invoice.contract.user.profile',
             'invoice.contract.room.building',
+            'invoice.items.chargeType',
+            'invoice.payments',
             'paymentMethod',
             'creator',
             'approver',
@@ -124,13 +132,25 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function reject(Payment $payment, PaymentService $paymentService): JsonResponse
-    {
-        $payment = $paymentService->reject($payment);
+    public function reject(
+        RejectPaymentRequest $request,
+        Payment $payment,
+        PaymentService $paymentService,
+    ): JsonResponse {
+        try {
+            $payment = $paymentService->reject(
+                $payment,
+                $request->validated('rejection_reason'),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
 
         $payment->load([
             'invoice.contract.user.profile',
             'invoice.contract.room.building',
+            'invoice.items.chargeType',
+            'invoice.payments',
             'paymentMethod',
             'creator',
             'approver',
@@ -153,6 +173,8 @@ class PaymentController extends Controller
         $payment->load([
             'invoice.contract.user.profile',
             'invoice.contract.room.building',
+            'invoice.items.chargeType',
+            'invoice.payments',
             'paymentMethod',
             'creator',
             'approver',
@@ -162,35 +184,6 @@ class PaymentController extends Controller
         return response()->json([
             'message' => 'Payment proof uploaded successfully.',
             'data' => new PaymentResource($payment),
-        ]);
-    }
-
-    public function downloadDocument(Payment $payment, PaymentDocumentService $paymentDocumentService): Response
-    {
-        return $paymentDocumentService->downloadResponse($paymentDocumentService->find($payment->id));
-    }
-
-    public function exportDocument(Payment $payment, PaymentDocumentService $paymentDocumentService): Response
-    {
-        return $paymentDocumentService->exportResponse($paymentDocumentService->find($payment->id));
-    }
-
-    public function sendDocumentEmail(
-        SendBillingDocumentRequest $request,
-        Payment $payment,
-        PaymentDocumentService $paymentDocumentService,
-    ): JsonResponse {
-        try {
-            $paymentDocumentService->sendEmail(
-                $paymentDocumentService->find($payment->id),
-                $request->validated(),
-            );
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
-        }
-
-        return response()->json([
-            'message' => 'Payment confirmation document sent successfully.',
         ]);
     }
 }

@@ -17,9 +17,11 @@ class PaymentResource extends JsonResource
     public function toArray(Request $request): array
     {
         $invoice = $this->relationLoaded('invoice') ? $this->invoice : null;
-        $invoiceAmount = $invoice ? (float) $invoice->total_amount : 0.0;
-        $paidAmount = $this->resolveInvoicePaidAmount();
-        $balance = max(round($invoiceAmount - $paidAmount, 2), 0);
+        $invoiceAmount = $invoice
+            ? round((float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0), 2)
+            : 0.0;
+        $approvedPaidAmount = $this->resolveInvoicePaidAmount();
+        $balance = max(round($invoiceAmount - $approvedPaidAmount, 2), 0);
 
         return [
             'id' => $this->id,
@@ -29,10 +31,12 @@ class PaymentResource extends JsonResource
             'payment_type' => $this->resolvePaymentType(),
             'payment_method_id' => $this->payment_method_id,
             'payment_method_name' => $this->whenLoaded('paymentMethod', fn () => $this->paymentMethod?->name),
+            'payment_method_type' => $this->whenLoaded('paymentMethod', fn () => $this->paymentMethod?->type),
             'amount' => $this->amount,
             'invoice_amount' => $invoiceAmount,
-            'paid_amount' => $paidAmount,
+            'paid_amount' => $approvedPaidAmount,
             'balance' => $balance,
+            'current_balance' => $balance,
             'display_status' => $this->resolveDisplayStatus(),
             'property_unit' => $this->resolvePropertyUnit(),
             'reference_number' => $this->whenLoaded('invoice', fn () => $this->invoice?->invoice_number),
@@ -41,6 +45,7 @@ class PaymentResource extends JsonResource
                 ? Storage::disk('public')->url($this->proof_image_path)
                 : null,
             'note' => $this->note,
+            'rejection_reason' => $this->rejection_reason,
             'payment_date' => $this->payment_date?->toDateString(),
             'status' => $this->status,
             'customer_name' => $this->when(
@@ -99,7 +104,7 @@ class PaymentResource extends JsonResource
         if ($invoice->relationLoaded('payments')) {
             return (float) $invoice->payments
                 ->whereIn('status', ['approved', 'completed'])
-                ->sum('amount');
+                ->sum(fn ($payment) => (float) ($payment->amount ?? 0));
         }
 
         if ($this->status === 'approved') {

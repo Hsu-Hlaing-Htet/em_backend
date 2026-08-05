@@ -153,7 +153,15 @@ class CustomerPortalService
     public function findInvoice(User $user, int $invoiceId): Invoice
     {
         return $this->customerInvoiceQuery($user->id)
-            ->with(['contract.user.profile', 'contract.room.building', 'utility', 'items.chargeType', 'payments.paymentMethod', 'payments.receipt', 'approver'])
+            ->with([
+                'contract.user.profile',
+                'contract.room.building',
+                'utility.items.utilityType',
+                'items.chargeType',
+                'payments.paymentMethod',
+                'payments.receipt',
+                'approver',
+            ])
             ->findOrFail($invoiceId);
     }
 
@@ -216,8 +224,11 @@ class CustomerPortalService
             throw new InvalidArgumentException('Payment proof is required.');
         }
 
+        unset($data['amount'], $data['proof'], $data['status'], $data['approved_by'], $data['approved_at']);
+
         $payment = $this->paymentService->create([
             ...$data,
+            'amount' => null,
             'created_by' => $user->id,
             'status' => 'pending',
         ]);

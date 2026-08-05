@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Customer;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\StorePaymentRequest;
+use App\Http\Requests\Customer\StoreCustomerPaymentRequest;
 use App\Http\Requests\Customer\UpdateCustomerProfileRequest;
 use App\Http\Resources\Admin\ContractResource;
 use App\Http\Resources\Admin\InvoiceResource;
@@ -156,17 +156,13 @@ class CustomerPortalController extends Controller
     }
 
     public function storePayment(
-        StorePaymentRequest $request,
+        StoreCustomerPaymentRequest $request,
         CustomerPortalService $customerPortalService,
     ): JsonResponse {
-        $request->validate([
-            'proof' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
-        ]);
-
         try {
             $payment = $customerPortalService->submitPayment(
                 $request->user(),
-                $request->validated(),
+                $request->safe()->except(['proof']),
                 $request->file('proof'),
             );
         } catch (InvalidArgumentException $exception) {

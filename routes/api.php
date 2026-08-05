@@ -1,10 +1,11 @@
 <?php
 
-use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\BuildingController;
 use App\Http\Controllers\Admin\ChargeTypeController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\LateFeeController;
+use App\Http\Controllers\Admin\ListExportController;
 use App\Http\Controllers\Admin\MaintenanceRequestController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\PaymentMethodController;
@@ -57,9 +58,9 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
     Route::get('payment-methods', [CustomerPortalController::class, 'paymentMethods']);
 });
 
-
 Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function (): void {
     Route::get('admin/dashboard/charts', [DashboardController::class, 'charts']);
+    Route::post('list-exports/pdf', [ListExportController::class, 'pdf']);
     Route::apiResource('roles', RoleController::class);
     Route::apiResource('users', UserController::class);
     Route::apiResource('profiles', ProfileController::class);
@@ -121,11 +122,10 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::post('payments/{payment}/approve', [PaymentController::class, 'approve']);
     Route::post('payments/{payment}/reject', [PaymentController::class, 'reject']);
     Route::post('payments/{payment}/proof', [PaymentController::class, 'uploadProof']);
-    Route::get('payments/{payment}/document/download', [PaymentController::class, 'downloadDocument']);
-    Route::get('payments/{payment}/document/export', [PaymentController::class, 'exportDocument']);
-    Route::post('payments/{payment}/document/email', [PaymentController::class, 'sendDocumentEmail']);
     Route::apiResource('payments', PaymentController::class);
 
+    Route::post('receipts/{receipt}/approve', [ReceiptController::class, 'approve']);
+    Route::post('receipts/{receipt}/reject', [ReceiptController::class, 'reject']);
     Route::post('receipts/{receipt}/issue', [ReceiptController::class, 'issue']);
     Route::get('receipts/{receipt}/document/download', [ReceiptController::class, 'downloadDocument']);
     Route::get('receipts/{receipt}/document/export', [ReceiptController::class, 'exportDocument']);

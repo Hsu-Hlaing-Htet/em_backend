@@ -118,11 +118,7 @@ return [
     |
     */
 
-    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
-
-    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
-
-    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+    'frontend_url' => explode(',', (string) env('FRONTEND_URL', 'http://localhost:5173'))[0],
 
     'maintenance' => [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),

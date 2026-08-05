@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Contracts\DocumentPdfConverter;
+use App\Services\ChromeDocumentPdfConverter;
+use App\Services\FakeDocumentPdfConverter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +14,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(DocumentPdfConverter::class, function () {
+            if ($this->app->environment('testing')) {
+                return new FakeDocumentPdfConverter;
+            }
+
+            return new ChromeDocumentPdfConverter;
+        });
     }
 
     /**

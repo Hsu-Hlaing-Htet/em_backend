@@ -13,12 +13,12 @@ class PaymentMethodSeeder extends Seeder
     public function run(): void
     {
         $methods = [
-            ['name' => 'Cash', 'slug' => 'cash', 'status' => 'active'],
-            ['name' => 'KBZ Bank Transfer', 'slug' => 'kbz-bank-transfer', 'status' => 'active'],
-            ['name' => 'AYA Bank Transfer', 'slug' => 'aya-bank-transfer', 'status' => 'active'],
-            ['name' => 'KBZ Pay', 'slug' => 'kbz-pay', 'status' => 'active'],
-            ['name' => 'Wave Pay', 'slug' => 'wave-pay', 'status' => 'active'],
-            ['name' => 'Cheque', 'slug' => 'cheque', 'status' => 'inactive'],
+            ['name' => 'Cash', 'slug' => 'cash', 'type' => 'cash', 'status' => 'active'],
+            ['name' => 'KBZ Bank Transfer', 'slug' => 'kbz-bank-transfer', 'type' => 'bank_transfer', 'status' => 'active'],
+            ['name' => 'AYA Bank Transfer', 'slug' => 'aya-bank-transfer', 'type' => 'bank_transfer', 'status' => 'active'],
+            ['name' => 'KBZ Pay', 'slug' => 'kbz-pay', 'type' => 'mobile_wallet', 'status' => 'active'],
+            ['name' => 'Wave Pay', 'slug' => 'wave-pay', 'type' => 'mobile_wallet', 'status' => 'active'],
+            ['name' => 'Cheque', 'slug' => 'cheque', 'type' => 'cheque', 'status' => 'inactive'],
         ];
 
         foreach ($methods as $method) {
@@ -26,6 +26,7 @@ class PaymentMethodSeeder extends Seeder
                 ['slug' => $method['slug']],
                 [
                     'name' => $method['name'],
+                    'type' => $method['type'],
                     'status' => $method['status'],
                 ]
             );

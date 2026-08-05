@@ -35,7 +35,7 @@ function billingCustomer(): User
     return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
 }
 
-function seedWorkflowPropertyStack(): array
+function seedPropertyStack(): array
 {
     $building = \App\Models\Building::query()->create([
         'building_name' => 'Rosewood Tower',
@@ -62,7 +62,7 @@ function seedWorkflowPropertyStack(): array
 
 function seedBillingContract(User $admin, User $customer): Contract
 {
-    ['room' => $room] = seedWorkflowPropertyStack();
+    ['room' => $room] = seedPropertyStack();
 
     return Contract::query()->create([
         'contract_number' => 'CTR-BILL-0001',
@@ -78,17 +78,17 @@ function seedBillingContract(User $admin, User $customer): Contract
     ]);
 }
 
-function seedDraftInvoice(Contract $contract, User $admin): Invoice
+function seedDraftInvoice(Contract $contract, User $admin, float $total = 100000): Invoice
 {
     $rentCharge = ChargeType::query()->where('slug', 'monthly-rent')->firstOrFail();
 
     $invoice = Invoice::query()->create([
         'contract_id' => $contract->id,
-        'invoice_number' => 'INV-TEST-0001',
+        'invoice_number' => 'INV-TEST-'.str_pad((string) (Invoice::query()->count() + 1), 4, '0', STR_PAD_LEFT),
         'type' => 'rent',
         'status' => 'draft',
         'due_date' => now()->addDays(7)->toDateString(),
-        'total_amount' => 100000,
+        'total_amount' => $total,
         'created_by' => $admin->id,
     ]);
 
@@ -96,10 +96,27 @@ function seedDraftInvoice(Contract $contract, User $admin): Invoice
         'invoice_id' => $invoice->id,
         'charge_type_id' => $rentCharge->id,
         'description' => 'Monthly rent',
-        'amount' => 100000,
+        'amount' => $total,
     ]);
 
     return $invoice->fresh(['contract.user', 'items']);
+}
+
+function submitCustomerPayment(mixed $test, User $customer, Invoice $invoice, PaymentMethod $paymentMethod): int
+{
+    $test->actingAs($customer, 'sanctum')
+        ->postJson('/api/customer/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $paymentMethod->id,
+            'payment_date' => now()->toDateString(),
+            'note' => 'Bank transfer',
+            'proof' => UploadedFile::fake()->image('proof.jpg'),
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('data.amount', null);
+
+    return (int) Payment::query()->orderByDesc('id')->value('id');
 }
 
 test('invoice payment receipt workflow completes end to end', function () {
@@ -121,37 +138,126 @@ test('invoice payment receipt workflow completes end to end', function () {
 
     Mail::assertSent(InvoiceDocumentMail::class);
 
-    $this->actingAs($customer, 'sanctum')
-        ->postJson('/api/customer/payments', [
-            'invoice_id' => $invoice->id,
-            'payment_method_id' => $paymentMethod->id,
-            'amount' => 100000,
-            'payment_date' => now()->toDateString(),
-            'note' => 'Bank transfer',
-            'proof' => UploadedFile::fake()->image('proof.jpg'),
-        ])
-        ->assertCreated()
-        ->assertJsonPath('data.status', 'pending');
-
-    $paymentId = Payment::query()->value('id');
+    $paymentId = submitCustomerPayment($this, $customer, $invoice, $paymentMethod);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/payments/{$paymentId}/approve")
+        ->getJson('/api/payments')
+        ->assertOk()
+        ->assertJsonPath('data.total', 0);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/payments?status=pending')
+        ->assertOk()
+        ->assertJsonPath('data.total', 1)
+        ->assertJsonPath('data.data.0.id', $paymentId);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", [
+            'amount' => 100000,
+        ])
         ->assertOk()
         ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.amount', '100000.00')
         ->assertJsonPath('data.receipt_id', fn ($value) => $value !== null);
 
     expect(Invoice::query()->find($invoice->id)?->status)->toBe('paid');
+    expect(Payment::query()->find($paymentId)?->proof_image_path)->not->toBeNull();
+    Mail::assertNotSent(ReceiptDocumentMail::class);
 
-    $receiptId = Receipt::query()->value('id');
-    expect(Receipt::query()->find($receiptId)?->status)->toBe('draft');
+    $receipt = Receipt::query()->first();
+    expect($receipt)->not->toBeNull();
+    expect($receipt->status)->toBe('draft');
+    expect($receipt->approval_status)->toBe('pending');
+    expect($receipt->issued_at)->toBeNull();
+    expect($receipt->approved_at)->toBeNull();
+    expect($receipt->payment_id)->toBe($paymentId);
+    expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receiptId}/issue")
+        ->getJson('/api/payments')
         ->assertOk()
-        ->assertJsonPath('data.status', 'issued');
+        ->assertJsonPath('data.total', 1);
 
-    Mail::assertSent(ReceiptDocumentMail::class);
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/payments?status=pending')
+        ->assertOk()
+        ->assertJsonPath('data.total', 0);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/receipts?approval_status=pending')
+        ->assertOk()
+        ->assertJsonPath('data.total', 1)
+        ->assertJsonPath('data.data.0.id', $receipt->id);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/issue")
+        ->assertStatus(422);
+
+    Mail::assertNotSent(ReceiptDocumentMail::class);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/document/email", [
+            'email' => $customer->email,
+        ])
+        ->assertStatus(422);
+
+    // Re-approve must be rejected and must not create a second receipt.
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", [
+            'amount' => 100000,
+        ])
+        ->assertStatus(422);
+
+    expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
+    Mail::assertNotSent(ReceiptDocumentMail::class);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/approve")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'draft')
+        ->assertJsonPath('data.approval_status', 'approved')
+        ->assertJsonPath('data.approved_by.id', $admin->id)
+        ->assertJsonPath('data.approved_at', fn ($value) => ! empty($value));
+
+    Mail::assertNotSent(ReceiptDocumentMail::class);
+
+    $approved = Receipt::query()->find($receipt->id);
+    expect($approved?->status)->toBe('draft');
+    expect($approved?->approval_status)->toBe('approved');
+    expect($approved?->issued_at)->toBeNull();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/issue")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'issued')
+        ->assertJsonPath('data.approval_status', 'approved')
+        ->assertJsonPath('data.issued_at', fn ($value) => ! empty($value));
+
+    Mail::assertNotSent(ReceiptDocumentMail::class);
+
+    $issued = Receipt::query()->find($receipt->id);
+    expect($issued?->status)->toBe('issued');
+    expect($issued?->approval_status)->toBe('approved');
+    expect($issued?->issued_at)->not->toBeNull();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/document/email", [
+            'email' => $customer->email,
+        ])
+        ->assertOk();
+
+    Mail::assertSent(ReceiptDocumentMail::class, function (ReceiptDocumentMail $mail) use ($customer) {
+        return $mail->hasTo($customer->email);
+    });
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/document/email", [
+            'email' => $customer->email,
+        ])
+        ->assertOk();
+
+    expect(Receipt::query()->find($receipt->id)?->approval_status)->toBe('approved');
+    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(2);
 
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/customer/receipts')
@@ -177,46 +283,32 @@ test('rejecting payment keeps invoice payment status synchronized', function () 
         ->postJson("/api/invoices/{$invoice->id}/issue")
         ->assertOk();
 
-    $this->actingAs($customer, 'sanctum')
-        ->postJson('/api/customer/payments', [
-            'invoice_id' => $invoice->id,
-            'payment_method_id' => $paymentMethod->id,
-            'amount' => 50000,
-            'payment_date' => now()->toDateString(),
-            'proof' => UploadedFile::fake()->image('proof.jpg'),
-        ])
-        ->assertCreated();
-
-    $paymentId = Payment::query()->value('id');
+    $paymentId = submitCustomerPayment($this, $customer, $invoice, $paymentMethod);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/payments/{$paymentId}/approve")
+        ->postJson("/api/payments/{$paymentId}/approve", [
+            'amount' => 50000,
+        ])
         ->assertOk();
 
     expect(Invoice::query()->find($invoice->id)?->status)->toBe('partial');
 
-    $this->actingAs($customer, 'sanctum')
-        ->postJson('/api/customer/payments', [
-            'invoice_id' => $invoice->id,
-            'payment_method_id' => $paymentMethod->id,
-            'amount' => 50000,
-            'payment_date' => now()->toDateString(),
-            'proof' => UploadedFile::fake()->image('proof-2.jpg'),
-        ])
-        ->assertCreated();
-
-    $secondPaymentId = Payment::query()->orderByDesc('id')->value('id');
+    $secondPaymentId = submitCustomerPayment($this, $customer, $invoice->fresh(), $paymentMethod);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/payments/{$secondPaymentId}/reject")
+        ->postJson("/api/payments/{$secondPaymentId}/reject", [
+            'rejection_reason' => 'Proof is unclear.',
+        ])
         ->assertOk()
-        ->assertJsonPath('data.status', 'rejected');
+        ->assertJsonPath('data.status', 'rejected')
+        ->assertJsonPath('data.rejection_reason', 'Proof is unclear.');
 
     expect(Invoice::query()->find($invoice->id)?->status)->toBe('partial');
+    expect(Payment::query()->find($secondPaymentId)?->amount)->toBeNull();
     expect(Receipt::query()->count())->toBe(1);
 });
 
-test('customer cannot view draft receipts', function () {
+test('payment approval rejects overpayment and customer cannot submit amount', function () {
     $admin = billingAdmin();
     $customer = billingCustomer();
     $contract = seedBillingContract($admin, $customer);
@@ -231,16 +323,42 @@ test('customer cannot view draft receipts', function () {
         ->postJson('/api/customer/payments', [
             'invoice_id' => $invoice->id,
             'payment_method_id' => $paymentMethod->id,
-            'amount' => 100000,
+            'amount' => 50000,
             'payment_date' => now()->toDateString(),
             'proof' => UploadedFile::fake()->image('proof.jpg'),
         ])
-        ->assertCreated();
+        ->assertStatus(422);
 
-    $paymentId = Payment::query()->value('id');
+    $paymentId = submitCustomerPayment($this, $customer, $invoice, $paymentMethod);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/payments/{$paymentId}/approve")
+        ->postJson("/api/payments/{$paymentId}/approve", [
+            'amount' => 150000,
+        ])
+        ->assertStatus(422);
+
+    expect(Payment::query()->find($paymentId)?->status)->toBe('pending');
+    expect(Invoice::query()->find($invoice->id)?->status)->toBe('issued');
+    expect(Receipt::query()->count())->toBe(0);
+});
+
+test('customer cannot view draft receipts', function () {
+    $admin = billingAdmin();
+    $customer = billingCustomer();
+    $contract = seedBillingContract($admin, $customer);
+    $invoice = seedDraftInvoice($contract, $admin);
+    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->assertOk();
+
+    $paymentId = submitCustomerPayment($this, $customer, $invoice, $paymentMethod);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", [
+            'amount' => 100000,
+        ])
         ->assertOk();
 
     $receiptId = Receipt::query()->value('id');

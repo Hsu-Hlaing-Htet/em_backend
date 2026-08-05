@@ -2,45 +2,38 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Payment Receipt {{ $document['header']['referenceNo'] ?? '' }}</title>
-    <link rel="stylesheet" href="{{ asset('css/contract-document.css') }}">
+    <title>Receipt {{ $document['summary']['receipt_number'] ?? '' }}</title>
+    <style>
+        {!! file_get_contents(resource_path('documents/receipt-document.css')) !!}
+    </style>
 </head>
-<body>
-    <article id="pdf-print" class="pdf-sheet">
-        <div class="pdf-document-lead">
-            <header class="pdf-head">
-                <div class="pdf-head-row">
-                    <div class="pdf-brand">
-                        <img src="{{ asset('images/logo-dark.jpg') }}" alt="Rosewood Royale" class="pdf-logo">
-                        <div class="pdf-brand-text">
-                            <p class="pdf-company">Rosewood Royale Residences</p>
-                            <p class="pdf-company-sub">Residences &amp; Property Management</p>
-                        </div>
-                    </div>
-                    <div class="pdf-head-meta">
-                        <div class="pdf-meta-item">
-                            <span class="pdf-meta-label">Receipt No.</span>
-                            <span class="pdf-meta-value">{{ $document['header']['referenceNo'] ?? '—' }}</span>
-                        </div>
-                        <div class="pdf-meta-item">
-                            <span class="pdf-meta-label">Issue Date</span>
-                            <span class="pdf-meta-value">{{ $document['header']['issuedDate'] ?? '—' }}</span>
-                        </div>
-                    </div>
+<body class="receipt-doc-body">
+    <article id="pdf-print" class="receipt-doc">
+        <header class="receipt-doc__head">
+            <div class="receipt-doc__brand">
+                <img src="{{ asset('images/logo-dark.jpg') }}" alt="Rosewood Royale" class="receipt-doc__logo">
+                <div>
+                    <p class="receipt-doc__company">{{ $document['company']['name'] }}</p>
+                    <p class="receipt-doc__company-sub">{{ $document['company']['tagline'] }}</p>
                 </div>
-                <h1 class="pdf-doc-title">Payment Receipt</h1>
-                <div class="pdf-rule pdf-rule--accent"></div>
-            </header>
-        </div>
+            </div>
+            <h1 class="receipt-doc__title">{{ $document['title'] }}</h1>
+        </header>
 
         @include('receipts.partials.document-body')
 
-        <footer class="pdf-foot">
-            <div class="pdf-foot-row">
-                <span>Confidential</span>
-                <span class="pdf-foot-page">Page 1</span>
-                <span class="pdf-foot-address">{{ $document['footerAddress'] ?? '' }}</span>
+        <footer class="receipt-doc__foot">
+            <div class="receipt-doc__foot-company">
+                <strong>{{ $document['company']['name'] }}</strong>
+                <span>{{ $document['company']['address'] }}</span><br>
+                <span>{{ $document['company']['phone'] }} · {{ $document['company']['email'] }}</span><br>
+                <span>{{ $document['company']['website'] ?? '' }}</span>
             </div>
+            <div class="receipt-doc__foot-confidential">
+                <span class="receipt-doc__foot-confidential-label">Confidential</span>
+                <span>{{ $document['confidentialNotice'] ?? 'This receipt is intended solely for the named recipient.' }}</span>
+            </div>
+            <div class="receipt-doc__foot-page">Page 1 of 1</div>
         </footer>
     </article>
 </body>

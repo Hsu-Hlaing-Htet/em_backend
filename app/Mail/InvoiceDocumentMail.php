@@ -6,13 +6,13 @@ use App\Models\Invoice;
 
 class InvoiceDocumentMail extends HtmlDocumentMail
 {
-    public function __construct(Invoice $invoice, string $documentHtml)
+    public function __construct(Invoice $invoice, string $documentPdf, string $filename)
     {
         parent::__construct(
             referenceNumber: $invoice->invoice_number,
-            documentHtml: $documentHtml,
+            documentPdf: $documentPdf,
             subjectPrefix: 'Tax Invoice',
-            filename: ($invoice->invoice_number ?: 'invoice').'.html',
+            filename: $filename,
         );
     }
 }

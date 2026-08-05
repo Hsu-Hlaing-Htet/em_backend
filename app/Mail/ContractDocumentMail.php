@@ -16,8 +16,9 @@ class ContractDocumentMail extends Mailable
 
     public function __construct(
         public Contract $contract,
-        public string $documentHtml,
+        public string $documentPdf,
         public string $subjectPrefix,
+        public string $filename,
     ) {}
 
     public function envelope(): Envelope
@@ -39,11 +40,9 @@ class ContractDocumentMail extends Mailable
      */
     public function attachments(): array
     {
-        $filename = ($this->contract->contract_number ?: 'contract').'.html';
-
         return [
-            Attachment::fromData(fn () => $this->documentHtml, $filename)
-                ->withMime('text/html'),
+            Attachment::fromData(fn () => $this->documentPdf, $this->filename)
+                ->withMime('application/pdf'),
         ];
     }
 }

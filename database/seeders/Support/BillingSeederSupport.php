@@ -131,9 +131,11 @@ final class BillingSeederSupport
             'receipt_number' => $receiptNumber,
             'receipt_pdf_path' => 'receipts/'.$receiptNumber.'.pdf',
             'status' => 'issued',
+            'approval_status' => 'approved',
             'issued_at' => $issuedAt,
             'created_by' => $admin->id,
             'approved_by' => $admin->id,
+            'approved_at' => $issuedAt,
         ]);
     }
 

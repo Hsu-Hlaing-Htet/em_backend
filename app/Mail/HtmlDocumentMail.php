@@ -15,7 +15,7 @@ class HtmlDocumentMail extends Mailable
 
     public function __construct(
         public string $referenceNumber,
-        public string $documentHtml,
+        public string $documentPdf,
         public string $subjectPrefix,
         public string $filename,
     ) {}
@@ -40,8 +40,8 @@ class HtmlDocumentMail extends Mailable
     public function attachments(): array
     {
         return [
-            Attachment::fromData(fn () => $this->documentHtml, $this->filename)
-                ->withMime('text/html'),
+            Attachment::fromData(fn () => $this->documentPdf, $this->filename)
+                ->withMime('application/pdf'),
         ];
     }
 }

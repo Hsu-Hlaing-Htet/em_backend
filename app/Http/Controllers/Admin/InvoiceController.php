@@ -40,20 +40,10 @@ class InvoiceController extends Controller
         ], 201);
     }
 
-    public function show(Invoice $invoice): JsonResponse
+    public function show(Invoice $invoice, InvoiceService $invoiceService): JsonResponse
     {
-        $invoice->load([
-            'contract.user.profile',
-            'contract.room.building',
-            'utility',
-            'items.chargeType',
-            'payments.paymentMethod',
-            'creator',
-            'approver',
-        ]);
-
         return response()->json([
-            'data' => new InvoiceResource($invoice),
+            'data' => new InvoiceResource($invoiceService->find($invoice->id)),
         ]);
     }
 

@@ -19,10 +19,18 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => array_values(array_filter(array_map(
+    /*
+    | Comma-separated exact origins from CORS_ALLOWED_ORIGINS.
+    | Falls back to FRONTEND_URL, then local Vite ports for development.
+    | Never use "*" when credentials are enabled.
+    */
+    'allowed_origins' => array_values(array_unique(array_filter(array_map(
         trim(...),
-        explode(',', (string) env('FRONTEND_URL', 'http://localhost:5173')),
-    ))),
+        explode(',', (string) env(
+            'CORS_ALLOWED_ORIGINS',
+            env('FRONTEND_URL', 'http://localhost:5173,http://localhost:5174'),
+        )),
+    )))),
 
     'allowed_origins_patterns' => [],
 
@@ -32,6 +40,7 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    // Bearer-token auth (no SPA cookie credentials). Keep false to avoid "*" + credentials.
+    'supports_credentials' => (bool) env('CORS_SUPPORTS_CREDENTIALS', false),
 
 ];

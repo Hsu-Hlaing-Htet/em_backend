@@ -102,6 +102,11 @@ test('admin dashboard charts endpoint returns live chart metrics', function () {
             'kpi_stats',
             'revenue_summary' => ['total_paid', 'outstanding', 'collected_this_month', 'growth_percent'],
             'revenue_chart',
+            'revenue_collections' => ['collection_rate', 'points'],
+            'receivable_aging',
+            'occupancy_by_building',
+            'upcoming_contracts',
+            'pending_approval_breakdown' => ['total', 'items'],
             'property_stats',
             'invoice_stats',
         ]);
@@ -119,8 +124,12 @@ test('admin dashboard charts endpoint returns live chart metrics', function () {
     expect($response->json('revenue_chart'))->toHaveCount(12);
     expect(collect($response->json('revenue_chart'))->last()['amount'])->toEqual(250000);
 
-    expect(collect($response->json('kpi_stats'))->firstWhere('key', 'properties')['value'])->toBe('2');
-    expect((int) collect($response->json('kpi_stats'))->firstWhere('key', 'clients')['value'])->toBeGreaterThanOrEqual(1);
+    expect(collect($response->json('kpi_stats'))->firstWhere('key', 'revenue')['value'])->toContain('MMK');
+    expect(collect($response->json('kpi_stats'))->firstWhere('key', 'occupancy')['value'])->toContain('%');
+    expect($response->json('revenue_collections.points'))->toHaveCount(6);
+    expect($response->json('receivable_aging'))->toHaveCount(4);
+    expect($response->json('occupancy_by_building.0.label'))->toBe('Rosewood Tower');
+    expect($response->json('pending_approval_breakdown.items'))->toHaveCount(4);
 });
 
 test('customer cannot access admin dashboard charts endpoint', function () {
