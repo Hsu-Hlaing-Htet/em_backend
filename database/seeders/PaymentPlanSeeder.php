@@ -51,7 +51,15 @@ class PaymentPlanSeeder extends Seeder
         ];
 
         foreach ($plans as $plan) {
-            PaymentPlan::query()->create($plan);
+            PaymentPlan::query()->updateOrCreate(
+                ['name' => $plan['name']],
+                [
+                    'payment_type' => $plan['payment_type'],
+                    'duration_months' => $plan['duration_months'],
+                    'interest_percentage' => $plan['interest_percentage'],
+                    'status' => $plan['status'],
+                ]
+            );
         }
     }
 }

@@ -26,6 +26,7 @@ class InvoiceDocumentService
                 'contract.room.building',
                 'items.chargeType',
                 'utility.items.utilityType',
+                'utilities.items.utilityType',
                 'payments',
             ])
             ->findOrFail($id);
@@ -38,6 +39,7 @@ class InvoiceDocumentService
             'contract.room.building',
             'items.chargeType',
             'utility.items.utilityType',
+            'utilities.items.utilityType',
             'payments',
         ]);
 
@@ -203,6 +205,10 @@ class InvoiceDocumentService
 
     private function billingPeriod(Invoice $invoice): string
     {
+        if ($invoice->billing_month) {
+            return $invoice->billing_month->format('F Y');
+        }
+
         if ($invoice->relationLoaded('utility') && $invoice->utility?->billing_month) {
             return $invoice->utility->billing_month->format('F Y');
         }

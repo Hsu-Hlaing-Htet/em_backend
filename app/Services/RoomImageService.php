@@ -14,6 +14,8 @@ class RoomImageService
 {
     use AppliesListQuery;
 
+    public const FALLBACK_IMAGE_PATH = 'rooms/fallback-room.jpg';
+
     /**
      * @param  array<string, mixed>  $params
      */
@@ -102,9 +104,22 @@ class RoomImageService
 
     public function imageUrl(?string $imagePath): ?string
     {
+        return $this->resolveImageUrl($imagePath);
+    }
+
+    public function resolveImageUrl(?string $imagePath): ?string
+    {
         $normalizedPath = $this->normalizeImagePath($imagePath);
 
         if (! $normalizedPath) {
+            return null;
+        }
+
+        if (! Storage::disk('public')->exists($normalizedPath)) {
+            if (Storage::disk('public')->exists(self::FALLBACK_IMAGE_PATH)) {
+                return asset('storage/'.self::FALLBACK_IMAGE_PATH);
+            }
+
             return null;
         }
 

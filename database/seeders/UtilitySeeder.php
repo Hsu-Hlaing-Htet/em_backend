@@ -15,9 +15,6 @@ use Illuminate\Support\Collection;
 
 class UtilitySeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         $admin = User::query()
@@ -83,8 +80,6 @@ class UtilitySeeder extends Seeder
                 $utility->update(['total_amount' => $totalAmount]);
             }
         }
-
-        $this->seedPipelineUtilities($admin, $utilityTypes);
     }
 
     /**
@@ -119,10 +114,6 @@ class UtilitySeeder extends Seeder
             return 'pending';
         }
 
-        if ($monthIndex === $totalMonths - 2) {
-            return 'draft';
-        }
-
         return 'approved';
     }
 
@@ -135,7 +126,7 @@ class UtilitySeeder extends Seeder
         Contract $contract,
         int $monthIndex,
     ): float {
-        $totalAmount = 0;
+        $totalAmount = 0.0;
         $baseReading = 1200 + ($contract->room_id * 10) + ($monthIndex * 35);
 
         foreach ($utilityTypes->take(3) as $utilityTypeIndex => $utilityType) {
@@ -147,12 +138,16 @@ class UtilitySeeder extends Seeder
 
             $previousReading = $baseReading + ($utilityTypeIndex * 400);
             $usage = match ($utilityTypeIndex) {
-                0 => fake()->randomFloat(2, 80, 180),
-                1 => fake()->randomFloat(2, 120, 320),
-                default => fake()->randomFloat(2, 15, 45),
+                0 => 95 + ($monthIndex * 3),
+                1 => 160 + ($monthIndex * 5),
+                default => 22 + $monthIndex,
             };
             $currentReading = $previousReading + $usage;
-            $unitPrice = $rate?->unit_price ?? fake()->randomFloat(4, 80, 450);
+            $unitPrice = (float) ($rate?->unit_price ?? match ($utilityTypeIndex) {
+                0 => 120,
+                1 => 85,
+                default => 450,
+            });
             $amount = round($usage * $unitPrice, 2);
             $totalAmount += $amount;
 
@@ -168,47 +163,5 @@ class UtilitySeeder extends Seeder
         }
 
         return round($totalAmount, 2);
-    }
-
-    /**
-     * @param  Collection<int, UtilityType>  $utilityTypes
-     */
-    private function seedPipelineUtilities(User $admin, Collection $utilityTypes): void
-    {
-        $statuses = ['draft', 'pending', 'rejected'];
-        $rooms = Contract::query()
-            ->where('type', 'rent')
-            ->whereIn('status', ['draft', 'pending', 'rejected'])
-            ->pluck('room_id')
-            ->unique()
-            ->take(3);
-
-        foreach ($rooms as $index => $roomId) {
-            $contract = Contract::query()->where('room_id', $roomId)->first();
-
-            if (! $contract) {
-                continue;
-            }
-
-            $billingMonth = now()->subMonths($index + 1)->startOfMonth();
-            $status = $statuses[$index] ?? 'draft';
-
-            if (Utility::query()->where('room_id', $roomId)->whereDate('billing_month', $billingMonth->toDateString())->exists()) {
-                continue;
-            }
-
-            $utility = Utility::query()->create([
-                'room_id' => $roomId,
-                'billing_month' => $billingMonth->toDateString(),
-                'total_amount' => 0,
-                'status' => $status,
-                'created_by' => $admin->id,
-                'approved_by' => $status === 'rejected' ? $admin->id : null,
-                'approved_at' => $status === 'rejected' ? now()->subDays(3) : null,
-            ]);
-
-            $totalAmount = $this->seedUtilityItems($utility, $utilityTypes, $contract, $index);
-            $utility->update(['total_amount' => $totalAmount]);
-        }
     }
 }

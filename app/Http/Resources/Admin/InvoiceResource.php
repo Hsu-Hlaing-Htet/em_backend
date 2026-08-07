@@ -11,6 +11,12 @@ class InvoiceResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $contract = $this->relationLoaded('contract') ? $this->contract : null;
+        $user = $contract && $contract->relationLoaded('user') ? $contract->user : null;
+        $room = $contract && $contract->relationLoaded('room') ? $contract->room : null;
+        $building = $room && $room->relationLoaded('building') ? $room->building : null;
+        $profile = $user && $user->relationLoaded('profile') ? $user->profile : null;
+
         $paidAmount = $this->resolvePaidAmount();
         $totalDue = round((float) $this->total_amount + (float) $this->late_fee, 2);
         $remainingBalance = max(round($totalDue - $paidAmount, 2), 0);
@@ -31,7 +37,7 @@ class InvoiceResource extends JsonResource
             'total_amount' => $this->total_amount,
             'paid_amount' => $paidAmount,
             'remaining_balance' => $remainingBalance,
-            'property_unit' => $this->resolvePropertyUnit(),
+            'property_unit' => $this->resolvePropertyUnit($building?->building_name, $room?->room_number),
             'payment_method_name' => $this->resolvePaymentMethodName(),
             'notes' => $this->resolveNotes(),
             'contract' => $this->whenLoaded('contract', fn () => new ContractResource($this->contract)),
@@ -43,6 +49,10 @@ class InvoiceResource extends JsonResource
                         $item->invoice->setRelation('utility', $this->utility);
                     }
 
+                    if ($this->relationLoaded('utilities')) {
+                        $item->invoice->setRelation('utilities', $this->utilities);
+                    }
+
                     if ($this->relationLoaded('items')) {
                         $item->invoice->setRelation('items', $this->items);
                     }
@@ -50,25 +60,15 @@ class InvoiceResource extends JsonResource
 
                 return InvoiceItemResource::collection($this->items);
             }),
-            'customer_name' => $this->whenLoaded('contract', fn () => $this->contract?->user?->name),
-            'customer_email' => $this->whenLoaded('contract', fn () => $this->contract?->user?->email),
-            'customer_phone' => $this->when(
-                $this->relationLoaded('contract') && $this->contract?->relationLoaded('user'),
-                fn () => $this->contract?->user?->profile?->phone,
-            ),
-            'customer_nrc' => $this->when(
-                $this->relationLoaded('contract') && $this->contract?->relationLoaded('user'),
-                fn () => $this->contract?->user?->profile?->nrc,
-            ),
-            'building_name' => $this->when(
-                $this->relationLoaded('contract') && $this->contract?->relationLoaded('room'),
-                fn () => $this->contract?->room?->building?->building_name,
-            ),
-            'room_number' => $this->when(
-                $this->relationLoaded('contract') && $this->contract?->relationLoaded('room'),
-                fn () => $this->contract?->room?->room_number,
-            ),
-            'created_by_name' => $this->whenLoaded('creator', fn () => $this->creator?->name),
+            // Always emit nested display fields when the parent graph was loaded.
+            'customer_name' => $user?->name,
+            'customer_email' => $user?->email,
+            'customer_phone' => $profile?->phone,
+            'customer_nrc' => $profile?->nrc,
+            'customer_address' => $profile?->address,
+            'building_name' => $building?->building_name,
+            'room_number' => $room?->room_number,
+            'created_by_name' => $this->relationLoaded('creator') ? $this->creator?->name : null,
             'approved_by' => $this->when(
                 $this->approved_by,
                 fn () => [
@@ -77,7 +77,7 @@ class InvoiceResource extends JsonResource
                 ],
             ),
             'approved_at' => $this->approved_at?->toDateTimeString(),
-            'approved_by_name' => $this->whenLoaded('approver', fn () => $this->approver?->name),
+            'approved_by_name' => $this->relationLoaded('approver') ? $this->approver?->name : null,
             'created_at' => $this->created_at?->toDateTimeString(),
             'updated_at' => $this->updated_at?->toDateTimeString(),
         ];
@@ -100,6 +100,7 @@ class InvoiceResource extends JsonResource
             'paid' => 'paid',
             'partial' => 'partial',
             'overdue' => 'overdue',
+            'draft' => 'draft',
             default => 'unpaid',
         };
     }
@@ -112,6 +113,10 @@ class InvoiceResource extends JsonResource
 
         if ($this->type === 'utility') {
             return 'utility';
+        }
+
+        if ($this->type === 'sale') {
+            return 'sale';
         }
 
         if ($this->relationLoaded('items')) {
@@ -129,6 +134,10 @@ class InvoiceResource extends JsonResource
 
     private function resolveBillingPeriod(): ?string
     {
+        if ($this->billing_month) {
+            return Carbon::parse($this->billing_month)->format('F Y');
+        }
+
         if ($this->relationLoaded('utility') && $this->utility?->billing_month) {
             return Carbon::parse($this->utility->billing_month)->format('F Y');
         }
@@ -140,13 +149,8 @@ class InvoiceResource extends JsonResource
         return null;
     }
 
-    private function resolvePropertyUnit(): ?string
+    private function resolvePropertyUnit(?string $buildingName, ?string $roomNumber): ?string
     {
-        $contract = $this->relationLoaded('contract') ? $this->contract : null;
-        $room = $contract?->relationLoaded('room') ? $contract->room : null;
-        $buildingName = $room?->relationLoaded('building') ? $room->building?->building_name : null;
-        $roomNumber = $room?->room_number;
-
         if ($buildingName && $roomNumber) {
             return "{$buildingName} · {$roomNumber}";
         }
@@ -186,6 +190,6 @@ class InvoiceResource extends JsonResource
             ->pluck('description')
             ->filter()
             ->unique()
-            ->implode(' · ');
+            ->implode(' · ') ?: null;
     }
 }

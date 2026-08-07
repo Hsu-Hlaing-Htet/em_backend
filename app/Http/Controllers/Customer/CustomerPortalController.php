@@ -3,15 +3,18 @@
 namespace App\Http\Controllers\Customer;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Customer\StoreCustomerMaintenanceRequestRequest;
 use App\Http\Requests\Customer\StoreCustomerPaymentRequest;
 use App\Http\Requests\Customer\UpdateCustomerProfileRequest;
 use App\Http\Resources\Admin\ContractResource;
 use App\Http\Resources\Admin\InvoiceResource;
+use App\Http\Resources\Admin\MaintenanceRequestResource;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Http\Resources\Admin\ReceiptResource;
 use App\Http\Resources\Admin\ResidentResource;
 use App\Models\Contract;
 use App\Models\Invoice;
+use App\Models\MaintenanceRequest;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Services\CustomerPortalService;
@@ -31,7 +34,7 @@ class CustomerPortalController extends Controller
             ? $payment->receipt
             : $payment->receipt()->first();
 
-        $resource['receipt_id'] = $receipt?->status === 'issued' ? $receipt->id : null;
+        $resource['receipt_id'] = $receipt?->isDeliveredToCustomer() ? $receipt->id : null;
 
         return $resource;
     }
@@ -192,7 +195,7 @@ class CustomerPortalController extends Controller
 
         return response()->json([
             'message' => 'Payment proof uploaded successfully.',
-            'data' => new PaymentResource($payment->load(['invoice', 'paymentMethod'])),
+            'data' => new PaymentResource($payment),
         ]);
     }
 
@@ -240,5 +243,58 @@ class CustomerPortalController extends Controller
         return response()->json([
             'data' => $customerPortalService->paymentMethods(),
         ]);
+    }
+
+    public function maintenanceRooms(Request $request, CustomerPortalService $customerPortalService): JsonResponse
+    {
+        return response()->json([
+            'data' => $customerPortalService->maintenanceRooms($request->user()),
+        ]);
+    }
+
+    public function maintenanceRequests(Request $request, CustomerPortalService $customerPortalService): JsonResponse
+    {
+        $paginator = $customerPortalService->paginateMaintenanceRequests($request->user(), $request->all());
+
+        return response()->json([
+            'data' => [
+                'data' => MaintenanceRequestResource::collection($paginator->items())->resolve(),
+                'total' => $paginator->total(),
+            ],
+        ]);
+    }
+
+    public function showMaintenanceRequest(
+        Request $request,
+        MaintenanceRequest $maintenanceRequest,
+        CustomerPortalService $customerPortalService,
+    ): JsonResponse {
+        $maintenanceRequest = $customerPortalService->findMaintenanceRequest(
+            $request->user(),
+            $maintenanceRequest->id,
+        );
+
+        return response()->json([
+            'data' => new MaintenanceRequestResource($maintenanceRequest),
+        ]);
+    }
+
+    public function storeMaintenanceRequest(
+        StoreCustomerMaintenanceRequestRequest $request,
+        CustomerPortalService $customerPortalService,
+    ): JsonResponse {
+        try {
+            $maintenanceRequest = $customerPortalService->createMaintenanceRequest(
+                $request->user(),
+                $request->validated(),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Maintenance request submitted successfully.',
+            'data' => new MaintenanceRequestResource($maintenanceRequest),
+        ], 201);
     }
 }

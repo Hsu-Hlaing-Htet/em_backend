@@ -9,6 +9,7 @@ use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\Support\CustomerHistoryProfiles;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Collection;
 
 class ContractSeeder extends Seeder
 {
@@ -16,9 +17,9 @@ class ContractSeeder extends Seeder
 
     private int $rentSequence = 0;
 
-    /**
-     * Run the database seeds.
-     */
+    /** @var list<int> */
+    private array $usedRoomIds = [];
+
     public function run(): void
     {
         $admin = User::query()
@@ -43,37 +44,23 @@ class ContractSeeder extends Seeder
             ->where('duration_months', 12)
             ->first();
 
-        $saleRooms = Room::query()
-            ->whereIn('type', ['sale', 'both'])
-            ->where('status', 'available')
-            ->orderBy('id')
-            ->get();
-
-        $rentRooms = Room::query()
-            ->whereIn('type', ['rent', 'both'])
-            ->where('status', 'available')
-            ->orderBy('id')
-            ->get();
-
-        if ($saleRooms->count() < 12 || $rentRooms->count() < 12) {
-            $this->command?->warn('Not enough available rooms for contracts. Run RoomSeeder first.');
-
-            return;
-        }
-
         $profiles = CustomerHistoryProfiles::emailsByPersona();
-        $saleRoomIndex = 0;
-        $rentRoomIndex = 0;
+
+        $occupiedRentNumbers = ['A-501', 'D-402', 'D-403', 'C-501', 'A-801', 'D-601'];
+        $reservedSaleNumbers = ['C-301', 'C-302', 'F-102'];
+        $soldSaleNumbers = ['E-701', 'E-702', 'E-203'];
+        $keepAvailableNumbers = ['A-101', 'A-102', 'B-201', 'B-202', 'B-305'];
+
+        $takeRent = fn (array $preferred = []) => $this->takeRoom('rent', $preferred, $keepAvailableNumbers);
+        $takeSale = fn (array $preferred = []) => $this->takeRoom('sale', $preferred, $keepAvailableNumbers);
 
         foreach ($profiles['active_rent'] as $index => $email) {
             $customer = $customers->get($email);
-            $room = $rentRooms[$rentRoomIndex++];
+            $room = $takeRent($occupiedRentNumbers);
 
             if (! $customer || ! $room) {
                 continue;
             }
-
-            $useInstallment = $index === 1 && $installmentPlan;
 
             $this->createRentContract(
                 admin: $admin,
@@ -81,24 +68,21 @@ class ContractSeeder extends Seeder
                 room: $room,
                 status: 'active',
                 fullPaymentPlan: $fullPaymentPlan,
-                installmentPlan: $useInstallment ? $installmentPlan : null,
+                installmentPlan: $index === 1 ? $installmentPlan : null,
                 startDate: now()->subMonths(6),
                 endDate: now()->addMonths(6),
-                remark: 'Active rental agreement with monthly billing.',
-                occupyRoom: true,
+                remark: 'Active rental agreement with monthly MMK billing.',
+                roomStatus: 'occupied',
             );
         }
 
         foreach ($profiles['former_rent'] as $index => $email) {
             $customer = $customers->get($email);
-            $room = $rentRooms[$rentRoomIndex++];
+            $room = $takeRent();
 
             if (! $customer || ! $room) {
                 continue;
             }
-
-            $startDate = now()->subMonths(18);
-            $endDate = now()->subMonths(6);
 
             $this->createRentContract(
                 admin: $admin,
@@ -107,22 +91,37 @@ class ContractSeeder extends Seeder
                 status: 'completed',
                 fullPaymentPlan: $fullPaymentPlan,
                 installmentPlan: $index === 0 ? $installmentPlan : null,
-                startDate: $startDate,
-                endDate: $endDate,
+                startDate: now()->subMonths(18),
+                endDate: now()->subMonths(6),
                 remark: 'Lease completed. Security deposit returned and unit released.',
-                occupyRoom: false,
+                roomStatus: 'available',
+            );
+        }
+
+        $pendingSaleCustomer = $customers->get($profiles['pipeline'][0] ?? '') ?? $customers->first();
+        $pendingSaleRoom = $takeSale($reservedSaleNumbers);
+        if ($pendingSaleCustomer && $pendingSaleRoom) {
+            $this->createSaleContract(
+                admin: $admin,
+                customer: $pendingSaleCustomer,
+                room: $pendingSaleRoom,
+                status: 'pending',
+                fullPaymentPlan: $fullPaymentPlan,
+                installmentPlan: null,
+                startDate: now()->subWeeks(2),
+                endDate: null,
+                remark: 'Sale application pending management approval.',
+                roomStatus: 'reserved',
             );
         }
 
         foreach ($profiles['active_sale'] as $index => $email) {
             $customer = $customers->get($email);
-            $room = $saleRooms[$saleRoomIndex++];
+            $room = $takeSale($reservedSaleNumbers);
 
             if (! $customer || ! $room) {
                 continue;
             }
-
-            $useInstallment = $index === 2 && $installmentPlan;
 
             $this->createSaleContract(
                 admin: $admin,
@@ -130,25 +129,21 @@ class ContractSeeder extends Seeder
                 room: $room,
                 status: 'approved',
                 fullPaymentPlan: $fullPaymentPlan,
-                installmentPlan: $useInstallment ? $installmentPlan : null,
-                startDate: now()->subMonths(4),
-                endDate: $useInstallment ? now()->addMonths(8) : null,
-                remark: 'Approved sale contract with active payment schedule.',
-                markRoomSold: true,
+                installmentPlan: $index === 0 ? $installmentPlan : null,
+                startDate: now()->subMonths(2),
+                endDate: $index === 0 ? now()->addMonths(10) : null,
+                remark: 'Approved sale contract. Unit reserved pending completion.',
+                roomStatus: 'reserved',
             );
         }
 
         foreach ($profiles['former_sale'] as $index => $email) {
             $customer = $customers->get($email);
-            $room = $saleRooms[$saleRoomIndex++];
+            $room = $takeSale($soldSaleNumbers);
 
             if (! $customer || ! $room) {
                 continue;
             }
-
-            $startDate = now()->subMonths(24);
-            $endDate = now()->subMonths(12);
-            $useInstallment = $index === 1 && $installmentPlan;
 
             $this->createSaleContract(
                 admin: $admin,
@@ -156,54 +151,19 @@ class ContractSeeder extends Seeder
                 room: $room,
                 status: 'completed',
                 fullPaymentPlan: $fullPaymentPlan,
-                installmentPlan: $useInstallment ? $installmentPlan : null,
-                startDate: $startDate,
-                endDate: $endDate,
+                installmentPlan: null,
+                startDate: now()->subMonths(20),
+                endDate: now()->subMonths(12),
                 remark: 'Sale completed. Full purchase amount received and title transferred.',
-                markRoomSold: true,
+                roomStatus: 'sold',
             );
         }
 
-        $pipelineCustomers = collect($profiles['pipeline'])
-            ->map(fn (string $email) => $customers->get($email))
-            ->filter()
-            ->values();
+        foreach (['draft', 'pending', 'rejected'] as $index => $status) {
+            $customer = $customers->get($profiles['pipeline'][$index + 1] ?? '') ?? $customers->first();
+            $room = $takeRent();
 
-        $salePipelineStatuses = ['draft', 'draft', 'pending', 'pending', 'approved', 'rejected', 'rejected'];
-        $rentPipelineStatuses = ['draft', 'draft', 'pending', 'pending', 'active', 'active', 'rejected', 'rejected'];
-
-        foreach ($salePipelineStatuses as $index => $status) {
-            $room = $saleRooms[$saleRoomIndex++] ?? null;
-            $customer = $pipelineCustomers[$index % max($pipelineCustomers->count(), 1)] ?? null;
-
-            if (! $room || ! $customer) {
-                continue;
-            }
-
-            $this->createSaleContract(
-                admin: $admin,
-                customer: $customer,
-                room: $room,
-                status: $status,
-                fullPaymentPlan: $fullPaymentPlan,
-                installmentPlan: $index % 3 === 0 ? $installmentPlan : null,
-                startDate: now()->subMonths(2),
-                endDate: null,
-                remark: match ($status) {
-                    'draft' => 'Sale draft awaiting customer confirmation.',
-                    'pending' => 'Submitted for management approval.',
-                    'approved' => 'Approved sale contract in onboarding pipeline.',
-                    default => 'Rejected due to incomplete documentation.',
-                },
-                markRoomSold: $status === 'approved',
-            );
-        }
-
-        foreach ($rentPipelineStatuses as $index => $status) {
-            $room = $rentRooms[$rentRoomIndex++] ?? null;
-            $customer = $pipelineCustomers[($index + 2) % max($pipelineCustomers->count(), 1)] ?? null;
-
-            if (! $room || ! $customer) {
+            if (! $customer || ! $room) {
                 continue;
             }
 
@@ -213,18 +173,49 @@ class ContractSeeder extends Seeder
                 room: $room,
                 status: $status,
                 fullPaymentPlan: $fullPaymentPlan,
-                installmentPlan: $index % 4 === 0 ? $installmentPlan : null,
-                startDate: now()->subMonths(3),
-                endDate: now()->addMonths(9),
+                installmentPlan: null,
+                startDate: now()->subMonths(1),
+                endDate: now()->addMonths(11),
                 remark: match ($status) {
                     'draft' => 'Rent draft pending tenant review.',
                     'pending' => 'Awaiting lease approval.',
-                    'active' => 'Active rental agreement in admin pipeline.',
-                    default => 'Rejected due to failed background check.',
+                    default => 'Rejected due to incomplete documentation.',
                 },
-                occupyRoom: $status === 'active',
+                roomStatus: 'available',
             );
         }
+
+        $availableCount = Room::query()->where('status', 'available')->count();
+        $this->command?->info("Contracts seeded. Available rooms remaining: {$availableCount}");
+    }
+
+    /**
+     * @param  list<string>  $preferredNumbers
+     * @param  list<string>  $keepAvailableNumbers
+     */
+    private function takeRoom(string $kind, array $preferredNumbers = [], array $keepAvailableNumbers = []): ?Room
+    {
+        $types = $kind === 'sale' ? ['sale', 'both'] : ['rent', 'both'];
+
+        $query = Room::query()
+            ->whereIn('type', $types)
+            ->whereNotIn('id', $this->usedRoomIds)
+            ->whereNotIn('room_number', $keepAvailableNumbers)
+            ->orderBy('id');
+
+        $room = null;
+
+        if ($preferredNumbers !== []) {
+            $room = (clone $query)->whereIn('room_number', $preferredNumbers)->first();
+        }
+
+        $room ??= $query->first();
+
+        if ($room) {
+            $this->usedRoomIds[] = $room->id;
+        }
+
+        return $room;
     }
 
     private function createSaleContract(
@@ -237,14 +228,10 @@ class ContractSeeder extends Seeder
         \DateTimeInterface $startDate,
         ?\DateTimeInterface $endDate,
         string $remark,
-        bool $markRoomSold,
+        string $roomStatus,
     ): Contract {
         $useInstallment = $installmentPlan !== null;
         $plan = $useInstallment ? $installmentPlan : $fullPaymentPlan;
-        $isApproved = in_array($status, ['approved', 'completed'], true);
-        $approvedAt = in_array($status, ['approved', 'completed', 'rejected'], true)
-            ? $startDate
-            : null;
 
         $contract = Contract::query()->create([
             'contract_number' => 'S-'.str_pad((string) (++$this->saleSequence), 6, '0', STR_PAD_LEFT),
@@ -253,7 +240,7 @@ class ContractSeeder extends Seeder
             'payment_plan_id' => $plan?->id,
             'created_by' => $admin->id,
             'approved_by' => in_array($status, ['approved', 'completed', 'rejected'], true) ? $admin->id : null,
-            'approved_at' => $approvedAt,
+            'approved_at' => in_array($status, ['approved', 'completed', 'rejected'], true) ? $startDate : null,
             'contract_total' => $room->sale_price,
             'deposit_amount' => $room->booking_deposit_price,
             'type' => 'sale',
@@ -266,9 +253,7 @@ class ContractSeeder extends Seeder
             'remark' => $remark,
         ]);
 
-        if ($markRoomSold) {
-            $room->update(['status' => 'sold']);
-        }
+        $room->update(['status' => $roomStatus]);
 
         return $contract;
     }
@@ -283,7 +268,7 @@ class ContractSeeder extends Seeder
         \DateTimeInterface $startDate,
         \DateTimeInterface $endDate,
         string $remark,
-        bool $occupyRoom,
+        string $roomStatus,
     ): Contract {
         $useInstallment = $installmentPlan !== null;
         $plan = $useInstallment ? $installmentPlan : $fullPaymentPlan;
@@ -298,9 +283,7 @@ class ContractSeeder extends Seeder
             'payment_plan_id' => $plan?->id,
             'created_by' => $admin->id,
             'approved_by' => in_array($status, ['active', 'completed', 'rejected'], true) ? $admin->id : null,
-            'approved_at' => in_array($status, ['active', 'completed', 'rejected'], true)
-                ? $startDate
-                : null,
+            'approved_at' => in_array($status, ['active', 'completed', 'rejected'], true) ? $startDate : null,
             'contract_total' => round($room->rent_price * $durationMonths, 2),
             'deposit_amount' => $room->rent_deposit_price,
             'type' => 'rent',
@@ -313,11 +296,7 @@ class ContractSeeder extends Seeder
             'remark' => $remark,
         ]);
 
-        if ($occupyRoom) {
-            $room->update(['status' => 'occupied']);
-        } elseif ($status === 'completed') {
-            $room->update(['status' => 'available']);
-        }
+        $room->update(['status' => $roomStatus]);
 
         return $contract;
     }

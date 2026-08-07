@@ -16,8 +16,8 @@ class InvoiceItemResource extends JsonResource
         return [
             'id' => $this->id,
             'charge_type_id' => $this->charge_type_id,
-            'charge_type_name' => $this->whenLoaded('chargeType', fn () => $this->chargeType?->name),
-            'charge_type_slug' => $this->whenLoaded('chargeType', fn () => $this->chargeType?->slug),
+            'charge_type_name' => $this->relationLoaded('chargeType') ? $this->chargeType?->name : null,
+            'charge_type_slug' => $this->relationLoaded('chargeType') ? $this->chargeType?->slug : null,
             'description' => $this->resolveLineDescription($meter),
             'previous_reading' => $meter['previous_reading'],
             'current_reading' => $meter['current_reading'],
@@ -108,7 +108,7 @@ class InvoiceItemResource extends JsonResource
 
         $invoice = $this->relationLoaded('invoice') ? $this->invoice : null;
 
-        if ($invoice && $invoice->type === 'rent' && ! $invoice->utility_id) {
+        if ($invoice && $invoice->type === 'rent' && ! $invoice->utility_id && ! $meter['is_metered']) {
             return 'Rent';
         }
 
@@ -136,6 +136,20 @@ class InvoiceItemResource extends JsonResource
             return null;
         }
 
+        if ($invoice->relationLoaded('utilities')) {
+            foreach ($invoice->utilities as $utility) {
+                if (! $utility->relationLoaded('items')) {
+                    $utility->load('items.utilityType');
+                }
+
+                $matched = $this->matchAgainstUtilityItems($utility->items);
+
+                if ($matched) {
+                    return $matched;
+                }
+            }
+        }
+
         if (! $invoice->relationLoaded('utility') && $invoice->utility_id) {
             $invoice->load('utility.items.utilityType');
         }
@@ -150,7 +164,21 @@ class InvoiceItemResource extends JsonResource
             $utility->load('items.utilityType');
         }
 
-        $utilityItems = $utility->items;
+        $matched = $this->matchAgainstUtilityItems($utility->items);
+
+        if ($matched) {
+            return $matched;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  iterable<int, \App\Models\UtilityItem>  $utilityItems
+     */
+    private function matchAgainstUtilityItems($utilityItems): mixed
+    {
+        $utilityItems = collect($utilityItems);
 
         if ($utilityItems->isEmpty()) {
             return null;
@@ -175,16 +203,6 @@ class InvoiceItemResource extends JsonResource
 
             if ($matched) {
                 return $matched;
-            }
-        }
-
-        $invoiceItems = $invoice->relationLoaded('items') ? $invoice->items : null;
-
-        if ($invoiceItems) {
-            $index = $invoiceItems->values()->search(fn ($item) => $item->id === $this->id);
-
-            if ($index !== false && $utilityItems->values()->has($index)) {
-                return $utilityItems->values()->get($index);
             }
         }
 

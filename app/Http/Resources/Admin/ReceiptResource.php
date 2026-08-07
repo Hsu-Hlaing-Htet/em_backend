@@ -30,7 +30,13 @@ class ReceiptResource extends JsonResource
             'status' => $this->status,
             'approval_status' => $this->approval_status,
             'display_status' => $this->resolveDisplayStatus($invoice),
+            'delivery_status' => $this->resolveDeliveryStatus(),
+            'can_send_email' => $this->canBeEmailed(),
+            'is_sent' => $this->isDeliveredToCustomer(),
             'issued_at' => $this->issued_at?->toDateTimeString(),
+            'sent_at' => $this->sent_at?->toDateTimeString(),
+            'sent_by' => $this->sent_by,
+            'sent_by_name' => $this->relationLoaded('sender') ? $this->sender?->name : null,
             'invoice_number' => $invoice?->invoice_number,
             'invoice_amount' => $invoiceAmount,
             'paid_amount' => $paidAmount,
@@ -118,6 +124,14 @@ class ReceiptResource extends JsonResource
             return 'rejected';
         }
 
+        if ($this->isDeliveredToCustomer()) {
+            return 'sent';
+        }
+
+        if ($this->isApproved() && $this->sent_at === null) {
+            return 'approved_unsent';
+        }
+
         if ($this->status === Receipt::STATUS_DRAFT) {
             return 'draft';
         }
@@ -135,6 +149,23 @@ class ReceiptResource extends JsonResource
         }
 
         return $this->status ?: 'issued';
+    }
+
+    private function resolveDeliveryStatus(): string
+    {
+        if ($this->isDeliveredToCustomer()) {
+            return 'sent';
+        }
+
+        if ($this->isApproved() && $this->sent_at === null) {
+            return 'unsent';
+        }
+
+        if ($this->isPendingApproval()) {
+            return 'pending';
+        }
+
+        return 'draft';
     }
 
     private function resolvePaymentType($invoice): string

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\ChargeType;
 use App\Models\Contract;
+use App\Models\Invoice;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Utility;
@@ -14,9 +15,6 @@ use Illuminate\Support\Collection;
 
 class InvoiceSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         BillingSeederSupport::resetSequences();
@@ -50,41 +48,143 @@ class InvoiceSeeder extends Seeder
             ->get()
             ->groupBy('room_id');
 
+        $activeRentSeeded = false;
+
         foreach ($contracts as $contract) {
-            match (true) {
-                $contract->type === 'rent' && $contract->status === 'active' => $this->seedActiveRentInvoices($admin, $contract, $chargeTypes, $utilities),
-                $contract->type === 'rent' && $contract->status === 'completed' => $this->seedCompletedRentInvoices($admin, $contract, $chargeTypes, $utilities),
-                $contract->type === 'sale' && in_array($contract->status, ['approved', 'completed'], true) => $this->seedSaleInvoices($admin, $contract, $chargeTypes),
-                default => null,
-            };
+            if ($contract->type === 'rent' && $contract->status === 'active') {
+                if (! $activeRentSeeded) {
+                    $this->seedPrimaryActiveRentScenario($admin, $contract, $chargeTypes, $utilities);
+                    $activeRentSeeded = true;
+                } else {
+                    $this->seedSecondaryActiveRentInvoices($admin, $contract, $chargeTypes, $utilities);
+                }
+
+                continue;
+            }
+
+            if ($contract->type === 'rent' && $contract->status === 'completed') {
+                $this->seedCompletedRentInvoices($admin, $contract, $chargeTypes, $utilities);
+
+                continue;
+            }
+
+            if ($contract->type === 'sale' && in_array($contract->status, ['approved', 'completed'], true)) {
+                $this->seedSaleInvoices($admin, $contract, $chargeTypes);
+            }
         }
+    }
+
+    /**
+     * Guarantees unpaid, partial, and paid invoices for the primary occupied rental.
+     *
+     * @param  Collection<string, \App\Models\ChargeType>  $chargeTypes
+     * @param  Collection<int|string, Collection<int, Utility>>  $utilities
+     */
+    private function seedPrimaryActiveRentScenario(
+        User $admin,
+        Contract $contract,
+        Collection $chargeTypes,
+        Collection $utilities,
+    ): void {
+        $rent = (float) $contract->room->rent_price;
+        $start = Carbon::parse($contract->start_date)->startOfMonth();
+
+        // Paid historical months
+        foreach ([0, 1, 2] as $index) {
+            $month = $start->copy()->addMonths($index);
+            $issuedDate = $month->copy()->day(min((int) ($contract->billing_day ?: 5), 28));
+
+            BillingSeederSupport::createInvoice(
+                admin: $admin,
+                contractId: $contract->id,
+                utilityId: null,
+                type: 'rent',
+                status: 'paid',
+                issuedDate: $issuedDate,
+                dueDate: $issuedDate->copy()->addDays(7),
+                items: [[
+                    'charge_type_id' => $chargeTypes->get('monthly-rent')?->id,
+                    'description' => 'Monthly rent — '.$month->format('F Y'),
+                    'amount' => $rent,
+                ]],
+            );
+        }
+
+        // Partially paid invoice
+        $partialMonth = $start->copy()->addMonths(3);
+        $partialIssued = $partialMonth->copy()->day(min((int) ($contract->billing_day ?: 5), 28));
+        BillingSeederSupport::createInvoice(
+            admin: $admin,
+            contractId: $contract->id,
+            utilityId: null,
+            type: 'rent',
+            status: 'partial',
+            issuedDate: $partialIssued,
+            dueDate: $partialIssued->copy()->addDays(7),
+            items: [[
+                'charge_type_id' => $chargeTypes->get('monthly-rent')?->id,
+                'description' => 'Monthly rent — '.$partialMonth->format('F Y'),
+                'amount' => $rent,
+            ]],
+        );
+
+        // Unpaid issued invoice (no payment created later for this one except optional rejected)
+        $unpaidMonth = $start->copy()->addMonths(4);
+        $unpaidIssued = $unpaidMonth->copy()->day(min((int) ($contract->billing_day ?: 5), 28));
+        BillingSeederSupport::createInvoice(
+            admin: $admin,
+            contractId: $contract->id,
+            utilityId: null,
+            type: 'rent',
+            status: 'issued',
+            issuedDate: $unpaidIssued,
+            dueDate: $unpaidIssued->copy()->addDays(14),
+            items: [[
+                'charge_type_id' => $chargeTypes->get('monthly-rent')?->id,
+                'description' => 'Monthly rent — '.$unpaidMonth->format('F Y'),
+                'amount' => $rent,
+            ]],
+        );
+
+        // Current overdue-style open invoice used for rejected payment scenario
+        $openMonth = $start->copy()->addMonths(5);
+        $openIssued = $openMonth->copy()->day(min((int) ($contract->billing_day ?: 5), 28));
+        BillingSeederSupport::createInvoice(
+            admin: $admin,
+            contractId: $contract->id,
+            utilityId: null,
+            type: 'rent',
+            status: 'issued',
+            issuedDate: $openIssued,
+            dueDate: now()->subDays(3),
+            items: [[
+                'charge_type_id' => $chargeTypes->get('monthly-rent')?->id,
+                'description' => 'Monthly rent — '.$openMonth->format('F Y'),
+                'amount' => $rent,
+            ]],
+            lateFee: 25000,
+        );
+
+        $this->seedUtilityInvoices($admin, $contract, $chargeTypes, $utilities, onlyPaid: false);
     }
 
     /**
      * @param  Collection<string, \App\Models\ChargeType>  $chargeTypes
      * @param  Collection<int|string, Collection<int, Utility>>  $utilities
      */
-    private function seedActiveRentInvoices(
+    private function seedSecondaryActiveRentInvoices(
         User $admin,
         Contract $contract,
         Collection $chargeTypes,
         Collection $utilities,
     ): void {
+        $rent = (float) $contract->room->rent_price;
         $start = Carbon::parse($contract->start_date)->startOfMonth();
-        $months = collect();
 
-        for ($index = 0; $index < 6; $index++) {
-            $months->push($start->copy()->addMonths($index));
-        }
-
-        foreach ($months as $index => $month) {
-            $issuedDate = $month->copy()->day(min((int) $contract->billing_day, 28));
-            $dueDate = $issuedDate->copy()->addDays(7);
-            $status = match ($index) {
-                0, 1, 2, 3 => 'paid',
-                4 => 'issued',
-                default => 'overdue',
-            };
+        foreach ([0, 1, 2] as $index) {
+            $month = $start->copy()->addMonths($index);
+            $issuedDate = $month->copy()->day(min((int) ($contract->billing_day ?: 5), 28));
+            $status = $index < 2 ? 'paid' : 'issued';
 
             BillingSeederSupport::createInvoice(
                 admin: $admin,
@@ -93,13 +193,12 @@ class InvoiceSeeder extends Seeder
                 type: 'rent',
                 status: $status,
                 issuedDate: $issuedDate,
-                dueDate: $dueDate,
+                dueDate: $issuedDate->copy()->addDays(7),
                 items: [[
                     'charge_type_id' => $chargeTypes->get('monthly-rent')?->id,
                     'description' => 'Monthly rent — '.$month->format('F Y'),
-                    'amount' => (float) $contract->room->rent_price,
+                    'amount' => $rent,
                 ]],
-                lateFee: $status === 'overdue' ? 25000 : 0,
             );
         }
 
@@ -121,8 +220,7 @@ class InvoiceSeeder extends Seeder
         $cursor = $start->copy();
 
         while ($cursor->lte($end)) {
-            $issuedDate = $cursor->copy()->day(min((int) $contract->billing_day, 28));
-            $dueDate = $issuedDate->copy()->addDays(7);
+            $issuedDate = $cursor->copy()->day(min((int) ($contract->billing_day ?: 5), 28));
 
             BillingSeederSupport::createInvoice(
                 admin: $admin,
@@ -131,7 +229,7 @@ class InvoiceSeeder extends Seeder
                 type: 'rent',
                 status: 'paid',
                 issuedDate: $issuedDate,
-                dueDate: $dueDate,
+                dueDate: $issuedDate->copy()->addDays(7),
                 items: [[
                     'charge_type_id' => $chargeTypes->get('monthly-rent')?->id,
                     'description' => 'Monthly rent — '.$cursor->format('F Y'),
@@ -167,9 +265,32 @@ class InvoiceSeeder extends Seeder
                 continue;
             }
 
+            if (Invoice::query()->where('utility_id', $utility->id)->exists()) {
+                continue;
+            }
+
             $issuedDate = $billingMonth->copy()->day(10);
-            $dueDate = $issuedDate->copy()->addDays(10);
             $status = $onlyPaid ? 'paid' : ($billingMonth->isCurrentMonth() ? 'issued' : 'paid');
+
+            $items = $utility->items()->with('utilityType')->get()->map(function ($item) use ($chargeTypes) {
+                return [
+                    'charge_type_id' => $chargeTypes->get('utility-charges')?->id,
+                    'description' => ($item->utilityType?->name ?? 'Utility').' — meter snapshot',
+                    'previous_reading' => $item->previous_reading,
+                    'current_reading' => $item->current_reading,
+                    'usage' => $item->usage,
+                    'unit_price' => $item->unit_price,
+                    'amount' => (float) $item->amount,
+                ];
+            })->all();
+
+            if ($items === []) {
+                $items = [[
+                    'charge_type_id' => $chargeTypes->get('utility-charges')?->id,
+                    'description' => 'Utility bill for '.$billingMonth->format('F Y'),
+                    'amount' => (float) $utility->total_amount,
+                ]];
+            }
 
             BillingSeederSupport::createInvoice(
                 admin: $admin,
@@ -178,12 +299,8 @@ class InvoiceSeeder extends Seeder
                 type: 'utility',
                 status: $status,
                 issuedDate: $issuedDate,
-                dueDate: $dueDate,
-                items: [[
-                    'charge_type_id' => $chargeTypes->get('utility-charges')?->id,
-                    'description' => 'Utility bill for '.$billingMonth->format('F Y'),
-                    'amount' => (float) $utility->total_amount,
-                ]],
+                dueDate: $issuedDate->copy()->addDays(10),
+                items: $items,
             );
         }
     }
@@ -218,7 +335,6 @@ class InvoiceSeeder extends Seeder
 
             for ($index = 0; $index < $contract->duration_months; $index++) {
                 $issuedDate = $startDate->copy()->addMonths($index + 1)->day(5);
-                $dueDate = $issuedDate->copy()->addDays(14);
                 $amount = $index === $contract->duration_months - 1
                     ? round($remaining, 2)
                     : $installmentAmount;
@@ -232,9 +348,9 @@ class InvoiceSeeder extends Seeder
                     contractId: $contract->id,
                     utilityId: null,
                     type: 'other',
-                    status: $isHistorical ? 'paid' : ($index === $contract->duration_months - 1 ? 'issued' : 'paid'),
+                    status: $isHistorical ? 'paid' : 'issued',
                     issuedDate: $issuedDate,
-                    dueDate: $dueDate,
+                    dueDate: $issuedDate->copy()->addDays(14),
                     items: [[
                         'charge_type_id' => $chargeTypes->get('sale-installment')?->id,
                         'description' => 'Sale installment '.($index + 1).' — '.$contract->contract_number,
@@ -246,14 +362,12 @@ class InvoiceSeeder extends Seeder
             return;
         }
 
-        $balanceStatus = $contract->status === 'completed' ? 'paid' : 'issued';
-
         BillingSeederSupport::createInvoice(
             admin: $admin,
             contractId: $contract->id,
             utilityId: null,
             type: 'other',
-            status: $balanceStatus,
+            status: $contract->status === 'completed' ? 'paid' : 'issued',
             issuedDate: $startDate->copy()->addDays(14),
             dueDate: $startDate->copy()->addDays(30),
             items: [[

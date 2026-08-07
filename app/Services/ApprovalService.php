@@ -2,9 +2,10 @@
 
 namespace App\Services;
 
+use App\Exceptions\ConcurrentConflictException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
-use InvalidArgumentException;
+use Illuminate\Support\Facades\DB;
 
 class ApprovalService
 {
@@ -13,40 +14,65 @@ class ApprovalService
      */
     public function transition(Model $model, string $toStatus, array $fromStatuses = []): Model
     {
-        if ($fromStatuses !== [] && ! in_array($model->status, $fromStatuses, true)) {
-            throw new InvalidArgumentException(
-                "Cannot transition from status '{$model->status}' to '{$toStatus}'."
-            );
-        }
+        return DB::transaction(function () use ($model, $toStatus, $fromStatuses): Model {
+            /** @var Model $locked */
+            $locked = $model->newQuery()
+                ->whereKey($model->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $model->update([
-            'status' => $toStatus,
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
-        ]);
+            if ($fromStatuses !== [] && ! in_array($locked->getAttribute('status'), $fromStatuses, true)) {
+                throw new ConcurrentConflictException(
+                    "Cannot transition from status '{$locked->getAttribute('status')}' to '{$toStatus}'."
+                );
+            }
 
-        return $model->fresh();
+            $locked->update([
+                'status' => $toStatus,
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+
+            return $locked->fresh();
+        });
     }
 
-    public function approve(Model $model): Model
+    /**
+     * @param  list<string>  $fromStatuses
+     */
+    public function approve(Model $model, array $fromStatuses = ['pending']): Model
     {
-        return $this->transition($model, 'approved');
+        return $this->transition($model, 'approved', $fromStatuses);
     }
 
-    public function reject(Model $model, ?string $reason = null): Model
+    public function reject(Model $model, ?string $reason = null, array $fromStatuses = ['pending', 'draft']): Model
     {
-        $attributes = [
-            'status' => 'rejected',
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
-        ];
+        return DB::transaction(function () use ($model, $reason, $fromStatuses): Model {
+            /** @var Model $locked */
+            $locked = $model->newQuery()
+                ->whereKey($model->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($reason !== null && in_array('rejection_reason', $model->getFillable(), true)) {
-            $attributes['rejection_reason'] = $reason;
-        }
+            if ($fromStatuses !== [] && ! in_array($locked->getAttribute('status'), $fromStatuses, true)) {
+                throw new ConcurrentConflictException(
+                    "Cannot reject from status '{$locked->getAttribute('status')}'."
+                );
+            }
 
-        $model->update($attributes);
+            $attributes = [
+                'status' => 'rejected',
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ];
 
-        return $model->fresh();
+            if ($reason !== null && in_array('rejection_reason', $locked->getFillable(), true)) {
+                $attributes['rejection_reason'] = $reason;
+            }
+
+            $locked->update($attributes);
+
+            return $locked->fresh();
+        });
     }
 }

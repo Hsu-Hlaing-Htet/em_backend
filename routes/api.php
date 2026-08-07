@@ -56,6 +56,10 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
     Route::get('receipts/{receipt}/document/download', [CustomerPortalController::class, 'downloadReceiptDocument']);
     Route::get('notifications', [CustomerPortalController::class, 'notifications']);
     Route::get('payment-methods', [CustomerPortalController::class, 'paymentMethods']);
+    Route::get('maintenance-rooms', [CustomerPortalController::class, 'maintenanceRooms']);
+    Route::get('maintenance-requests', [CustomerPortalController::class, 'maintenanceRequests']);
+    Route::post('maintenance-requests', [CustomerPortalController::class, 'storeMaintenanceRequest']);
+    Route::get('maintenance-requests/{maintenance_request}', [CustomerPortalController::class, 'showMaintenanceRequest']);
 });
 
 Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function (): void {

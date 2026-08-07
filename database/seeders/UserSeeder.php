@@ -97,18 +97,22 @@ class UserSeeder extends Seeder
         string $password,
         array $profileData
     ): void {
-        $user = User::query()->create([
-            'role_id' => $roleId,
-            'name' => $name,
-            'email' => $email,
-            'password' => $password,
-        ]);
+        $user = User::query()->firstOrCreate(
+            ['email' => $email],
+            [
+                'role_id' => $roleId,
+                'name' => $name,
+                'password' => $password,
+            ]
+        );
 
-        Profile::query()->create([
-            'user_id' => $user->id,
-            ...$profileData,
-            'avatar_path' => null,
-        ]);
+        Profile::query()->firstOrCreate(
+            ['user_id' => $user->id],
+            [
+                ...$profileData,
+                'avatar_path' => null,
+            ]
+        );
 
         $this->recordCredentials($user, $password);
     }

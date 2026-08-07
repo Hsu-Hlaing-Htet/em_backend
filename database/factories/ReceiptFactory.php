@@ -38,6 +38,7 @@ class ReceiptFactory extends Factory
             'status' => 'issued',
             'approval_status' => 'approved',
             'issued_at' => now(),
+            'sent_at' => now(),
             'approved_by' => User::factory()->admin(),
             'approved_at' => now(),
         ]);

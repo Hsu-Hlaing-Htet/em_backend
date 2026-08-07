@@ -74,7 +74,7 @@ class ReceiptDocumentService
     public function sendEmail(Receipt $receipt, array $data): void
     {
         if (! $receipt->canBeEmailed()) {
-            throw new InvalidArgumentException('Only approved and issued receipts can be emailed.');
+            throw new InvalidArgumentException('Only approved receipts awaiting delivery can be emailed.');
         }
 
         $receipt->loadMissing([
@@ -87,6 +87,11 @@ class ReceiptDocumentService
             throw new InvalidArgumentException('Customer email is required to send the receipt document.');
         }
 
+        $this->sendEmailToRecipient($receipt, $email);
+    }
+
+    public function sendEmailToRecipient(Receipt $receipt, string $email): void
+    {
         $filename = $this->filename($receipt);
 
         Mail::to($email)->send(new ReceiptDocumentMail(

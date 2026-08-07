@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Support\MaintenanceRequestOptions;
 use Illuminate\Validation\Rule;
 
 class StoreMaintenanceRequestRequest extends BaseAdminFormRequest
@@ -20,11 +21,15 @@ class StoreMaintenanceRequestRequest extends BaseAdminFormRequest
             'room_id' => ['required', 'integer', Rule::exists('rooms', 'id')],
             'user_id' => ['required', 'integer', Rule::exists('users', 'id')],
             'title' => ['required', 'string', 'max:255'],
+            'category' => ['required', 'string', Rule::in(MaintenanceRequestOptions::CATEGORIES)],
+            'priority' => ['required', 'string', Rule::in(MaintenanceRequestOptions::PRIORITIES)],
             'description' => ['nullable', 'string'],
             'status' => ['prohibited'],
             'created_by' => ['prohibited'],
             'approved_by' => ['prohibited'],
             'approved_at' => ['prohibited'],
+            'rejection_reason' => ['prohibited'],
+            'resolution_note' => ['prohibited'],
         ];
     }
 }

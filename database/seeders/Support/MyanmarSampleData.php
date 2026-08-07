@@ -130,4 +130,88 @@ final class MyanmarSampleData
             $townships[array_rand($townships)],
         );
     }
+
+    /**
+     * Deterministic bulk customers for volume seeding (idempotent emails).
+     *
+     * @return list<array{name: string, email: string, phone: string, nrc: string, dob: string, gender: string, address: string}>
+     */
+    public static function bulkCustomers(int $count = 80, int $startIndex = 21): array
+    {
+        $maleTitles = ['U', 'Ko', 'Mg'];
+        $femaleTitles = ['Daw', 'Ma'];
+        $givenNames = [
+            'Aung', 'Thura', 'Zaw', 'Myo', 'Lin', 'Naing', 'Htet', 'Win', 'Oo', 'Kyaw',
+            'Soe', 'Tun', 'Min', 'Phyo', 'Ye', 'Kaung', 'Hla', 'Nyein', 'Pyae', 'Thant',
+            'Su', 'Moe', 'Hnin', 'Yee', 'Thiri', 'Nandar', 'Chit', 'May', 'Khin', 'Aye',
+            'Ei', 'Phyu', 'Thin', 'Sandar', 'Wai', 'Thida', 'Myat', 'Cho', 'Nwe', 'Lai',
+        ];
+        $roads = [
+            'Pyay Road', 'Inya Road', 'Kabar Aye Pagoda Road', 'University Avenue',
+            'Shwe Gon Daing Road', 'Parami Road', 'Strand Road', 'Anawrahta Road',
+            'Bogyoke Aung San Road', 'Mahabandoola Road', 'U Wisara Road', 'Natmauk Road',
+        ];
+        $townships = [
+            'Kamayut Township, Yangon', 'Bahan Township, Yangon', 'Mayangone Township, Yangon',
+            'Hlaing Township, Yangon', 'Yankin Township, Yangon', 'Tamwe Township, Yangon',
+            'Sanchaung Township, Yangon', 'Dagon Township, Yangon', 'Thingangyun Township, Yangon',
+            'South Okkalapa Township, Yangon',
+        ];
+        $nrcCodes = ['YaKaNa', 'BaKaTa', 'LaKaNa', 'MaNyaTa', 'PaBaTa', 'TaKaNa'];
+
+        $customers = [];
+
+        for ($i = 0; $i < $count; $i++) {
+            $index = $startIndex + $i;
+            $isFemale = $index % 2 === 0;
+            $title = $isFemale
+                ? $femaleTitles[$index % count($femaleTitles)]
+                : $maleTitles[$index % count($maleTitles)];
+            $first = $givenNames[$index % count($givenNames)];
+            $second = $givenNames[($index * 3) % count($givenNames)];
+            $name = $title.' '.$first.' '.$second;
+            $email = sprintf('bulk%03d@rosewoodroyale.com', $index);
+            $phone = sprintf('+95 9 %03d %05d', 440 + ($index % 50), 20000 + $index);
+            $nrc = sprintf('12/%s(N)%06d', $nrcCodes[$index % count($nrcCodes)], 200000 + $index);
+            $year = 1984 + ($index % 18);
+            $month = 1 + ($index % 12);
+            $day = 1 + ($index % 27);
+
+            $customers[] = [
+                'name' => $name,
+                'email' => $email,
+                'phone' => $phone,
+                'nrc' => $nrc,
+                'dob' => sprintf('%04d-%02d-%02d', $year, $month, $day),
+                'gender' => $isFemale ? 'female' : 'male',
+                'address' => sprintf(
+                    'No. %d, %s, %s',
+                    10 + ($index % 180),
+                    $roads[$index % count($roads)],
+                    $townships[$index % count($townships)],
+                ),
+            ];
+        }
+
+        return $customers;
+    }
+
+    /**
+     * Extra Myanmar buildings for bulk seeding (deterministic names).
+     *
+     * @return list<array{building_name: string, location: string, description: string}>
+     */
+    public static function bulkBuildings(): array
+    {
+        return [
+            ['building_name' => 'Rosewood Garden Residences', 'location' => 'Yankin Township, Yangon, Myanmar', 'description' => 'Garden-facing mid-rise with clubhouse and covered parking.'],
+            ['building_name' => 'Rosewood Skyline Suites', 'location' => 'Tamwe Township, Yangon, Myanmar', 'description' => 'Skyline apartments near Kandawgyi with lift access and backup power.'],
+            ['building_name' => 'Bahan Green Apartments', 'location' => 'Bahan Township, Yangon, Myanmar', 'description' => 'Quiet green courtyard residences popular with young professionals.'],
+            ['building_name' => 'Kamayut Central Living', 'location' => 'Kamayut Township, Yangon, Myanmar', 'description' => 'Central Kamayut address with retail podium and 24-hour security.'],
+            ['building_name' => 'Shwe Gon Daing Heights', 'location' => 'Bahan Township, Yangon, Myanmar', 'description' => 'Elevated residences along Shwe Gon Daing with city views.'],
+            ['building_name' => 'Golden Pagoda Residences', 'location' => 'Dagon Township, Yangon, Myanmar', 'description' => 'Pagoda-view suites with concierge and visitor parking.'],
+            ['building_name' => 'Parami Park Condominium', 'location' => 'Hlaing Township, Yangon, Myanmar', 'description' => 'Family-friendly condominium beside Parami Park amenities.'],
+            ['building_name' => 'Emerald City Suites', 'location' => 'South Okkalapa Township, Yangon, Myanmar', 'description' => 'Value-focused suites with reliable water and generator backup.'],
+        ];
+    }
 }

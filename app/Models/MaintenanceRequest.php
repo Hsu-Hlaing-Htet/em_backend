@@ -11,7 +11,18 @@ class MaintenanceRequest extends Model
     use HasFactory;
 
     protected $fillable = [
-        'room_id', 'user_id', 'created_by', 'approved_by', 'approved_at', 'title', 'description', 'status',
+        'room_id',
+        'user_id',
+        'created_by',
+        'approved_by',
+        'approved_at',
+        'title',
+        'category',
+        'priority',
+        'description',
+        'status',
+        'rejection_reason',
+        'resolution_note',
     ];
 
     protected function casts(): array

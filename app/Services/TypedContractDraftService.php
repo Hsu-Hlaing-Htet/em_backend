@@ -6,8 +6,10 @@ use App\Models\Contract;
 use App\Models\Room;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\ContractDraftProfile;
+use App\Exceptions\ConcurrentConflictException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class TypedContractDraftService
@@ -94,28 +96,62 @@ class TypedContractDraftService
 
     public function approve(Contract $contract): Contract
     {
-        $this->assertDraftContract($contract);
+        return DB::transaction(function () use ($contract): Contract {
+            /** @var Contract $locked */
+            $locked = Contract::query()
+                ->whereKey($contract->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $contract = $this->approvalService->transition(
-            $contract,
-            $this->profile->activeStatus,
-            ['draft'],
-        );
-        $contract->room()->update(['status' => $this->profile->roomStatusOnApprove]);
+            $this->assertDraftContract($locked);
 
-        return $contract->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+            /** @var Room $room */
+            $room = Room::query()
+                ->whereKey($locked->room_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $hasActiveContract = Contract::query()
+                ->where('room_id', $room->id)
+                ->whereKeyNot($locked->id)
+                ->whereIn('status', ['active', 'approved'])
+                ->lockForUpdate()
+                ->exists();
+
+            if ($hasActiveContract) {
+                throw new ConcurrentConflictException('This room already has an active approved contract.');
+            }
+
+            $locked = $this->approvalService->transition(
+                $locked,
+                $this->profile->activeStatus,
+                ['draft'],
+            );
+
+            $room->update(['status' => $this->profile->roomStatusOnApprove]);
+
+            return $locked->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+        });
     }
 
     public function reject(Contract $contract, ?string $reason = null): Contract
     {
-        $this->assertDraftContract($contract);
+        return DB::transaction(function () use ($contract, $reason): Contract {
+            /** @var Contract $locked */
+            $locked = Contract::query()
+                ->whereKey($contract->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($reason !== null) {
-            $contract->update(['remark' => $reason]);
-        }
+            $this->assertDraftContract($locked);
 
-        return $this->approvalService->reject($contract)
-            ->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+            if ($reason !== null) {
+                $locked->update(['remark' => $reason]);
+            }
+
+            return $this->approvalService->reject($locked, null, ['draft'])
+                ->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+        });
     }
 
     /**
@@ -123,24 +159,32 @@ class TypedContractDraftService
      */
     public function create(array $data): Contract
     {
-        $room = Room::query()->findOrFail($data['room_id']);
-        $this->assertRoomAvailable($room);
-        $this->assertRoomType($room);
+        return DB::transaction(function () use ($data): Contract {
+            /** @var Room $room */
+            $room = Room::query()
+                ->whereKey($data['room_id'])
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $data = $this->applyRoomDefaults($data, $room);
-        $data = $this->normalizeInstallmentFields($data);
-        $this->assertContractTotal($data['contract_total']);
+            $this->assertRoomAvailable($room);
+            $this->assertRoomType($room);
+            $this->assertNoActiveContractForRoom($room->id);
 
-        $data['type'] = $this->profile->type;
-        $data['status'] = 'draft';
-        $data['contract_number'] = $this->generateContractNumber();
-        $data['created_by'] = Auth::id();
-        $data['approved_by'] = null;
-        $data['approved_at'] = null;
+            $data = $this->applyRoomDefaults($data, $room);
+            $data = $this->normalizeInstallmentFields($data);
+            $this->assertContractTotal($data['contract_total']);
 
-        return Contract::query()
-            ->create($data)
-            ->load(['user.profile', 'room.building', 'paymentPlan', 'creator']);
+            $data['type'] = $this->profile->type;
+            $data['status'] = 'draft';
+            $data['contract_number'] = $this->generateContractNumber();
+            $data['created_by'] = Auth::id();
+            $data['approved_by'] = null;
+            $data['approved_at'] = null;
+
+            return Contract::query()
+                ->create($data)
+                ->load(['user.profile', 'room.building', 'paymentPlan', 'creator']);
+        });
     }
 
     /**
@@ -238,7 +282,7 @@ class TypedContractDraftService
     private function assertDraftContract(Contract $contract): void
     {
         if ($contract->type !== $this->profile->type || $contract->status !== 'draft') {
-            throw new InvalidArgumentException($this->profile->draftOnlyMessage);
+            throw new ConcurrentConflictException($this->profile->draftOnlyMessage);
         }
     }
 
@@ -249,8 +293,25 @@ class TypedContractDraftService
         }
     }
 
+    private function assertNoActiveContractForRoom(int $roomId, ?int $ignoreContractId = null): void
+    {
+        $query = Contract::query()
+            ->where('room_id', $roomId)
+            ->whereIn('status', ['active', 'approved']);
+
+        if ($ignoreContractId) {
+            $query->whereKeyNot($ignoreContractId);
+        }
+
+        if ($query->exists()) {
+            throw new ConcurrentConflictException('This room already has an active approved contract.');
+        }
+    }
+
     private function assertRoomAvailable(Room $room, ?int $ignoreContractId = null): void
     {
+        $this->assertNoActiveContractForRoom($room->id, $ignoreContractId);
+
         if ($room->status !== 'available') {
             if ($ignoreContractId) {
                 $ownsRoom = Contract::query()

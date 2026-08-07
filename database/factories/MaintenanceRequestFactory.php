@@ -26,8 +26,12 @@ class MaintenanceRequestFactory extends Factory
             'approved_by' => null,
             'approved_at' => null,
             'title' => fake()->sentence(4),
+            'category' => fake()->randomElement(['plumbing', 'electrical', 'hvac', 'appliance', 'general']),
+            'priority' => fake()->randomElement(['low', 'medium', 'high']),
             'description' => fake()->optional(0.8)->paragraph(),
             'status' => fake()->randomElement(['pending', 'in_progress', 'completed', 'rejected']),
+            'rejection_reason' => null,
+            'resolution_note' => null,
         ];
     }
 

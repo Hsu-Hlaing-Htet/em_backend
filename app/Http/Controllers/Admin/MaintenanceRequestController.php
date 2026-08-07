@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\CompleteMaintenanceRequestRequest;
+use App\Http\Requests\Admin\RejectMaintenanceRequestRequest;
 use App\Http\Requests\Admin\StoreMaintenanceRequestRequest;
 use App\Http\Requests\Admin\UpdateMaintenanceRequestRequest;
 use App\Http\Resources\Admin\MaintenanceRequestResource;
@@ -96,11 +98,15 @@ class MaintenanceRequestController extends Controller
     }
 
     public function complete(
+        CompleteMaintenanceRequestRequest $request,
         MaintenanceRequest $maintenanceRequest,
         MaintenanceRequestService $maintenanceRequestService,
     ): JsonResponse {
         try {
-            $maintenanceRequest = $maintenanceRequestService->complete($maintenanceRequest);
+            $maintenanceRequest = $maintenanceRequestService->complete(
+                $maintenanceRequest,
+                $request->validated('resolution_note'),
+            );
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -112,11 +118,15 @@ class MaintenanceRequestController extends Controller
     }
 
     public function reject(
+        RejectMaintenanceRequestRequest $request,
         MaintenanceRequest $maintenanceRequest,
         MaintenanceRequestService $maintenanceRequestService,
     ): JsonResponse {
         try {
-            $maintenanceRequest = $maintenanceRequestService->reject($maintenanceRequest);
+            $maintenanceRequest = $maintenanceRequestService->reject(
+                $maintenanceRequest,
+                $request->validated('rejection_reason'),
+            );
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }

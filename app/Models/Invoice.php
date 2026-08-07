@@ -13,7 +13,7 @@ class Invoice extends Model
 
     protected $fillable = [
         'contract_id', 'utility_id', 'created_by', 'approved_by', 'approved_at', 'invoice_number', 'type',
-        'issued_date', 'due_date', 'late_fee', 'total_amount', 'status',
+        'issued_date', 'due_date', 'billing_month', 'late_fee', 'total_amount', 'status',
     ];
 
     protected function casts(): array
@@ -21,6 +21,7 @@ class Invoice extends Model
         return [
             'issued_date' => 'date',
             'due_date' => 'date',
+            'billing_month' => 'date',
             'late_fee' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'approved_at' => 'datetime',
@@ -29,6 +30,7 @@ class Invoice extends Model
 
     public function contract(): BelongsTo { return $this->belongsTo(Contract::class); }
     public function utility(): BelongsTo { return $this->belongsTo(Utility::class); }
+    public function utilities(): HasMany { return $this->hasMany(Utility::class); }
     public function items(): HasMany { return $this->hasMany(InvoiceItem::class); }
     public function payments(): HasMany { return $this->hasMany(Payment::class); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }

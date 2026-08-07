@@ -168,15 +168,14 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
     $receipt = Receipt::query()->create([
         'payment_id' => $payment->id,
         'receipt_number' => 'RCP-000154',
-        'status' => 'issued',
+        'status' => 'draft',
         'approval_status' => 'approved',
-        'issued_at' => '2027-07-20 10:00:00',
         'approved_at' => now(),
         'created_by' => $admin->id,
         'approved_by' => $admin->id,
     ]);
 
-    $receiptFilename = DocumentFilename::receipt($receipt->issued_at, $room->room_number, $receipt->receipt_number);
+    $receiptFilename = DocumentFilename::receipt($receipt->created_at, $room->room_number, $receipt->receipt_number);
 
     $this->actingAs($admin, 'sanctum')
         ->get("/api/receipts/{$receipt->id}/document/download")
@@ -186,11 +185,10 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
 
     $this->actingAs($customer, 'sanctum')
         ->get("/api/customer/receipts/{$receipt->id}/document/download")
-        ->assertOk()
-        ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="'.$receiptFilename.'"');
+        ->assertNotFound();
 
-    expect($receiptFilename)->toBe('RCP-2027-07-E-316-000154.pdf');
+    expect($receiptFilename)->toContain('RCP-')
+        ->and($receiptFilename)->toContain('E-316-000154.pdf');
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/utilities/{$utility->id}/document/email")
@@ -209,12 +207,22 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
     });
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/document/email")
+        ->postJson("/api/receipts/{$receipt->id}/document/email", [
+            'email' => $customer->email,
+        ])
         ->assertOk();
 
-    Mail::assertSent(ReceiptDocumentMail::class, function (ReceiptDocumentMail $mail) use ($receiptFilename) {
-        return $mail->filename === $receiptFilename && str_starts_with($mail->documentPdf, '%PDF');
+    Mail::assertSent(ReceiptDocumentMail::class, function (ReceiptDocumentMail $mail) use ($receiptFilename, $customer) {
+        return $mail->hasTo($customer->email)
+            && $mail->filename === $receiptFilename
+            && str_starts_with($mail->documentPdf, '%PDF');
     });
+
+    $this->actingAs($customer, 'sanctum')
+        ->get("/api/customer/receipts/{$receipt->id}/document/download")
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf')
+        ->assertHeader('content-disposition', 'attachment; filename="'.$receiptFilename.'"');
 });
 
 test('invoice document html uses rosewood invoice template fields', function () {
@@ -378,6 +386,8 @@ test('receipt document html uses rosewood receipt template fields', function () 
         'status' => 'issued',
         'approval_status' => 'approved',
         'issued_at' => '2027-07-20 10:00:00',
+        'sent_at' => '2027-07-20 10:00:00',
+        'sent_by' => $admin->id,
         'approved_at' => now(),
         'created_by' => $admin->id,
         'approved_by' => $admin->id,

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Support\BillingEagerLoads;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -27,21 +29,13 @@ class ReceiptService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = Receipt::query()->with([
-            'payment.invoice.contract.user.profile',
-            'payment.invoice.contract.room.building',
-            'payment.invoice.items.chargeType',
-            'payment.invoice.utility.items.utilityType',
-            'payment.invoice.payments',
-            'payment.paymentMethod',
-            'creator',
-            'approver',
-        ]);
+        $query = Receipt::query()->with(BillingEagerLoads::receipt());
 
         $this->applyReceiptSearch($query, $params);
         $this->applyBuildingRoomFilters($query, $params, 'payment.invoice.contract.room');
         $this->applyDateRangeFilter($query, $params, 'issued_at', 'issued_from', 'issued_to');
         $this->applyApprovalStatusFilter($query, $params);
+        $this->applyDeliveryStatusFilter($query, $params);
         $this->applyStatusFilter($query, $params);
         $this->applyListQuery($query, $params, []);
 
@@ -96,19 +90,29 @@ class ReceiptService
         $query->where('receipts.approval_status', $params['approval_status']);
     }
 
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Receipt>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyDeliveryStatusFilter($query, array $params): void
+    {
+        if (empty($params['delivery_status'])) {
+            return;
+        }
+
+        match ($params['delivery_status']) {
+            'sent' => $query->deliveredToCustomer(),
+            'unsent' => $query
+                ->where('approval_status', Receipt::APPROVAL_APPROVED)
+                ->whereNull('sent_at'),
+            default => null,
+        };
+    }
+
     public function find(int $id): Receipt
     {
         return Receipt::query()
-            ->with([
-                'payment.invoice.contract.user.profile',
-                'payment.invoice.contract.room.building',
-                'payment.invoice.items.chargeType',
-                'payment.invoice.utility.items.utilityType',
-                'payment.invoice.payments',
-                'payment.paymentMethod',
-                'creator',
-                'approver',
-            ])
+            ->with(BillingEagerLoads::receipt())
             ->findOrFail($id);
     }
 
@@ -146,76 +150,146 @@ class ReceiptService
 
     public function approve(Receipt $receipt): Receipt
     {
-        if (! $receipt->isPendingApproval()) {
-            throw new InvalidArgumentException('Only pending receipts can be approved.');
-        }
+        return DB::transaction(function () use ($receipt): Receipt {
+            /** @var Receipt $locked */
+            $locked = Receipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $receipt->update([
-            'approval_status' => Receipt::APPROVAL_APPROVED,
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
-        ]);
+            if (! $locked->isPendingApproval()) {
+                throw new ConcurrentConflictException('Only pending receipts can be approved.');
+            }
 
-        return $receipt->fresh([
-            'payment.invoice.contract.user.profile',
-            'payment.invoice.contract.room.building',
-            'payment.invoice.items.chargeType',
-            'payment.invoice.utility.items.utilityType',
-            'payment.invoice.payments',
-            'payment.paymentMethod',
-            'creator',
-            'approver',
-        ]);
+            $locked->update([
+                'approval_status' => Receipt::APPROVAL_APPROVED,
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+
+            return $this->find($locked->id);
+        });
     }
 
     public function reject(Receipt $receipt): Receipt
     {
-        if (! $receipt->isPendingApproval()) {
-            throw new InvalidArgumentException('Only pending receipts can be rejected.');
-        }
+        return DB::transaction(function () use ($receipt): Receipt {
+            /** @var Receipt $locked */
+            $locked = Receipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $receipt->update([
-            'approval_status' => Receipt::APPROVAL_REJECTED,
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
-        ]);
+            if (! $locked->isPendingApproval()) {
+                throw new ConcurrentConflictException('Only pending receipts can be rejected.');
+            }
 
-        return $receipt->fresh([
-            'payment.invoice.contract.user.profile',
-            'payment.invoice.contract.room.building',
-            'payment.invoice.items.chargeType',
-            'payment.invoice.utility.items.utilityType',
-            'payment.invoice.payments',
-            'payment.paymentMethod',
-            'creator',
-            'approver',
-        ]);
+            $locked->update([
+                'approval_status' => Receipt::APPROVAL_REJECTED,
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+
+            return $this->find($locked->id);
+        });
     }
 
     public function issue(Receipt $receipt): Receipt
     {
-        if (! $receipt->canBeIssued()) {
-            throw new InvalidArgumentException('Only approved draft receipts can be issued.');
-        }
+        return DB::transaction(function () use ($receipt): Receipt {
+            /** @var Receipt $locked */
+            $locked = Receipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $path = $this->generatePdf($receipt);
+            if (! $locked->canBeIssued()) {
+                if ($locked->isDeliveredToCustomer()) {
+                    throw new ConcurrentConflictException('This receipt has already been sent to the customer.');
+                }
 
-        $receipt->update([
-            'status' => Receipt::STATUS_ISSUED,
-            'issued_at' => now(),
-            'receipt_pdf_path' => $path,
-        ]);
+                if ($locked->status === Receipt::STATUS_ISSUED && $locked->sent_at === null) {
+                    throw new ConcurrentConflictException('This receipt has already been issued.');
+                }
 
-        return $receipt->fresh([
-            'payment.invoice.contract.user.profile',
-            'payment.invoice.contract.room.building',
-            'payment.invoice.items.chargeType',
-            'payment.invoice.utility.items.utilityType',
-            'payment.invoice.payments',
-            'payment.paymentMethod',
-            'creator',
-            'approver',
-        ]);
+                throw new InvalidArgumentException('Only approved draft receipts can be prepared for delivery.');
+            }
+
+            $path = $this->generatePdf($locked);
+
+            $locked->update([
+                'receipt_pdf_path' => $path,
+            ]);
+
+            return $this->find($locked->id);
+        });
+    }
+
+    /**
+     * @param  array{email?: string|null}  $data
+     */
+    public function deliverByEmail(Receipt $receipt, array $data = []): Receipt
+    {
+        return DB::transaction(function () use ($receipt, $data): Receipt {
+            /** @var Receipt $locked */
+            $locked = Receipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->approval_status === Receipt::APPROVAL_REJECTED) {
+                throw new InvalidArgumentException('Rejected receipts cannot be sent to the customer.');
+            }
+
+            if (! $locked->isApproved()) {
+                throw new InvalidArgumentException('Only approved receipts can be sent to the customer.');
+            }
+
+            if ($locked->sent_at !== null) {
+                throw new ConcurrentConflictException('This receipt has already been sent to the customer.');
+            }
+
+            $locked->loadMissing(['payment.invoice.contract.user.profile']);
+
+            $customer = $locked->payment?->invoice?->contract?->user;
+
+            if (! $customer) {
+                throw new InvalidArgumentException('Unable to resolve the receipt customer.');
+            }
+
+            $email = isset($data['email']) && $data['email'] !== null && $data['email'] !== ''
+                ? (string) $data['email']
+                : $customer->email;
+
+            if (! $email) {
+                throw new InvalidArgumentException('Customer email is required to send the receipt.');
+            }
+
+            if (strcasecmp($email, (string) $customer->email) !== 0) {
+                throw new InvalidArgumentException('Receipt can only be sent to the contract customer email.');
+            }
+
+            if (! $locked->receipt_pdf_path) {
+                $locked->update([
+                    'receipt_pdf_path' => $this->generatePdf($locked),
+                ]);
+            }
+
+            try {
+                $this->receiptDocumentService->sendEmailToRecipient($locked->fresh(), $email);
+            } catch (\Throwable $exception) {
+                throw new InvalidArgumentException('Unable to send receipt email: '.$exception->getMessage());
+            }
+
+            $locked->update([
+                'status' => Receipt::STATUS_ISSUED,
+                'issued_at' => $locked->issued_at ?? now(),
+                'sent_at' => now(),
+                'sent_by' => Auth::id(),
+            ]);
+
+            return $this->find($locked->id);
+        });
     }
 
     public function generatePdf(Receipt $receipt): string

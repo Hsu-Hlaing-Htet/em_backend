@@ -5,14 +5,18 @@ namespace App\Services;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Models\Contract;
 use App\Models\Invoice;
+use App\Models\MaintenanceRequest;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Receipt;
+use App\Models\Room;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class CustomerPortalService
@@ -24,6 +28,7 @@ class CustomerPortalService
         private readonly ReceiptDocumentService $receiptDocumentService,
         private readonly SaleContractDocumentService $saleContractDocumentService,
         private readonly RentContractDocumentService $rentContractDocumentService,
+        private readonly MaintenanceRequestService $maintenanceRequestService,
     ) {}
 
     public function dashboardSummary(User $user): array
@@ -66,7 +71,14 @@ class CustomerPortalService
             ->sum('amount');
 
         $recentPayments = (clone $paymentQuery)
-            ->with(['invoice', 'paymentMethod'])
+            ->with([
+                'invoice.contract.user.profile',
+                'invoice.contract.room.building',
+                'invoice.items.chargeType',
+                'invoice.payments',
+                'paymentMethod',
+                'receipt',
+            ])
             ->latest('payment_date')
             ->limit(5)
             ->get();
@@ -178,7 +190,14 @@ class CustomerPortalService
     public function paginatePayments(User $user, array $params): LengthAwarePaginator
     {
         $query = Payment::query()
-            ->with(['invoice.contract.room.building', 'paymentMethod', 'receipt'])
+            ->with([
+                'invoice.contract.user.profile',
+                'invoice.contract.room.building',
+                'invoice.items.chargeType',
+                'invoice.payments',
+                'paymentMethod',
+                'receipt',
+            ])
             ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id));
 
         if (! empty($params['invoice_id'])) {
@@ -204,7 +223,14 @@ class CustomerPortalService
     public function findPayment(User $user, int $paymentId): Payment
     {
         return Payment::query()
-            ->with(['invoice.contract.user.profile', 'invoice.contract.room.building', 'paymentMethod', 'receipt'])
+            ->with([
+                'invoice.contract.user.profile',
+                'invoice.contract.room.building',
+                'invoice.items.chargeType',
+                'invoice.payments',
+                'paymentMethod',
+                'receipt',
+            ])
             ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
             ->findOrFail($paymentId);
     }
@@ -214,27 +240,35 @@ class CustomerPortalService
      */
     public function submitPayment(User $user, array $data, ?UploadedFile $proof = null): Payment
     {
-        $invoice = $this->findInvoice($user, (int) $data['invoice_id']);
+        return DB::transaction(function () use ($user, $data, $proof): Payment {
+            $invoice = $this->findInvoice($user, (int) $data['invoice_id']);
 
-        if (! in_array($invoice->status, ['issued', 'partial', 'overdue', 'unpaid'], true)) {
-            throw new InvalidArgumentException('This invoice is not open for payment.');
-        }
+            /** @var \App\Models\Invoice $lockedInvoice */
+            $lockedInvoice = \App\Models\Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if (! $proof) {
-            throw new InvalidArgumentException('Payment proof is required.');
-        }
+            if (! in_array($lockedInvoice->status, ['issued', 'partial', 'overdue', 'unpaid'], true)) {
+                throw new InvalidArgumentException('This invoice is not open for payment.');
+            }
 
-        unset($data['amount'], $data['proof'], $data['status'], $data['approved_by'], $data['approved_at']);
+            if (! $proof) {
+                throw new InvalidArgumentException('Payment proof is required.');
+            }
 
-        $payment = $this->paymentService->create([
-            ...$data,
-            'amount' => null,
-            'created_by' => $user->id,
-            'status' => 'pending',
-        ]);
+            unset($data['amount'], $data['proof'], $data['status'], $data['approved_by'], $data['approved_at']);
 
-        return $this->paymentService->uploadProof($payment, $proof)
-            ->load(['invoice', 'paymentMethod']);
+            $payment = $this->paymentService->create([
+                ...$data,
+                'invoice_id' => $lockedInvoice->id,
+                'amount' => null,
+                'created_by' => $user->id,
+                'status' => 'pending',
+            ]);
+
+            return $this->paymentService->uploadProof($payment, $proof);
+        });
     }
 
     public function uploadPaymentProof(User $user, int $paymentId, UploadedFile $file): Payment
@@ -250,8 +284,14 @@ class CustomerPortalService
     public function paginateReceipts(User $user, array $params): LengthAwarePaginator
     {
         $query = Receipt::query()
-            ->with(['payment.invoice.contract.room.building', 'payment.paymentMethod'])
-            ->where('status', 'issued')
+            ->with([
+                'payment.invoice.contract.user.profile',
+                'payment.invoice.contract.room.building',
+                'payment.invoice.items.chargeType',
+                'payment.invoice.payments',
+                'payment.paymentMethod',
+            ])
+            ->deliveredToCustomer()
             ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id));
 
         return $query->latest('issued_at')->paginate((int) ($params['per_page'] ?? 10));
@@ -261,7 +301,7 @@ class CustomerPortalService
     {
         return Receipt::query()
             ->with(['payment.invoice.contract.user.profile', 'payment.invoice.contract.room.building', 'payment.paymentMethod'])
-            ->where('status', 'issued')
+            ->deliveredToCustomer()
             ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
             ->findOrFail($receiptId);
     }
@@ -320,9 +360,9 @@ class CustomerPortalService
 
         $issuedReceipts = Receipt::query()
             ->with(['payment.invoice'])
-            ->where('status', 'issued')
+            ->deliveredToCustomer()
             ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
-            ->latest('issued_at')
+            ->latest('sent_at')
             ->limit(10)
             ->get();
 
@@ -333,7 +373,7 @@ class CustomerPortalService
                 'title' => "Receipt {$receipt->receipt_number} is ready",
                 'message' => "Payment for {$receipt->payment?->invoice?->invoice_number} · Download your receipt",
                 'status' => $receipt->status,
-                'created_at' => $receipt->issued_at?->toDateTimeString() ?? $receipt->updated_at?->toDateTimeString(),
+                'created_at' => $receipt->sent_at?->toDateTimeString() ?? $receipt->issued_at?->toDateTimeString() ?? $receipt->updated_at?->toDateTimeString(),
                 'resource_id' => $receipt->id,
             ]);
         }
@@ -419,6 +459,112 @@ class CustomerPortalService
                 'name' => $method->name,
             ])
             ->all();
+    }
+
+    /**
+     * Rooms linked to the customer's active/approved contracts.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function maintenanceRooms(User $user): array
+    {
+        return $this->eligibleMaintenanceRooms($user)
+            ->map(fn (Room $room) => [
+                'id' => $room->id,
+                'room_number' => $room->room_number,
+                'building_name' => $room->building?->building_name,
+                'label' => trim(($room->building?->building_name ? $room->building->building_name.' · ' : '').$room->room_number),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    public function paginateMaintenanceRequests(User $user, array $params): LengthAwarePaginator
+    {
+        $query = MaintenanceRequest::query()
+            ->with(['room.building', 'user', 'approver'])
+            ->where('user_id', $user->id);
+
+        if (! empty($params['status'])) {
+            $query->where('status', $params['status']);
+        }
+
+        if (! empty($params['search'])) {
+            $search = $params['search'];
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('category', 'like', '%'.$search.'%')
+                    ->orWhereHas('room', fn (Builder $roomQuery) => $roomQuery->where('room_number', 'like', '%'.$search.'%'));
+            });
+        }
+
+        return $query->latest('id')->paginate((int) ($params['per_page'] ?? 10));
+    }
+
+    public function findMaintenanceRequest(User $user, int $maintenanceRequestId): MaintenanceRequest
+    {
+        return MaintenanceRequest::query()
+            ->with(['room.building', 'user', 'creator', 'approver'])
+            ->where('user_id', $user->id)
+            ->findOrFail($maintenanceRequestId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function createMaintenanceRequest(User $user, array $data): MaintenanceRequest
+    {
+        $roomIds = $this->eligibleMaintenanceRoomIds($user);
+
+        if (! in_array((int) $data['room_id'], $roomIds, true)) {
+            throw new InvalidArgumentException('Selected room is not linked to an active approved contract.');
+        }
+
+        return $this->maintenanceRequestService->create([
+            'room_id' => (int) $data['room_id'],
+            'user_id' => $user->id,
+            'title' => $data['title'],
+            'category' => $data['category'],
+            'priority' => $data['priority'],
+            'description' => $data['description'] ?? null,
+        ])->load(['room.building', 'user', 'creator', 'approver']);
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function eligibleMaintenanceRoomIds(User $user): array
+    {
+        return Contract::query()
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['approved', 'active'])
+            ->pluck('room_id')
+            ->unique()
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return Collection<int, Room>
+     */
+    private function eligibleMaintenanceRooms(User $user): Collection
+    {
+        $roomIds = $this->eligibleMaintenanceRoomIds($user);
+
+        if ($roomIds === []) {
+            return collect();
+        }
+
+        return Room::query()
+            ->with('building')
+            ->whereIn('id', $roomIds)
+            ->orderBy('room_number')
+            ->get();
     }
 
     /**

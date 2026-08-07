@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Models\Utility;
 use App\Models\UtilityItem;
 use App\Models\UtilityRate;
@@ -35,7 +36,7 @@ class UtilityService
                 $builder->whereHas('room', fn ($roomQuery) => $roomQuery
                     ->where('room_number', 'like', "%{$search}%")
                     ->orWhereHas('building', fn ($buildingQuery) => $buildingQuery
-                        ->where('name', 'like', "%{$search}%")));
+                        ->where('building_name', 'like', "%{$search}%")));
             });
         }
 
@@ -155,8 +156,9 @@ class UtilityService
                     ->where('room_id', $roomId)
                     ->whereDate('billing_month', $billingMonth)
                     ->whereHas('items', fn ($query) => $query->where('utility_type_id', $utilityTypeId))
+                    ->lockForUpdate()
                     ->exists()) {
-                    throw new InvalidArgumentException('A utility bill already exists for one of the selected rooms in this billing month.');
+                    throw new ConcurrentConflictException('A utility bill already exists for one of the selected rooms in this billing month.');
                 }
 
                 $utility = Utility::query()->create([
@@ -224,39 +226,63 @@ class UtilityService
 
     public function submit(Utility $utility): Utility
     {
-        if ($utility->status !== 'draft') {
-            throw new InvalidArgumentException('Only draft utility bills can be submitted.');
-        }
+        return DB::transaction(function () use ($utility): Utility {
+            /** @var Utility $locked */
+            $locked = Utility::query()
+                ->whereKey($utility->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($utility->items()->count() === 0) {
-            throw new InvalidArgumentException('Add at least one utility item before submitting.');
-        }
+            if ($locked->status !== 'draft') {
+                throw new ConcurrentConflictException('Only draft utility bills can be submitted.');
+            }
 
-        $utility->update(['status' => 'pending']);
+            if ($locked->items()->count() === 0) {
+                throw new InvalidArgumentException('Add at least one utility item before submitting.');
+            }
 
-        return $utility->fresh(['room.building', 'items.utilityType', 'creator']);
+            $locked->update(['status' => 'pending']);
+
+            return $locked->fresh(['room.building', 'items.utilityType', 'creator']);
+        });
     }
 
     public function approve(Utility $utility): Utility
     {
-        if ($utility->status !== 'pending') {
-            throw new InvalidArgumentException('Only pending utility bills can be approved.');
-        }
+        return DB::transaction(function () use ($utility): Utility {
+            /** @var Utility $locked */
+            $locked = Utility::query()
+                ->whereKey($utility->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $utility = $this->approvalService->approve($utility);
-        $this->invoiceService->generateFromUtility($utility);
+            if ($locked->status !== 'pending') {
+                throw new ConcurrentConflictException('Only pending utility bills can be approved.');
+            }
 
-        return $utility->fresh(['room.building', 'items.utilityType', 'creator', 'approver']);
+            $locked = $this->approvalService->approve($locked, ['pending']);
+            $this->invoiceService->generateFromUtility($locked);
+
+            return $locked->fresh(['room.building', 'items.utilityType', 'creator', 'approver']);
+        });
     }
 
     public function reject(Utility $utility, ?string $reason = null): Utility
     {
-        if ($utility->status !== 'pending') {
-            throw new InvalidArgumentException('Only pending utility bills can be rejected.');
-        }
+        return DB::transaction(function () use ($utility, $reason): Utility {
+            /** @var Utility $locked */
+            $locked = Utility::query()
+                ->whereKey($utility->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return $this->approvalService->reject($utility, $reason)
-            ->fresh(['room.building', 'items.utilityType', 'creator', 'approver']);
+            if ($locked->status !== 'pending') {
+                throw new ConcurrentConflictException('Only pending utility bills can be rejected.');
+            }
+
+            return $this->approvalService->reject($locked, $reason, ['pending'])
+                ->fresh(['room.building', 'items.utilityType', 'creator', 'approver']);
+        });
     }
 
     public function delete(Utility $utility): void

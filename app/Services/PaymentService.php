@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\BillingEagerLoads;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -26,14 +28,7 @@ class PaymentService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = Payment::query()->with([
-            'invoice.contract.user.profile',
-            'invoice.contract.room.building',
-            'invoice.items.chargeType',
-            'invoice.payments',
-            'paymentMethod',
-            'receipt',
-        ]);
+        $query = Payment::query()->with(BillingEagerLoads::paymentList());
 
         if (! empty($params['invoice_id'])) {
             $query->where('invoice_id', $params['invoice_id']);
@@ -168,16 +163,7 @@ class PaymentService
     public function find(int $id): Payment
     {
         return Payment::query()
-            ->with([
-                'invoice.contract.user.profile',
-                'invoice.contract.room.building',
-                'invoice.items.chargeType',
-                'invoice.payments',
-                'paymentMethod',
-                'receipt',
-                'creator',
-                'approver',
-            ])
+            ->with(BillingEagerLoads::payment())
             ->findOrFail($id);
     }
 
@@ -204,7 +190,7 @@ class PaymentService
 
         $payment->update($data);
 
-        return $payment->fresh(['invoice.contract.user.profile', 'paymentMethod', 'receipt']);
+        return $payment->fresh(BillingEagerLoads::payment());
     }
 
     public function delete(Payment $payment): void
@@ -218,10 +204,22 @@ class PaymentService
 
     public function uploadProof(Payment $payment, UploadedFile $file): Payment
     {
-        $path = $file->store('payment-proofs', 'public');
-        $payment->update(['proof_image_path' => $path]);
+        return DB::transaction(function () use ($payment, $file): Payment {
+            /** @var Payment $lockedPayment */
+            $lockedPayment = Payment::query()
+                ->whereKey($payment->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return $payment->fresh(['invoice', 'paymentMethod', 'receipt']);
+            if ($lockedPayment->status !== 'pending') {
+                throw new ConcurrentConflictException('Only pending payments can receive proof uploads.');
+            }
+
+            $path = $file->store('payment-proofs', 'public');
+            $lockedPayment->update(['proof_image_path' => $path]);
+
+            return $lockedPayment->fresh(BillingEagerLoads::payment());
+        });
     }
 
     public function approve(Payment $payment, float|int|string $amount): Payment
@@ -236,11 +234,11 @@ class PaymentService
                 ->firstOrFail();
 
             if ($lockedPayment->status !== 'pending') {
-                throw new InvalidArgumentException('Only pending payments can be approved.');
+                throw new ConcurrentConflictException('Only pending payments can be approved.');
             }
 
             if ($lockedPayment->receipt()->exists()) {
-                throw new InvalidArgumentException('This payment already has a receipt.');
+                throw new ConcurrentConflictException('This payment already has a receipt.');
             }
 
             /** @var Invoice $invoice */
@@ -285,7 +283,7 @@ class PaymentService
                 ->firstOrFail();
 
             if ($lockedPayment->status !== 'pending') {
-                throw new InvalidArgumentException('Only pending payments can be rejected.');
+                throw new ConcurrentConflictException('Only pending payments can be rejected.');
             }
 
             $lockedPayment->update([

@@ -11,6 +11,7 @@ use App\Http\Requests\Admin\UploadPaymentProofRequest;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Models\Payment;
 use App\Services\PaymentService;
+use App\Support\BillingEagerLoads;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -39,16 +40,9 @@ class PaymentController extends Controller
 
         if ($proof) {
             $payment = $paymentService->uploadProof($payment, $proof);
+        } else {
+            $payment->load(BillingEagerLoads::payment());
         }
-
-        $payment->load([
-            'invoice.contract.user.profile',
-            'invoice.contract.room.building',
-            'invoice.items.chargeType',
-            'invoice.payments',
-            'paymentMethod',
-            'receipt',
-        ]);
 
         return response()->json([
             'message' => 'Payment created successfully.',
@@ -56,21 +50,10 @@ class PaymentController extends Controller
         ], 201);
     }
 
-    public function show(Payment $payment): JsonResponse
+    public function show(Payment $payment, PaymentService $paymentService): JsonResponse
     {
-        $payment->load([
-            'invoice.contract.user.profile',
-            'invoice.contract.room.building',
-            'invoice.items.chargeType',
-            'invoice.payments',
-            'paymentMethod',
-            'creator',
-            'approver',
-            'receipt',
-        ]);
-
         return response()->json([
-            'data' => new PaymentResource($payment),
+            'data' => new PaymentResource($paymentService->find($payment->id)),
         ]);
     }
 
@@ -115,17 +98,6 @@ class PaymentController extends Controller
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        $payment->load([
-            'invoice.contract.user.profile',
-            'invoice.contract.room.building',
-            'invoice.items.chargeType',
-            'invoice.payments',
-            'paymentMethod',
-            'creator',
-            'approver',
-            'receipt',
-        ]);
-
         return response()->json([
             'message' => 'Payment approved successfully. A draft receipt has been created for review.',
             'data' => new PaymentResource($payment),
@@ -146,17 +118,6 @@ class PaymentController extends Controller
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
-        $payment->load([
-            'invoice.contract.user.profile',
-            'invoice.contract.room.building',
-            'invoice.items.chargeType',
-            'invoice.payments',
-            'paymentMethod',
-            'creator',
-            'approver',
-            'receipt',
-        ]);
-
         return response()->json([
             'message' => 'Payment rejected successfully.',
             'data' => new PaymentResource($payment),
@@ -169,17 +130,6 @@ class PaymentController extends Controller
         PaymentService $paymentService,
     ): JsonResponse {
         $payment = $paymentService->uploadProof($payment, $request->file('proof'));
-
-        $payment->load([
-            'invoice.contract.user.profile',
-            'invoice.contract.room.building',
-            'invoice.items.chargeType',
-            'invoice.payments',
-            'paymentMethod',
-            'creator',
-            'approver',
-            'receipt',
-        ]);
 
         return response()->json([
             'message' => 'Payment proof uploaded successfully.',

@@ -27,6 +27,8 @@ class Receipt extends Model
         'status',
         'approval_status',
         'issued_at',
+        'sent_at',
+        'sent_by',
         'created_by',
         'approved_by',
         'approved_at',
@@ -36,6 +38,7 @@ class Receipt extends Model
     {
         return [
             'issued_at' => 'datetime',
+            'sent_at' => 'datetime',
             'approved_at' => 'datetime',
         ];
     }
@@ -55,6 +58,11 @@ class Receipt extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    public function sender(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'sent_by');
+    }
+
     public function isPendingApproval(): bool
     {
         return $this->approval_status === self::APPROVAL_PENDING;
@@ -72,11 +80,29 @@ class Receipt extends Model
 
     public function canBeIssued(): bool
     {
-        return $this->isApproved() && $this->status === self::STATUS_DRAFT;
+        return $this->isApproved() && $this->status === self::STATUS_DRAFT && $this->sent_at === null;
     }
 
     public function canBeEmailed(): bool
     {
-        return $this->isApproved() && $this->isIssued();
+        return $this->isApproved()
+            && $this->status === self::STATUS_DRAFT
+            && $this->sent_at === null;
+    }
+
+    public function isDeliveredToCustomer(): bool
+    {
+        return $this->status === self::STATUS_ISSUED && $this->sent_at !== null;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Receipt>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<Receipt>
+     */
+    public function scopeDeliveredToCustomer($query)
+    {
+        return $query
+            ->where('status', self::STATUS_ISSUED)
+            ->whereNotNull('sent_at');
     }
 }

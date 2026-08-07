@@ -20,8 +20,8 @@ class UtilityResource extends JsonResource
         return [
             'id' => $this->id,
             'room_id' => $this->room_id,
-            'room_number' => $this->whenLoaded('room', fn () => $this->room?->room_number),
-            'building_name' => $this->whenLoaded('room', fn () => $this->room?->building?->building_name),
+            'room_number' => $this->relationLoaded('room') ? $this->room?->room_number : null,
+            'building_name' => $this->relationLoaded('room') ? $this->room?->building?->building_name : null,
             'billing_month' => $this->billing_month?->toDateString(),
             'total_amount' => $this->total_amount,
             'status' => $this->status,

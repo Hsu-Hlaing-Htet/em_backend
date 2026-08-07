@@ -16,14 +16,15 @@ class RoomImageResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $imagePath = app(RoomImageService::class)->normalizeImagePath($this->image_path);
+        $roomImageService = app(RoomImageService::class);
+        $imagePath = $roomImageService->normalizeImagePath($this->image_path);
 
         return [
             'id' => $this->id,
             'room_id' => $this->room_id,
             'room_number' => $this->whenLoaded('room', fn () => $this->room?->room_number),
             'image_path' => $imagePath,
-            'image_url' => $imagePath ? asset('storage/'.$imagePath) : null,
+            'image_url' => $roomImageService->resolveImageUrl($this->image_path),
             'description' => $this->description,
             'is_primary' => $this->is_primary,
             'sort_order' => $this->sort_order,

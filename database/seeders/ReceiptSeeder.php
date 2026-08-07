@@ -11,9 +11,6 @@ use Illuminate\Database\Seeder;
 
 class ReceiptSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         $admin = User::query()
@@ -45,7 +42,9 @@ class ReceiptSeeder extends Seeder
                 ->where('status', 'approved')
                 ->sum('amount');
 
-            if ($approvedTotal + 0.009 >= (float) $invoice->total_amount) {
+            $invoiceDue = (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0);
+
+            if ($approvedTotal + 0.009 >= $invoiceDue) {
                 $invoice->update(['status' => 'paid']);
             } elseif ($approvedTotal > 0) {
                 $invoice->update(['status' => 'partial']);

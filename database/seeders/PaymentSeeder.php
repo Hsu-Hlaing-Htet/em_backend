@@ -11,9 +11,6 @@ use Illuminate\Database\Seeder;
 
 class PaymentSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
         $admin = User::query()
@@ -23,12 +20,13 @@ class PaymentSeeder extends Seeder
         $paymentMethods = BillingSeederSupport::paymentMethods();
 
         if (! $admin || $paymentMethods->isEmpty()) {
-            $this->command?->warn('Admin user and payment methods are required. Run UserSeeder and PaymentMethodSeeder first.');
+            $this->command?->warn('Admin user and payment methods are required.');
 
             return;
         }
 
         $invoices = Invoice::query()
+            ->with('contract.user')
             ->whereIn('status', ['issued', 'partial', 'paid', 'overdue'])
             ->orderBy('issued_date')
             ->orderBy('id')
@@ -41,11 +39,14 @@ class PaymentSeeder extends Seeder
         }
 
         $methodIndex = 0;
+        $unpaidLeftAlone = false;
+        $rejectedCreated = false;
 
         foreach ($invoices as $invoice) {
             $paymentMethod = $paymentMethods[$methodIndex % $paymentMethods->count()];
             $methodIndex++;
             $issuedDate = Carbon::parse($invoice->issued_date ?? now()->toDateString());
+            $customer = $invoice->contract?->user;
 
             if ($invoice->status === 'paid') {
                 BillingSeederSupport::settleInvoice(
@@ -53,57 +54,71 @@ class PaymentSeeder extends Seeder
                     $invoice,
                     $paymentMethod,
                     $issuedDate->copy()->addDays(3),
+                    $customer,
                 );
 
                 continue;
             }
 
             if ($invoice->status === 'partial') {
-                $partialAmount = round((float) $invoice->total_amount * 0.45, 2);
-                BillingSeederSupport::createApprovedPayment(
+                $partialAmount = round(((float) $invoice->total_amount) * 0.45, 2);
+                $payment = BillingSeederSupport::createApprovedPayment(
                     $admin,
                     $invoice,
                     $paymentMethod,
                     $partialAmount,
                     $issuedDate->copy()->addDays(5),
+                    note: 'Partial MMK payment received via KBZ Pay.',
+                    createdBy: $customer,
+                );
+                BillingSeederSupport::createIssuedReceipt(
+                    $admin,
+                    $payment,
+                    $issuedDate->copy()->addDays(6),
                 );
                 $invoice->update(['status' => 'partial']);
 
                 continue;
             }
 
-            if ($invoice->status === 'overdue') {
-                BillingSeederSupport::createPendingPayment(
+            // First open issued invoice without payments = unpaid scenario
+            if ($invoice->status === 'issued' && ! $unpaidLeftAlone && $invoice->type === 'rent') {
+                $unpaidLeftAlone = true;
+
+                continue;
+            }
+
+            // Next open issued rent invoice gets a rejected payment attempt
+            if ($invoice->status === 'issued' && ! $rejectedCreated && $customer && $invoice->type === 'rent') {
+                BillingSeederSupport::createRejectedPayment(
                     $admin,
+                    $customer,
                     $invoice,
                     $paymentMethod,
-                    (float) $invoice->total_amount,
                     now()->subDays(2),
+                    'Bank transfer proof is unclear. Please resubmit a clearer screenshot showing the full amount in MMK.',
                 );
+                $rejectedCreated = true;
 
                 continue;
             }
 
             if ($invoice->status === 'issued') {
-                if ($invoice->due_date?->isFuture()) {
-                    BillingSeederSupport::createPendingPayment(
-                        $admin,
-                        $invoice,
-                        $paymentMethod,
-                        (float) $invoice->total_amount,
-                        now()->subDay(),
-                    );
-                } else {
-                    BillingSeederSupport::createApprovedPayment(
-                        $admin,
-                        $invoice,
-                        $paymentMethod,
-                        (float) $invoice->total_amount,
-                        $issuedDate->copy()->addDays(4),
-                    );
-                    $invoice->update(['status' => 'paid']);
-                }
+                BillingSeederSupport::createPendingPayment(
+                    $customer ?? $admin,
+                    $invoice,
+                    $paymentMethod,
+                    null,
+                    now()->subDay(),
+                    'Customer submitted payment proof for admin verification.',
+                );
             }
         }
+
+        $this->command?->info(sprintf(
+            'Payments seeded (unpaid protected: %s, rejected created: %s).',
+            $unpaidLeftAlone ? 'yes' : 'no',
+            $rejectedCreated ? 'yes' : 'no',
+        ));
     }
 }

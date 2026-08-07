@@ -74,7 +74,7 @@ function seedUtilityWorkflowStack(User $admin): array
 
 test('utility batch create uses previous reading and active rate then approval generates draft invoice', function () {
     $admin = utilityWorkflowAdmin();
-    ['room' => $room, 'utilityType' => $utilityType] = seedUtilityWorkflowStack($admin);
+    ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType] = seedUtilityWorkflowStack($admin);
 
     $rate = UtilityRate::query()
         ->where('utility_type_id', $utilityType->id)
@@ -141,15 +141,24 @@ test('utility batch create uses previous reading and active rate then approval g
         ->assertOk()
         ->assertJsonPath('data.status', 'approved');
 
-    $invoice = Invoice::query()->where('utility_id', $utilityId)->first();
+    $invoice = Invoice::query()
+        ->where('contract_id', $contract->id)
+        ->whereDate('billing_month', $billingMonth)
+        ->first();
 
     expect($invoice)->not->toBeNull();
     expect($invoice->status)->toBe('draft');
-    expect($invoice->type)->toBe('utility');
-    expect((float) $invoice->total_amount)->toBe($expectedAmount);
+    expect($invoice->type)->toBe('rent');
+    expect((float) $invoice->total_amount)->toBe(round(400000 + $expectedAmount, 2));
+
+    $utility = Utility::query()->findOrFail($utilityId);
+    $utility->refresh();
+    expect($utility->invoice_id)->toBe($invoice->id);
 
     $chargeType = ChargeType::query()->where('slug', 'utility-charges')->firstOrFail();
+    $rentCharge = ChargeType::query()->where('slug', 'monthly-rent')->firstOrFail();
     expect($invoice->items()->where('charge_type_id', $chargeType->id)->exists())->toBeTrue();
+    expect($invoice->items()->where('charge_type_id', $rentCharge->id)->exists())->toBeTrue();
 });
 
 test('utility form data defaults previous reading to zero when no prior month exists', function () {

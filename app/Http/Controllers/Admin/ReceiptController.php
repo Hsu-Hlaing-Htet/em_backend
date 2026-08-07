@@ -89,11 +89,11 @@ class ReceiptController extends Controller
     public function sendDocumentEmail(
         SendBillingDocumentRequest $request,
         Receipt $receipt,
-        ReceiptDocumentService $receiptDocumentService,
+        ReceiptService $receiptService,
     ): JsonResponse {
         try {
-            $receiptDocumentService->sendEmail(
-                $receiptDocumentService->find($receipt->id),
+            $receipt = $receiptService->deliverByEmail(
+                $receipt,
                 $request->validated(),
             );
         } catch (InvalidArgumentException $exception) {
@@ -101,7 +101,8 @@ class ReceiptController extends Controller
         }
 
         return response()->json([
-            'message' => 'Receipt document sent successfully.',
+            'message' => 'Receipt sent to customer successfully.',
+            'data' => new ReceiptResource($receipt),
         ]);
     }
 }

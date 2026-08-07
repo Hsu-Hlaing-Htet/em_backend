@@ -27,19 +27,27 @@ class UtilityRateSeeder extends Seeder
                 continue;
             }
 
-            UtilityRate::query()->create([
-                'utility_type_id' => $utilityType->id,
-                'unit_price' => $unitPrice,
-                'effective_date' => now()->subMonths(3)->toDateString(),
-                'status' => 'active',
-            ]);
+            UtilityRate::query()->updateOrCreate(
+                [
+                    'utility_type_id' => $utilityType->id,
+                    'effective_date' => now()->subMonths(3)->toDateString(),
+                ],
+                [
+                    'unit_price' => $unitPrice,
+                    'status' => 'active',
+                ]
+            );
 
-            UtilityRate::query()->create([
-                'utility_type_id' => $utilityType->id,
-                'unit_price' => round($unitPrice * 0.95, 4),
-                'effective_date' => now()->subYear()->toDateString(),
-                'status' => 'inactive',
-            ]);
+            UtilityRate::query()->updateOrCreate(
+                [
+                    'utility_type_id' => $utilityType->id,
+                    'effective_date' => now()->subYear()->toDateString(),
+                ],
+                [
+                    'unit_price' => round($unitPrice * 0.95, 4),
+                    'status' => 'inactive',
+                ]
+            );
         }
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Public;
 
+use App\Services\RoomImageService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,11 +16,12 @@ class PublicPropertyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $roomImageService = app(RoomImageService::class);
         $images = $this->whenLoaded('roomImages', fn () => $this->roomImages ?? collect(), collect());
         $primaryImage = $images->firstWhere('is_primary', true) ?? $images->first();
         $galleryImages = $images
             ->sortBy('sort_order')
-            ->pluck('image_path')
+            ->map(fn ($image) => $roomImageService->resolveImageUrl($image->image_path))
             ->filter()
             ->values()
             ->all();
@@ -50,7 +52,9 @@ class PublicPropertyResource extends JsonResource
             'length_ft' => $this->length_ft,
             'purpose' => 'sale',
             'sale_price' => $salePrice,
-            'featured_image' => $primaryImage?->image_path,
+            'featured_image' => $primaryImage
+                ? $roomImageService->resolveImageUrl($primaryImage->image_path)
+                : null,
             'gallery_images' => $galleryImages,
             'description' => $this->description,
         ];

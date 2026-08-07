@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
@@ -9,8 +10,12 @@ use App\Models\InvoiceItem;
 use App\Models\Utility;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\BillingEagerLoads;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class InvoiceService
@@ -25,14 +30,7 @@ class InvoiceService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = Invoice::query()->with([
-            'contract.user',
-            'contract.room.building',
-            'items.chargeType',
-            'payments',
-            'creator',
-            'approver',
-        ]);
+        $query = Invoice::query()->with(BillingEagerLoads::invoiceList());
 
         $this->applyInvoiceSearch($query, $params);
         $this->applyBuildingRoomFilters($query, $params, 'contract.room');
@@ -97,81 +95,65 @@ class InvoiceService
     public function find(int $id): Invoice
     {
         return Invoice::query()
-            ->with([
-                'contract.user.profile',
-                'contract.room.building',
-                'items.chargeType',
-                'utility.items.utilityType',
-                'payments.paymentMethod',
-                'creator',
-                'approver',
-            ])
+            ->with(BillingEagerLoads::invoice())
             ->findOrFail($id);
     }
 
     public function issue(Invoice $invoice): Invoice
     {
-        if ($invoice->status !== 'draft') {
-            throw new InvalidArgumentException('Only draft invoices can be issued.');
-        }
+        return DB::transaction(function () use ($invoice): Invoice {
+            /** @var Invoice $locked */
+            $locked = Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $invoice->update([
-            'status' => 'issued',
-            'issued_date' => now()->toDateString(),
-            'approved_by' => Auth::id(),
-            'approved_at' => now(),
-        ]);
+            if ($locked->status !== 'draft') {
+                throw new ConcurrentConflictException('Only draft invoices can be issued.');
+            }
 
-        $invoice = $invoice->fresh([
-            'contract.user',
-            'items.chargeType',
-            'utility.items.utilityType',
-            'creator',
-            'approver',
-        ]);
-
-        if ($invoice->contract?->user?->email) {
-            $this->invoiceDocumentService->sendEmail($invoice, [
-                'email' => $invoice->contract->user->email,
+            $locked->update([
+                'status' => 'issued',
+                'issued_date' => now()->toDateString(),
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
             ]);
-        }
 
-        return $invoice;
+            $locked = $locked->fresh(BillingEagerLoads::invoice());
+
+            if ($locked->contract?->user?->email) {
+                $this->invoiceDocumentService->sendEmail($locked, [
+                    'email' => $locked->contract->user->email,
+                ]);
+            }
+
+            return $locked;
+        });
     }
 
-    public function generateFromContract(Contract $contract): Invoice
+    public function generateFromContract(Contract $contract, ?Carbon $billingMonth = null): Invoice
     {
         if (! in_array($contract->status, ['active', 'approved'], true)) {
             throw new InvalidArgumentException('Invoices can only be generated for active contracts.');
         }
 
-        $contract->loadMissing('room');
+        return DB::transaction(function () use ($contract, $billingMonth): Invoice {
+            $contract->loadMissing(['room', 'paymentPlan']);
+            $period = $this->normalizeBillingMonth($billingMonth ?? now());
 
-        $invoice = Invoice::query()->create([
-            'contract_id' => $contract->id,
-            'invoice_number' => $this->generateInvoiceNumber(),
-            'type' => $contract->type === 'sale' ? 'sale' : 'rent',
-            'status' => 'draft',
-            'due_date' => now()->addDays(7)->toDateString(),
-            'total_amount' => $contract->contract_total,
-            'created_by' => Auth::id(),
-        ]);
+            /** @var Contract $lockedContract */
+            $lockedContract = Contract::query()
+                ->whereKey($contract->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $chargeTypeSlug = $contract->type === 'sale' ? 'sale-installment' : 'monthly-rent';
-        $chargeType = ChargeType::query()->where('slug', $chargeTypeSlug)->first();
-        $unitPrice = $contract->type === 'sale'
-            ? ($contract->room?->sale_price ?? $contract->contract_total)
-            : ($contract->room?->rent_price ?? $contract->contract_total);
+            $invoice = $this->findOrCreateDraftInvoice($lockedContract, $period);
+            $this->ensureContractChargeItem($invoice, $lockedContract, $period);
+            $this->appendApprovedUtilitiesForPeriod($invoice, $lockedContract, $period);
+            $this->recalculateInvoiceTotal($invoice);
 
-        InvoiceItem::query()->create([
-            'invoice_id' => $invoice->id,
-            'charge_type_id' => $chargeType?->id,
-            'description' => $contract->type === 'sale' ? ($chargeType?->name ?: 'Sale') : 'Rent',
-            'unit_price' => $unitPrice,
-            'amount' => $contract->contract_total,
-        ]);
-
-        return $invoice->fresh(['contract.user', 'contract.room', 'items.chargeType']);
+            return $invoice->fresh(BillingEagerLoads::invoice());
+        });
     }
 
     public function generateInvoiceNumber(): string
@@ -195,59 +177,44 @@ class InvoiceService
             'invoice_number' => $data['invoice_number'] ?? $this->generateInvoiceNumber(),
             'status' => 'draft',
             'created_by' => Auth::id(),
-        ])->load(['contract.user', 'items.chargeType']);
+        ])->load(BillingEagerLoads::invoice());
     }
 
     public function generateFromUtility(Utility $utility): Invoice
     {
-        $utility->load(['room', 'items.utilityType']);
+        return DB::transaction(function () use ($utility): Invoice {
+            /** @var Utility $lockedUtility */
+            $lockedUtility = Utility::query()
+                ->whereKey($utility->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if (Invoice::query()->where('utility_id', $utility->id)->exists()) {
-            throw new InvalidArgumentException('An invoice already exists for this utility bill.');
-        }
+            if ($lockedUtility->status !== 'approved') {
+                throw new InvalidArgumentException('Only approved utility bills can be invoiced.');
+            }
 
-        $contract = Contract::query()
-            ->where('room_id', $utility->room_id)
-            ->where('type', 'rent')
-            ->whereIn('status', ['active', 'completed'])
-            ->latest('id')
-            ->first();
+            if ($this->isUtilityInvoiced($lockedUtility)) {
+                throw new ConcurrentConflictException('This utility bill has already been invoiced.');
+            }
 
-        if (! $contract) {
-            throw new InvalidArgumentException('No active rent contract found for this room.');
-        }
+            $lockedUtility->load(['room', 'items.utilityType']);
 
-        $chargeType = ChargeType::query()->where('slug', 'utility-charges')->first();
+            $contract = $this->resolveContractForUtility($lockedUtility);
+            $period = $this->normalizeBillingMonth($lockedUtility->billing_month);
 
-        $invoice = Invoice::query()->create([
-            'contract_id' => $contract->id,
-            'utility_id' => $utility->id,
-            'invoice_number' => $this->generateInvoiceNumber(),
-            'type' => 'utility',
-            'status' => 'draft',
-            'due_date' => now()->addDays(14)->toDateString(),
-            'total_amount' => $utility->total_amount,
-            'created_by' => Auth::id(),
-        ]);
+            /** @var Contract $lockedContract */
+            $lockedContract = Contract::query()
+                ->whereKey($contract->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        foreach ($utility->items as $item) {
-            InvoiceItem::query()->create([
-                'invoice_id' => $invoice->id,
-                'charge_type_id' => $chargeType?->id,
-                'description' => $item->utilityType?->name ?? 'Utility',
-                'previous_reading' => $item->previous_reading,
-                'current_reading' => $item->current_reading,
-                'usage' => $item->usage,
-                'unit_price' => $item->unit_price,
-                'amount' => $item->amount,
-            ]);
-        }
+            $invoice = $this->findOrCreateDraftInvoice($lockedContract, $period);
+            $this->ensureContractChargeItem($invoice, $lockedContract, $period);
+            $this->appendUtilityItems($invoice, $lockedUtility);
+            $this->recalculateInvoiceTotal($invoice);
 
-        return $invoice->fresh([
-            'contract.user',
-            'items.chargeType',
-            'utility.items.utilityType',
-        ]);
+            return $invoice->fresh(BillingEagerLoads::invoice());
+        });
     }
 
     /**
@@ -261,7 +228,7 @@ class InvoiceService
 
         $invoice->update($data);
 
-        return $invoice->fresh(['contract.user.profile', 'contract.room.building', 'items.chargeType']);
+        return $invoice->fresh(BillingEagerLoads::invoice());
     }
 
     public function delete(Invoice $invoice): void
@@ -271,5 +238,218 @@ class InvoiceService
         }
 
         $invoice->delete();
+    }
+
+    private function normalizeBillingMonth(Carbon|string $billingMonth): Carbon
+    {
+        return Carbon::parse($billingMonth)->startOfMonth();
+    }
+
+    private function resolveContractForUtility(Utility $utility): Contract
+    {
+        $contract = Contract::query()
+            ->where('room_id', $utility->room_id)
+            ->where('type', 'rent')
+            ->whereIn('status', ['active', 'completed'])
+            ->latest('id')
+            ->first();
+
+        if ($contract) {
+            return $contract;
+        }
+
+        $contract = Contract::query()
+            ->where('room_id', $utility->room_id)
+            ->where('type', 'sale')
+            ->whereIn('status', ['approved', 'active', 'completed'])
+            ->latest('id')
+            ->first();
+
+        if ($contract) {
+            return $contract;
+        }
+
+        throw new InvalidArgumentException('No active contract found for this room.');
+    }
+
+    private function findOrCreateDraftInvoice(Contract $contract, Carbon $billingMonth): Invoice
+    {
+        $billingMonthDate = $billingMonth->toDateString();
+
+        $invoice = Invoice::query()
+            ->where('contract_id', $contract->id)
+            ->whereDate('billing_month', $billingMonthDate)
+            ->lockForUpdate()
+            ->first();
+
+        if ($invoice && $invoice->status !== 'draft') {
+            throw new ConcurrentConflictException('An invoice for this billing period has already been finalized.');
+        }
+
+        if ($invoice) {
+            return $invoice;
+        }
+
+        try {
+            return Invoice::query()->create([
+                'contract_id' => $contract->id,
+                'invoice_number' => $this->generateInvoiceNumber(),
+                'type' => $contract->type === 'sale' ? 'sale' : 'rent',
+                'status' => 'draft',
+                'billing_month' => $billingMonthDate,
+                'due_date' => $this->resolveDueDate($contract, $billingMonth)->toDateString(),
+                'total_amount' => 0,
+                'created_by' => Auth::id(),
+            ]);
+        } catch (QueryException $exception) {
+            if ($this->isUniqueContractBillingPeriodViolation($exception)) {
+                $existing = Invoice::query()
+                    ->where('contract_id', $contract->id)
+                    ->whereDate('billing_month', $billingMonthDate)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($existing->status !== 'draft') {
+                    throw new ConcurrentConflictException('An invoice for this billing period has already been finalized.');
+                }
+
+                return $existing;
+            }
+
+            throw $exception;
+        }
+    }
+
+    private function resolveDueDate(Contract $contract, Carbon $billingMonth): Carbon
+    {
+        $billingDay = (int) ($contract->billing_day ?: 7);
+        $dueDay = min(max($billingDay, 1), 28);
+
+        return $billingMonth->copy()->day($dueDay)->addDays(7);
+    }
+
+    private function ensureContractChargeItem(Invoice $invoice, Contract $contract, Carbon $billingMonth): void
+    {
+        $slug = $contract->type === 'sale' ? 'sale-installment' : 'monthly-rent';
+        $chargeType = ChargeType::query()->where('slug', $slug)->first();
+
+        if (! $chargeType) {
+            return;
+        }
+
+        $exists = InvoiceItem::query()
+            ->where('invoice_id', $invoice->id)
+            ->where('charge_type_id', $chargeType->id)
+            ->exists();
+
+        if ($exists) {
+            return;
+        }
+
+        $amount = $this->resolveContractChargeAmount($contract);
+        $description = $contract->type === 'sale'
+            ? 'Sale installment — '.$billingMonth->format('F Y')
+            : 'Monthly rent — '.$billingMonth->format('F Y');
+
+        InvoiceItem::query()->create([
+            'invoice_id' => $invoice->id,
+            'charge_type_id' => $chargeType->id,
+            'description' => $description,
+            'unit_price' => $amount,
+            'amount' => $amount,
+        ]);
+    }
+
+    private function resolveContractChargeAmount(Contract $contract): float
+    {
+        if ($contract->type === 'sale') {
+            $months = max((int) ($contract->duration_months ?? 1), 1);
+
+            return round((float) $contract->contract_total / $months, 2);
+        }
+
+        return round((float) ($contract->room?->rent_price ?? $contract->contract_total), 2);
+    }
+
+    private function appendApprovedUtilitiesForPeriod(Invoice $invoice, Contract $contract, Carbon $billingMonth): void
+    {
+        $utilities = Utility::query()
+            ->where('room_id', $contract->room_id)
+            ->whereDate('billing_month', $billingMonth->toDateString())
+            ->where('status', 'approved')
+            ->whereNull('invoice_id')
+            ->with('items.utilityType')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($utilities as $utility) {
+            $this->appendUtilityItems($invoice, $utility);
+        }
+    }
+
+    private function appendUtilityItems(Invoice $invoice, Utility $utility): void
+    {
+        if ($this->isUtilityInvoiced($utility)) {
+            throw new ConcurrentConflictException('This utility bill has already been invoiced.');
+        }
+
+        $utility->loadMissing('items.utilityType');
+        $chargeType = ChargeType::query()->where('slug', 'utility-charges')->first();
+
+        foreach ($utility->items as $item) {
+            $typeName = $item->utilityType?->name ?? 'Utility';
+
+            $duplicate = InvoiceItem::query()
+                ->where('invoice_id', $invoice->id)
+                ->where('description', $typeName)
+                ->where('amount', $item->amount)
+                ->exists();
+
+            if ($duplicate) {
+                continue;
+            }
+
+            InvoiceItem::query()->create([
+                'invoice_id' => $invoice->id,
+                'charge_type_id' => $chargeType?->id,
+                'description' => $typeName,
+                'previous_reading' => $item->previous_reading,
+                'current_reading' => $item->current_reading,
+                'usage' => $item->usage,
+                'unit_price' => $item->unit_price,
+                'amount' => $item->amount,
+            ]);
+        }
+
+        $utility->update(['invoice_id' => $invoice->id]);
+    }
+
+    private function recalculateInvoiceTotal(Invoice $invoice): void
+    {
+        $subtotal = (float) InvoiceItem::query()
+            ->where('invoice_id', $invoice->id)
+            ->sum('amount');
+
+        $invoice->update([
+            'total_amount' => round($subtotal, 2),
+        ]);
+    }
+
+    private function isUtilityInvoiced(Utility $utility): bool
+    {
+        if ($utility->invoice_id) {
+            return true;
+        }
+
+        return Invoice::query()->where('utility_id', $utility->id)->exists();
+    }
+
+    private function isUniqueContractBillingPeriodViolation(QueryException $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'invoices_contract_id_billing_month_unique')
+            || (str_contains($message, 'UNIQUE constraint failed') && str_contains($message, 'billing_month'))
+            || (str_contains($message, 'Duplicate entry') && str_contains($message, 'billing_month'));
     }
 }

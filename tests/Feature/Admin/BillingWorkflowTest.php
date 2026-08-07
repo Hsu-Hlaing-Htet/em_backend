@@ -206,7 +206,7 @@ test('invoice payment receipt workflow completes end to end', function () {
         ->postJson("/api/payments/{$paymentId}/approve", [
             'amount' => 100000,
         ])
-        ->assertStatus(422);
+        ->assertStatus(409);
 
     expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
     Mail::assertNotSent(ReceiptDocumentMail::class);
@@ -225,39 +225,40 @@ test('invoice payment receipt workflow completes end to end', function () {
     expect($approved?->status)->toBe('draft');
     expect($approved?->approval_status)->toBe('approved');
     expect($approved?->issued_at)->toBeNull();
+    expect($approved?->sent_at)->toBeNull();
 
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/issue")
+    $this->actingAs($customer, 'sanctum')
+        ->getJson('/api/customer/receipts')
         ->assertOk()
-        ->assertJsonPath('data.status', 'issued')
-        ->assertJsonPath('data.approval_status', 'approved')
-        ->assertJsonPath('data.issued_at', fn ($value) => ! empty($value));
-
-    Mail::assertNotSent(ReceiptDocumentMail::class);
-
-    $issued = Receipt::query()->find($receipt->id);
-    expect($issued?->status)->toBe('issued');
-    expect($issued?->approval_status)->toBe('approved');
-    expect($issued?->issued_at)->not->toBeNull();
+        ->assertJsonPath('data.total', 0);
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
             'email' => $customer->email,
         ])
-        ->assertOk();
+        ->assertOk()
+        ->assertJsonPath('data.status', 'issued')
+        ->assertJsonPath('data.sent_at', fn ($value) => ! empty($value))
+        ->assertJsonPath('data.is_sent', true);
 
     Mail::assertSent(ReceiptDocumentMail::class, function (ReceiptDocumentMail $mail) use ($customer) {
         return $mail->hasTo($customer->email);
     });
 
+    $sent = Receipt::query()->find($receipt->id);
+    expect($sent?->status)->toBe('issued');
+    expect($sent?->approval_status)->toBe('approved');
+    expect($sent?->issued_at)->not->toBeNull();
+    expect($sent?->sent_at)->not->toBeNull();
+    expect($sent?->sent_by)->toBe($admin->id);
+
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
             'email' => $customer->email,
         ])
-        ->assertOk();
+        ->assertStatus(409);
 
-    expect(Receipt::query()->find($receipt->id)?->approval_status)->toBe('approved');
-    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(2);
+    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(1);
 
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/customer/receipts')
