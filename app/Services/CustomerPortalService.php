@@ -63,11 +63,11 @@ class CustomerPortalService
             ->count();
 
         $completedPayments = (clone $paymentQuery)
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->count();
 
         $totalPaidAmount = (float) (clone $paymentQuery)
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->sum('amount');
 
         $recentPayments = (clone $paymentQuery)
@@ -180,7 +180,7 @@ class CustomerPortalService
     public function invoicePaidAmount(Invoice $invoice): float
     {
         return (float) $invoice->payments
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->sum('amount');
     }
 

@@ -18,7 +18,7 @@ class StoreRoomRequest extends BaseAdminFormRequest
     public function rules(): array
     {
         return [
-            'building_id' => ['required', 'integer', 'exists:buildings,id'],
+            'building_id' => ['required', 'integer', 'exists:buildings,id,status,active'],
             'room_number' => ['required', 'string', 'max:255'],
             'floor_number' => ['required', 'integer', 'min:0'],
             'width_ft' => ['nullable', 'numeric', 'min:0'],

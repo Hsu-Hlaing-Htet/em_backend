@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\BulkDeleteBuildingsRequest;
 use App\Http\Requests\Admin\StoreBuildingRequest;
 use App\Http\Requests\Admin\UpdateBuildingRequest;
 use App\Http\Resources\Admin\BuildingResource;
@@ -64,10 +65,45 @@ class BuildingController extends Controller
     {
         $this->authorize('delete', $building);
 
+        $hasRooms = $building->rooms()->exists();
         $buildingService->delete($building);
 
         return response()->json([
-            'message' => 'Building deleted successfully.',
+            'message' => $hasRooms
+                ? 'Building archived successfully.'
+                : 'Building deleted successfully.',
+        ]);
+    }
+
+    public function bulkDestroy(BulkDeleteBuildingsRequest $request, BuildingService $buildingService): JsonResponse
+    {
+        $this->authorize('viewAny', Building::class);
+
+        $deletedCount = $buildingService->bulkDelete($request->validated()['ids']);
+
+        return response()->json([
+            'message' => "{$deletedCount} buildings deleted successfully.",
+            'deleted_count' => $deletedCount,
+        ]);
+    }
+
+    public function archive(Building $building, BuildingService $buildingService): JsonResponse
+    {
+        $this->authorize('update', $building);
+
+        return response()->json([
+            'message' => 'Building archived successfully.',
+            'data' => new BuildingResource($buildingService->archive($building)),
+        ]);
+    }
+
+    public function activate(Building $building, BuildingService $buildingService): JsonResponse
+    {
+        $this->authorize('update', $building);
+
+        return response()->json([
+            'message' => 'Building reactivated successfully.',
+            'data' => new BuildingResource($buildingService->activate($building)),
         ]);
     }
 }

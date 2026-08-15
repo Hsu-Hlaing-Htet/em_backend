@@ -42,6 +42,11 @@ class SaleContractDraftService
         return $this->service()->findActive($id);
     }
 
+    public function findForDeletion(int $id): Contract
+    {
+        return $this->service()->findForDeletion($id);
+    }
+
     public function approve(Contract $contract): Contract
     {
         return $this->service()->approve($contract);
@@ -71,6 +76,11 @@ class SaleContractDraftService
     public function delete(Contract $contract): void
     {
         $this->service()->delete($contract);
+    }
+
+    public function cancel(Contract $contract, string $reason): Contract
+    {
+        return $this->service()->cancel($contract, $reason);
     }
 
     public function generateContractNumber(): string

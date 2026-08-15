@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,7 +17,7 @@ class EnsureRole
         $user = $request->user()?->loadMissing('role');
         $roleName = $user?->role?->name;
 
-        if (! $user || ! in_array($roleName, $roles, true)) {
+        if (! $user || $user->status !== User::STATUS_ACTIVE || ! in_array($roleName, $roles, true)) {
             abort(403, 'Unauthorized role access.');
         }
 

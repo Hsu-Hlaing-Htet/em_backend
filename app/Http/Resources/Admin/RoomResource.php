@@ -30,6 +30,16 @@ class RoomResource extends JsonResource
             'description' => $this->description,
             'type' => $this->type,
             'status' => $this->status,
+            'contracts_count' => $this->whenCounted('contracts'),
+            'utilities_count' => $this->whenCounted('utilities'),
+            'maintenance_requests_count' => $this->whenCounted('maintenanceRequests'),
+            'can_delete' => $this->whenCounted(
+                'contracts',
+                fn (): bool => $this->status === \App\Models\Room::STATUS_AVAILABLE
+                    && $this->contracts_count === 0
+                    && $this->utilities_count === 0
+                    && $this->maintenance_requests_count === 0,
+            ),
             'sale_price' => $this->sale_price,
             'rent_price' => $this->rent_price,
             'rent_deposit_price' => $this->rent_deposit_price,

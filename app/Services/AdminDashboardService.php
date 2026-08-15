@@ -141,7 +141,7 @@ class AdminDashboardService
                 ->sum('total_amount');
 
             $collected = (float) Payment::query()
-                ->whereIn('status', ['approved', 'completed'])
+                ->where('status', Payment::STATUS_APPROVED)
                 ->whereBetween('payment_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
                 ->sum('amount');
 
@@ -182,7 +182,7 @@ class AdminDashboardService
         Invoice::query()
             ->where('status', '!=', 'draft')
             ->whereNotIn('status', ['paid', 'cancelled'])
-            ->withSum(['payments as paid_total' => fn ($query) => $query->whereIn('status', ['approved', 'completed'])], 'amount')
+            ->withSum(['payments as paid_total' => fn ($query) => $query->where('status', Payment::STATUS_APPROVED)], 'amount')
             ->get()
             ->each(function (Invoice $invoice) use (&$buckets, $today): void {
                 $balance = max(
@@ -357,7 +357,7 @@ class AdminDashboardService
             $monthEnd = $monthStart->copy()->endOfMonth();
 
             $amount = (float) Payment::query()
-                ->whereIn('status', ['approved', 'completed'])
+                ->where('status', Payment::STATUS_APPROVED)
                 ->whereBetween('payment_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
                 ->sum('amount');
 
@@ -594,7 +594,7 @@ class AdminDashboardService
             ->sum(fn (Invoice $invoice) => (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0));
 
         $paid = (float) Payment::query()
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->whereDate('payment_date', '<=', $asOf->toDateString())
             ->sum('amount');
 
@@ -604,7 +604,7 @@ class AdminDashboardService
     private function approvedPaymentTotal(): float
     {
         return (float) Payment::query()
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->sum('amount');
     }
 
@@ -614,7 +614,7 @@ class AdminDashboardService
         $monthEnd = $month->copy()->endOfMonth();
 
         return (float) Payment::query()
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->whereBetween('payment_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
             ->sum('amount');
     }
@@ -623,7 +623,7 @@ class AdminDashboardService
     {
         return (float) Invoice::query()
             ->where('status', '!=', 'draft')
-            ->withSum(['payments as paid_total' => fn ($query) => $query->whereIn('status', ['approved', 'completed'])], 'amount')
+            ->withSum(['payments as paid_total' => fn ($query) => $query->where('status', Payment::STATUS_APPROVED)], 'amount')
             ->get()
             ->sum(function (Invoice $invoice) {
                 $due = (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0);

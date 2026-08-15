@@ -20,6 +20,9 @@ class BuildingResource extends JsonResource
             'building_name' => $this->building_name,
             'location' => $this->location,
             'description' => $this->description,
+            'status' => $this->status,
+            'rooms_count' => $this->whenCounted('rooms'),
+            'can_delete' => $this->whenCounted('rooms', fn (): bool => $this->rooms_count === 0),
             'created_at' => $this->created_at?->toDateTimeString(),
             'updated_at' => $this->updated_at?->toDateTimeString(),
         ];

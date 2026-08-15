@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Http\Resources\Admin\InvoiceItemResource;
 use App\Mail\ReceiptDocumentMail;
+use App\Models\Payment;
 use App\Models\Receipt;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
@@ -116,7 +117,7 @@ class ReceiptDocumentService
 
         if ($invoice?->relationLoaded('payments')) {
             $approvedPaid = (float) $invoice->payments
-                ->whereIn('status', ['approved', 'completed'])
+                ->where('status', Payment::STATUS_APPROVED)
                 ->sum(fn ($item) => (float) ($item->amount ?? 0));
         }
 

@@ -73,7 +73,7 @@ class InvoiceController extends Controller
         }
 
         return response()->json([
-            'message' => 'Invoice deleted successfully.',
+            'message' => 'Invoice cancelled successfully.',
         ]);
     }
 

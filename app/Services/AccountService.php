@@ -101,9 +101,24 @@ class AccountService
         });
     }
 
-    public function delete(User $user, UserService $userService): void
+    public function delete(User $user): void
     {
-        $userService->delete($user);
+        $this->deactivate($user);
+    }
+
+    public function activate(User $user): User
+    {
+        $user->update(['status' => User::STATUS_ACTIVE]);
+
+        return $user->fresh(['role', 'profile']);
+    }
+
+    public function deactivate(User $user): User
+    {
+        $user->update(['status' => User::STATUS_INACTIVE]);
+        $user->tokens()->delete();
+
+        return $user->fresh(['role', 'profile']);
     }
 
     /**

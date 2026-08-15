@@ -32,6 +32,7 @@ class UpdateRoomRequest extends BaseAdminFormRequest
                 Room::STATUS_OCCUPIED,
                 Room::STATUS_SOLD,
                 Room::STATUS_MAINTENANCE,
+                Room::STATUS_INACTIVE,
             ])],
             'sale_price' => ['required', 'numeric', 'min:0'],
             'rent_price' => ['required', 'numeric', 'min:0'],

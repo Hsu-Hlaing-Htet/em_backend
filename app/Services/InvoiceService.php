@@ -7,6 +7,8 @@ use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\Utility;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
@@ -233,11 +235,36 @@ class InvoiceService
 
     public function delete(Invoice $invoice): void
     {
-        if ($invoice->status !== 'draft') {
-            throw new InvalidArgumentException('Only draft invoices can be deleted.');
-        }
+        DB::transaction(function () use ($invoice): void {
+            /** @var Invoice $locked */
+            $locked = Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $invoice->delete();
+            if (in_array($locked->status, [Invoice::STATUS_PAID, Invoice::STATUS_CANCELLED], true)) {
+                throw new InvalidArgumentException('Paid or cancelled invoices cannot be changed.');
+            }
+
+            $hasApprovedPayments = $locked->payments()
+                ->where('status', Payment::STATUS_APPROVED)
+                ->exists();
+
+            $hasProtectedReceipts = $locked->payments()
+                ->whereHas('receipt', function ($query): void {
+                    $query->where('status', Receipt::STATUS_ISSUED)
+                        ->orWhere('approval_status', Receipt::APPROVAL_APPROVED);
+                })
+                ->exists();
+
+            if ($hasApprovedPayments || $hasProtectedReceipts) {
+                throw new ConcurrentConflictException(
+                    'This invoice cannot be cancelled because approved payments or receipts exist.',
+                );
+            }
+
+            $locked->update(['status' => Invoice::STATUS_CANCELLED]);
+        });
     }
 
     private function normalizeBillingMonth(Carbon|string $billingMonth): Carbon

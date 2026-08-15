@@ -95,13 +95,32 @@ class ResidentController extends Controller
     public function destroy(
         User $user,
         AccountService $accountService,
-        UserService $userService,
     ): JsonResponse {
         $accountService->find($user->id, $this->allowedRoles());
-        $accountService->delete($user, $userService);
+        $accountService->delete($user);
 
         return response()->json([
-            'message' => 'Resident deleted successfully.',
+            'message' => 'Resident deactivated successfully.',
+        ]);
+    }
+
+    public function activate(User $user, AccountService $accountService): JsonResponse
+    {
+        $accountService->find($user->id, $this->allowedRoles());
+
+        return response()->json([
+            'message' => 'Resident reactivated successfully.',
+            'data' => new AccountResource($accountService->activate($user)),
+        ]);
+    }
+
+    public function deactivate(User $user, AccountService $accountService): JsonResponse
+    {
+        $accountService->find($user->id, $this->allowedRoles());
+
+        return response()->json([
+            'message' => 'Resident deactivated successfully.',
+            'data' => new AccountResource($accountService->deactivate($user)),
         ]);
     }
 }

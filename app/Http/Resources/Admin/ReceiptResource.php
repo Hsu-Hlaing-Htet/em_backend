@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Models\Payment;
 use App\Models\Receipt;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -107,7 +108,7 @@ class ReceiptResource extends JsonResource
 
         if ($invoice->relationLoaded('payments')) {
             return (float) $invoice->payments
-                ->whereIn('status', ['approved', 'completed'])
+                ->where('status', Payment::STATUS_APPROVED)
                 ->sum(fn ($payment) => (float) ($payment->amount ?? 0));
         }
 

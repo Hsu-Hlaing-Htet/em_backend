@@ -22,6 +22,12 @@ class AuthService
             ]);
         }
 
+        if ($user->status !== User::STATUS_ACTIVE) {
+            throw ValidationException::withMessages([
+                'email' => ['This account is inactive.'],
+            ]);
+        }
+
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return [

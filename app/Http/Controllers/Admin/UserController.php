@@ -56,10 +56,12 @@ class UserController extends Controller
 
     public function destroy(User $user, UserService $userService): JsonResponse
     {
-        $userService->delete($user);
+        $deleted = $userService->delete($user);
 
         return response()->json([
-            'message' => 'User deleted successfully.',
+            'message' => $deleted
+                ? 'User deleted successfully.'
+                : 'Customer deactivated successfully.',
         ]);
     }
 }

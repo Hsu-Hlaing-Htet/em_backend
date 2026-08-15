@@ -11,6 +11,12 @@ class Payment extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_APPROVED = 'approved';
+
+    public const STATUS_REJECTED = 'rejected';
+
     protected $fillable = [
         'invoice_id', 'payment_method_id', 'created_by', 'approved_by', 'approved_at', 'amount',
         'proof_image_path', 'note', 'rejection_reason', 'payment_date', 'status',

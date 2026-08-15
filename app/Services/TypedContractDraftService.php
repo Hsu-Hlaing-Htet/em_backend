@@ -2,11 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Models\Contract;
 use App\Models\Room;
+use App\Models\User;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\ContractDraftProfile;
-use App\Exceptions\ConcurrentConflictException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +86,14 @@ class TypedContractDraftService
         return $this->findByStatus($id, $this->profile->activeStatus);
     }
 
+    public function findForDeletion(int $id): Contract
+    {
+        return Contract::query()
+            ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
+            ->where('type', $this->profile->type)
+            ->findOrFail($id);
+    }
+
     private function findByStatus(int $id, string $status): Contract
     {
         return Contract::query()
@@ -104,9 +113,11 @@ class TypedContractDraftService
                 ->firstOrFail();
 
             $this->assertDraftContract($locked);
+            $this->assertCustomerActive((int) $locked->user_id);
 
             /** @var Room $room */
             $room = Room::query()
+                ->with('building')
                 ->whereKey($locked->room_id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -162,11 +173,13 @@ class TypedContractDraftService
         return DB::transaction(function () use ($data): Contract {
             /** @var Room $room */
             $room = Room::query()
+                ->with('building')
                 ->whereKey($data['room_id'])
                 ->lockForUpdate()
                 ->firstOrFail();
 
             $this->assertRoomAvailable($room);
+            $this->assertCustomerActive((int) $data['user_id']);
             $this->assertRoomType($room);
             $this->assertNoActiveContractForRoom($room->id);
 
@@ -194,8 +207,12 @@ class TypedContractDraftService
     {
         $this->assertDraftContract($contract);
 
+        if (isset($data['user_id'])) {
+            $this->assertCustomerActive((int) $data['user_id']);
+        }
+
         if (isset($data['room_id'])) {
-            $room = Room::query()->findOrFail($data['room_id']);
+            $room = Room::query()->with('building')->findOrFail($data['room_id']);
             $this->assertRoomAvailable($room, $contract->id);
             $this->assertRoomType($room);
             $data = $this->applyRoomDefaults(
@@ -225,7 +242,40 @@ class TypedContractDraftService
     {
         $this->assertDraftContract($contract);
 
+        if ($contract->invoices()->exists()) {
+            throw new InvalidArgumentException('This record cannot be deleted because related history exists.');
+        }
+
         $contract->delete();
+    }
+
+    public function cancel(Contract $contract, string $reason): Contract
+    {
+        if (! in_array($contract->status, ['approved', 'active'], true)) {
+            throw new InvalidArgumentException('Only approved or active contracts can be cancelled.');
+        }
+
+        return DB::transaction(function () use ($contract, $reason): Contract {
+            /** @var Contract $locked */
+            $locked = Contract::query()
+                ->with('room')
+                ->whereKey($contract->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (! in_array($locked->status, ['approved', 'active'], true)) {
+                throw new InvalidArgumentException('Only approved or active contracts can be cancelled.');
+            }
+
+            $locked->update([
+                'status' => 'cancelled',
+                'remark' => $reason,
+            ]);
+
+            $locked->room?->update(['status' => Room::STATUS_AVAILABLE]);
+
+            return $locked->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+        });
     }
 
     public function generateContractNumber(): string
@@ -310,6 +360,10 @@ class TypedContractDraftService
 
     private function assertRoomAvailable(Room $room, ?int $ignoreContractId = null): void
     {
+        if ($room->building?->status !== 'active') {
+            throw new InvalidArgumentException('The selected building is archived and cannot be used for a new contract.');
+        }
+
         $this->assertNoActiveContractForRoom($room->id, $ignoreContractId);
 
         if ($room->status !== 'available') {
@@ -325,6 +379,15 @@ class TypedContractDraftService
             }
 
             throw new InvalidArgumentException('Room is not available for contract.');
+        }
+    }
+
+    private function assertCustomerActive(int $userId): void
+    {
+        $customer = User::query()->findOrFail($userId);
+
+        if ($customer->status !== User::STATUS_ACTIVE || ! $customer->isCustomer()) {
+            throw new InvalidArgumentException('Inactive customers cannot be assigned to new contracts.');
         }
     }
 }

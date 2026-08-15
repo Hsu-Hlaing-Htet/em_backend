@@ -8,7 +8,6 @@ use App\Http\Requests\Admin\SendSaleContractDocumentRequest;
 use App\Http\Requests\Admin\StoreSaleContractDraftRequest;
 use App\Http\Requests\Admin\UpdateSaleContractDraftRequest;
 use App\Http\Resources\Admin\ContractResource;
-use App\Models\Contract;
 use App\Services\SaleContractDocumentService;
 use App\Services\SaleContractDraftService;
 use Illuminate\Http\JsonResponse;
@@ -74,7 +73,7 @@ class SaleContractDraftController extends Controller
     public function destroy(int $sale_contract_draft, SaleContractDraftService $saleContractDraftService): JsonResponse
     {
         try {
-            $contract = $saleContractDraftService->find($sale_contract_draft);
+            $contract = $saleContractDraftService->findForDeletion($sale_contract_draft);
             $saleContractDraftService->delete($contract);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
@@ -102,6 +101,28 @@ class SaleContractDraftController extends Controller
         $contract = $saleContractDraftService->findApproved($sale_contract);
 
         return response()->json([
+            'data' => new ContractResource($contract),
+        ]);
+    }
+
+    public function cancel(
+        Request $request,
+        int $sale_contract,
+        SaleContractDraftService $saleContractDraftService,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $contract = $saleContractDraftService->findApproved($sale_contract);
+            $contract = $saleContractDraftService->cancel($contract, $validated['reason']);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Sale contract cancelled successfully.',
             'data' => new ContractResource($contract),
         ]);
     }

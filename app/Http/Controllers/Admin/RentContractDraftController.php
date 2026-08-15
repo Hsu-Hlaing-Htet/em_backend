@@ -73,7 +73,7 @@ class RentContractDraftController extends Controller
     public function destroy(int $rent_contract_draft, RentContractDraftService $rentContractDraftService): JsonResponse
     {
         try {
-            $contract = $rentContractDraftService->find($rent_contract_draft);
+            $contract = $rentContractDraftService->findForDeletion($rent_contract_draft);
             $rentContractDraftService->delete($contract);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
@@ -101,6 +101,28 @@ class RentContractDraftController extends Controller
         $contract = $rentContractDraftService->findActive($rent_contract);
 
         return response()->json([
+            'data' => new ContractResource($contract),
+        ]);
+    }
+
+    public function cancel(
+        Request $request,
+        int $rent_contract,
+        RentContractDraftService $rentContractDraftService,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $contract = $rentContractDraftService->findActive($rent_contract);
+            $contract = $rentContractDraftService->cancel($contract, $validated['reason']);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Rent contract cancelled successfully.',
             'data' => new ContractResource($contract),
         ]);
     }

@@ -29,6 +29,8 @@ class Room extends Model
 
     public const STATUS_MAINTENANCE = 'maintenance';
 
+    public const STATUS_INACTIVE = 'inactive';
+
     /**
      * @var list<string>
      */
@@ -83,5 +85,15 @@ class Room extends Model
     public function contracts(): HasMany
     {
         return $this->hasMany(Contract::class);
+    }
+
+    public function utilities(): HasMany
+    {
+        return $this->hasMany(Utility::class);
+    }
+
+    public function maintenanceRequests(): HasMany
+    {
+        return $this->hasMany(MaintenanceRequest::class);
     }
 }

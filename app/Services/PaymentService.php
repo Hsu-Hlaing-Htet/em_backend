@@ -174,7 +174,7 @@ class PaymentService
     {
         return Payment::query()->create([
             ...$data,
-            'status' => 'pending',
+            'status' => Payment::STATUS_PENDING,
             'created_by' => Auth::id(),
         ]);
     }
@@ -184,7 +184,7 @@ class PaymentService
      */
     public function update(Payment $payment, array $data): Payment
     {
-        if ($payment->status !== 'pending') {
+        if ($payment->status !== Payment::STATUS_PENDING) {
             throw new InvalidArgumentException('Only pending payments can be updated.');
         }
 
@@ -195,11 +195,14 @@ class PaymentService
 
     public function delete(Payment $payment): void
     {
-        if ($payment->status !== 'pending') {
-            throw new InvalidArgumentException('Only pending payments can be deleted.');
+        if ($payment->status !== Payment::STATUS_PENDING) {
+            throw new InvalidArgumentException('Only pending payments can be rejected.');
         }
 
-        $payment->delete();
+        $payment->update([
+            'status' => Payment::STATUS_REJECTED,
+            'rejection_reason' => $payment->rejection_reason ?: 'Cancelled by administrator.',
+        ]);
     }
 
     public function uploadProof(Payment $payment, UploadedFile $file): Payment
@@ -211,7 +214,7 @@ class PaymentService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($lockedPayment->status !== 'pending') {
+            if ($lockedPayment->status !== Payment::STATUS_PENDING) {
                 throw new ConcurrentConflictException('Only pending payments can receive proof uploads.');
             }
 
@@ -233,7 +236,7 @@ class PaymentService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($lockedPayment->status !== 'pending') {
+            if ($lockedPayment->status !== Payment::STATUS_PENDING) {
                 throw new ConcurrentConflictException('Only pending payments can be approved.');
             }
 
@@ -260,7 +263,7 @@ class PaymentService
 
             $lockedPayment->update([
                 'amount' => $paidAmount,
-                'status' => 'approved',
+                'status' => Payment::STATUS_APPROVED,
                 'approved_by' => Auth::id(),
                 'approved_at' => now(),
                 'rejection_reason' => null,
@@ -282,12 +285,12 @@ class PaymentService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($lockedPayment->status !== 'pending') {
+            if ($lockedPayment->status !== Payment::STATUS_PENDING) {
                 throw new ConcurrentConflictException('Only pending payments can be rejected.');
             }
 
             $lockedPayment->update([
-                'status' => 'rejected',
+                'status' => Payment::STATUS_REJECTED,
                 'approved_by' => Auth::id(),
                 'approved_at' => now(),
                 'rejection_reason' => $reason,
@@ -314,7 +317,7 @@ class PaymentService
         $invoice->loadMissing('payments');
 
         return round((float) $invoice->payments
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->sum(fn (Payment $payment) => (float) ($payment->amount ?? 0)), 2);
     }
 

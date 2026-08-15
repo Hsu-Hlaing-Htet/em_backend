@@ -22,6 +22,7 @@ class AccountResource extends JsonResource
             'role_name' => $this->whenLoaded('role', fn () => $this->role?->name),
             'name' => $this->name,
             'email' => $this->email,
+            'status' => $this->status,
             'phone' => $this->whenLoaded('profile', fn () => $this->profile?->phone),
             'nrc' => $this->whenLoaded('profile', fn () => $this->profile?->nrc),
             'dob' => $this->whenLoaded('profile', fn () => $this->profile?->dob?->toDateString()),

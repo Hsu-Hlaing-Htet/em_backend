@@ -69,8 +69,16 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('users', UserController::class);
     Route::apiResource('profiles', ProfileController::class);
     Route::apiResource('residents', ResidentController::class)->parameters(['residents' => 'user']);
+    Route::post('residents/{user}/activate', [ResidentController::class, 'activate']);
+    Route::post('residents/{user}/deactivate', [ResidentController::class, 'deactivate']);
     Route::apiResource('staff', StaffController::class)->parameters(['staff' => 'user']);
+    Route::delete('buildings/bulk', [BuildingController::class, 'bulkDestroy']);
+    Route::post('buildings/{building}/archive', [BuildingController::class, 'archive']);
+    Route::post('buildings/{building}/activate', [BuildingController::class, 'activate']);
     Route::apiResource('buildings', BuildingController::class);
+    Route::delete('rooms/bulk', [RoomController::class, 'bulkDestroy']);
+    Route::post('rooms/{room}/deactivate', [RoomController::class, 'deactivate']);
+    Route::post('rooms/{room}/activate', [RoomController::class, 'activate']);
     Route::apiResource('rooms', RoomController::class);
     Route::post('room-images/upload', [RoomImageController::class, 'upload']);
     Route::apiResource('room-images', RoomImageController::class);
@@ -89,6 +97,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('sale-contract-drafts', SaleContractDraftController::class);
     Route::get('sale-contracts/approved', [SaleContractDraftController::class, 'approvedIndex']);
     Route::get('sale-contracts/approved/{sale_contract}', [SaleContractDraftController::class, 'approvedShow']);
+    Route::post('sale-contracts/approved/{sale_contract}/cancel', [SaleContractDraftController::class, 'cancel']);
     Route::get('sale-contracts/approved/{sale_contract}/document/download', [SaleContractDraftController::class, 'downloadApprovedDocument']);
     Route::get('sale-contracts/approved/{sale_contract}/document/export', [SaleContractDraftController::class, 'exportApprovedDocument']);
     Route::post('sale-contracts/approved/{sale_contract}/document/email', [SaleContractDraftController::class, 'sendApprovedDocumentEmail']);
@@ -101,6 +110,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('rent-contract-drafts', RentContractDraftController::class);
     Route::get('rent-contracts/active', [RentContractDraftController::class, 'activeIndex']);
     Route::get('rent-contracts/active/{rent_contract}', [RentContractDraftController::class, 'activeShow']);
+    Route::post('rent-contracts/active/{rent_contract}/cancel', [RentContractDraftController::class, 'cancel']);
     Route::get('rent-contracts/active/{rent_contract}/document/download', [RentContractDraftController::class, 'downloadActiveDocument']);
     Route::get('rent-contracts/active/{rent_contract}/document/export', [RentContractDraftController::class, 'exportActiveDocument']);
     Route::post('rent-contracts/active/{rent_contract}/document/email', [RentContractDraftController::class, 'sendActiveDocumentEmail']);

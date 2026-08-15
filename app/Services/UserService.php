@@ -55,8 +55,19 @@ class UserService
         return $user->fresh(['role', 'profile']);
     }
 
-    public function delete(User $user): void
+    public function delete(User $user): bool
     {
+        $user->loadMissing('role');
+
+        if ($user->isCustomer()) {
+            $user->update(['status' => User::STATUS_INACTIVE]);
+            $user->tokens()->delete();
+
+            return false;
+        }
+
         $user->delete();
+
+        return true;
     }
 }

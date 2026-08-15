@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Models\Payment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -90,7 +91,7 @@ class InvoiceResource extends JsonResource
         }
 
         return (float) $this->payments
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->sum(fn ($payment) => (float) ($payment->amount ?? 0));
     }
 
@@ -165,7 +166,7 @@ class InvoiceResource extends JsonResource
         }
 
         $payment = $this->payments
-            ->whereIn('status', ['approved', 'completed'])
+            ->where('status', Payment::STATUS_APPROVED)
             ->sortByDesc(fn ($item) => $item->payment_date)
             ->first();
 

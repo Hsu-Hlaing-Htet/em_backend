@@ -11,6 +11,10 @@ class Building extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_ARCHIVED = 'archived';
+
     /**
      * @var list<string>
      */
@@ -18,6 +22,7 @@ class Building extends Model
         'building_name',
         'location',
         'description',
+        'status',
     ];
 
     public function rooms(): HasMany

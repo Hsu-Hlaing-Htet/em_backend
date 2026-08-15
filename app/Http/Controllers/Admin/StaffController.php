@@ -114,10 +114,9 @@ class StaffController extends Controller
     public function destroy(
         User $user,
         AccountService $accountService,
-        UserService $userService,
     ): JsonResponse {
         $accountService->find($user->id, $this->allowedRoles());
-        $accountService->delete($user, $userService);
+        $accountService->delete($user);
 
         return response()->json([
             'message' => 'Staff member deleted successfully.',
