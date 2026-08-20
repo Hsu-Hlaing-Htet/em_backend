@@ -25,7 +25,6 @@ class UpdateCustomerProfileRequest extends FormRequest
                 'max:255',
                 Rule::unique('users', 'email')->ignore($this->user()?->id),
             ],
-            'password' => ['nullable', 'string', 'min:8'],
             'phone' => ['required', 'string', 'max:50'],
             'nrc' => ['required', 'string', 'max:100'],
             'dob' => ['required', 'date'],

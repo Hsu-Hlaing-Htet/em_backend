@@ -86,6 +86,24 @@ class User extends Authenticatable
 
     public function sendPasswordResetNotification($token): void
     {
-        $this->notify(new ResetPasswordNotification($token));
+        $this->notify(new ResetPasswordNotification($token, $this->getEmailForPasswordReset()));
+    }
+
+    /**
+     * Send password reset mail to the address captured on the notification.
+     * That address is always the email submitted on Forgot Password, and only
+     * after the password broker has matched it to this account.
+     */
+    public function routeNotificationForMail(object $notification): string
+    {
+        if (
+            $notification instanceof ResetPasswordNotification
+            && $notification->recipientEmail !== ''
+            && strcasecmp($notification->recipientEmail, $this->getEmailForPasswordReset()) === 0
+        ) {
+            return $notification->recipientEmail;
+        }
+
+        return $this->getEmailForPasswordReset();
     }
 }

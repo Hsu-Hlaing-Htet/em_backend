@@ -31,5 +31,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="PASSWORD_RESET_LOCAL_DELIVERY_TEST" value="false"/>
+        <env name="MAIL_LOGO_URL" value="https://rosewoodroyale.test/images/logo-dark.jpg"/>
     </php>
 </phpunit>

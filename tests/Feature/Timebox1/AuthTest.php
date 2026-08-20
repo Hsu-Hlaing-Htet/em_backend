@@ -32,7 +32,19 @@ test('valid login returns token and user payload', function () {
         ->assertJsonPath('user.role', Role::SUPER_ADMIN);
 });
 
-test('invalid login returns validation error on email', function () {
+test('unknown login email returns validation error on email', function () {
+    tb1SeedUsers();
+
+    $this->postJson('/api/auth/login', [
+        'email' => 'missing@rosewoodroyale.com',
+        'password' => 'p@ssword',
+    ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['email'])
+        ->assertJsonPath('errors.email.0', 'Email not found.');
+});
+
+test('invalid login password returns validation error on password', function () {
     tb1SeedUsers();
 
     $this->postJson('/api/auth/login', [
@@ -40,7 +52,8 @@ test('invalid login returns validation error on email', function () {
         'password' => 'wrong-password',
     ])
         ->assertStatus(422)
-        ->assertJsonValidationErrors(['email']);
+        ->assertJsonValidationErrors(['password'])
+        ->assertJsonPath('errors.password.0', 'Incorrect password.');
 });
 
 test('missing login fields are rejected', function () {
@@ -88,6 +101,7 @@ test('logout succeeds for authenticated user', function () {
 test('unauthenticated requests to protected endpoints are rejected', function () {
     $this->getJson('/api/auth/me')->assertUnauthorized();
     $this->postJson('/api/auth/logout')->assertUnauthorized();
+    $this->postJson('/api/auth/change-password')->assertUnauthorized();
     $this->getJson('/api/buildings')->assertUnauthorized();
 });
 

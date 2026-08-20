@@ -39,13 +39,17 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
-            'scheme' => env('MAIL_SCHEME'),
+            'scheme' => env('MAIL_SCHEME', match (env('MAIL_ENCRYPTION')) {
+                'ssl', 'smtps' => 'smtps',
+                default => null,
+            }),
             'url' => env('MAIL_URL'),
-            'host' => env('MAIL_HOST', '127.0.0.1'),
-            'port' => env('MAIL_PORT', 2525),
+            'host' => env('MAIL_HOST', 'smtp.gmail.com'),
+            'port' => env('MAIL_PORT', 587),
             'username' => env('MAIL_USERNAME'),
-            'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            'password' => preg_replace('/\s+/', '', (string) env('MAIL_PASSWORD')) ?: null,
+            'timeout' => 30,
+            'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
@@ -114,5 +118,18 @@ return [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Brand Logo For Transactional Email
+    |--------------------------------------------------------------------------
+    |
+    | Absolute HTTPS URL for the Rosewood Royale logo in HTML email. Prefer
+    | MAIL_LOGO_URL. Otherwise the public /images/logo-dark.jpg asset is used
+    | when APP_URL is a non-local HTTPS origin.
+    |
+    */
+
+    'logo_url' => env('MAIL_LOGO_URL'),
 
 ];

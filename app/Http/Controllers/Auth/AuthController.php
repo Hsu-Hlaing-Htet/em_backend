@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\ChangePasswordRequest;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
@@ -58,6 +59,19 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Your password has been reset successfully.',
+        ]);
+    }
+
+    public function changePassword(ChangePasswordRequest $request, AuthService $authService): JsonResponse
+    {
+        $authService->changePassword(
+            $request->user(),
+            $request->validated('current_password'),
+            $request->validated('password')
+        );
+
+        return response()->json([
+            'message' => 'Your password has been changed successfully.',
         ]);
     }
 }

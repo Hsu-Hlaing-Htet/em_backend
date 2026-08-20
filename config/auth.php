@@ -112,4 +112,19 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | LOCAL TESTING ONLY — password reset mail delivery
+    |--------------------------------------------------------------------------
+    |
+    | When APP_ENV=local AND this flag is true, Forgot Password will send the
+    | existing reset template to whatever email was typed, even if no user
+    | account exists. This is only for verifying Gmail SMTP delivery.
+    |
+    | Never enable in production. Reset still cannot change another user's
+    | password: unregistered addresses get a non-redeemable link token.
+    |
+    */
+    'password_reset_local_delivery_test' => env('PASSWORD_RESET_LOCAL_DELIVERY_TEST', false),
+
 ];

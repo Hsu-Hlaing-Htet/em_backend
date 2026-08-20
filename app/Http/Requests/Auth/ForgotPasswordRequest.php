@@ -11,13 +11,22 @@ class ForgotPasswordRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->email)) {
+            $this->merge([
+                'email' => trim($this->email),
+            ]);
+        }
+    }
+
     /**
      * @return array<string, array<int, string>>
      */
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email'],
+            'email' => ['required', 'email', 'max:255'],
         ];
     }
 }

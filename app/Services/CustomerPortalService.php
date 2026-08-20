@@ -106,6 +106,8 @@ class CustomerPortalService
      */
     public function updateProfile(User $user, array $data): User
     {
+        unset($data['password'], $data['password_confirmation'], $data['current_password']);
+
         return $this->residentService->update($user, $data);
     }
 
