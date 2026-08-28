@@ -23,7 +23,7 @@ class StoreCustomerMaintenanceRequestRequest extends FormRequest
     {
         $roomIds = Contract::query()
             ->where('user_id', $this->user()->id)
-            ->whereIn('status', ['approved', 'active'])
+            ->where('status', Contract::STATUS_ACTIVE)
             ->pluck('room_id')
             ->unique()
             ->values()

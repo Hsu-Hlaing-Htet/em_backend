@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\RejectRentContractDraftRequest;
 use App\Http\Requests\Admin\SendRentContractDocumentRequest;
@@ -14,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use InvalidArgumentException;
+use Throwable;
 
 class RentContractDraftController extends Controller
 {
@@ -112,17 +114,22 @@ class RentContractDraftController extends Controller
     ): JsonResponse {
         $validated = $request->validate([
             'reason' => ['required', 'string', 'max:1000'],
+            'termination_date' => ['nullable', 'date'],
         ]);
 
         try {
             $contract = $rentContractDraftService->findActive($rent_contract);
-            $contract = $rentContractDraftService->cancel($contract, $validated['reason']);
-        } catch (InvalidArgumentException $exception) {
+            $contract = $rentContractDraftService->cancel(
+                $contract,
+                $validated['reason'],
+                $validated['termination_date'] ?? now()->toDateString(),
+            );
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
         return response()->json([
-            'message' => 'Rent contract cancelled successfully.',
+            'message' => 'Rent contract terminated successfully.',
             'data' => new ContractResource($contract),
         ]);
     }
@@ -221,15 +228,18 @@ class RentContractDraftController extends Controller
         int $rent_contract,
         RentContractDocumentService $rentContractDocumentService,
     ): JsonResponse {
+        $contract = $rentContractDocumentService->findActive($rent_contract);
+
         try {
-            $contract = $rentContractDocumentService->findActive($rent_contract);
-            $rentContractDocumentService->sendEmail($contract, $request->validated());
+            $email = $rentContractDocumentService->sendEmailToContractCustomer($contract, $request->validated());
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (Throwable) {
+            return response()->json(['message' => 'Unable to send the contract. Please try again.'], 500);
         }
 
         return response()->json([
-            'message' => 'Rent contract document sent successfully.',
+            'message' => "Contract sent successfully to {$email}.",
         ]);
     }
 }

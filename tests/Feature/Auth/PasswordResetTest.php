@@ -111,7 +111,7 @@ test('forgot password sends the reset email to the submitted address only', func
     Notification::fake();
 
     $admin = passwordResetAdmin();
-    $other = User::query()->where('email', 'aungaung@rosewoodroyale.com')->firstOrFail();
+    $other = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
     $submittedEmail = $admin->email;
 
     $this->postJson('/api/auth/forgot-password', [
@@ -126,7 +126,7 @@ test('forgot password sends the reset email to the submitted address only', func
 
 test('reset password rejects a token when the email belongs to a different user', function () {
     $admin = passwordResetAdmin();
-    $other = User::query()->where('email', 'aungaung@rosewoodroyale.com')->firstOrFail();
+    $other = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
     $token = Password::createToken($admin);
 
     $this->postJson('/api/auth/reset-password', [
@@ -147,7 +147,7 @@ test('forgot password returns success even when email is unknown', function () {
     passwordResetAdmin();
 
     $this->postJson('/api/auth/forgot-password', [
-        'email' => 'unknown@rosewoodroyale.com',
+        'email' => 'unknown@gmail.com',
     ])->assertOk()
         ->assertJsonPath('message', 'If an account exists for that email, a password reset link has been sent.');
 

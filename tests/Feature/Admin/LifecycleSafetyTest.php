@@ -22,7 +22,7 @@ function lifecycleActors(): array
 
     return [
         User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail(),
-        User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail(),
+        User::query()->where('email', 'mgmg@gmail.com')->firstOrFail(),
     ];
 }
 
@@ -203,7 +203,7 @@ test('inactive customers and archived buildings cannot be used for new records',
         ->assertJsonValidationErrors(['building_id'], 'data');
 });
 
-test('active contracts are cancelled without deletion and release their room', function (): void {
+test('active contracts are terminated without deletion and release their room', function (): void {
     [$admin, $customer] = lifecycleActors();
     $room = Room::factory()->occupied()->create();
     $contract = Contract::factory()->rentActive()->create([
@@ -215,15 +215,69 @@ test('active contracts are cancelled without deletion and release their room', f
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/rent-contracts/active/{$contract->id}/cancel", [
-            'reason' => 'Customer requested cancellation.',
+            'reason' => 'Customer requested early termination.',
+            'termination_date' => '2026-08-21',
         ])
         ->assertOk()
-        ->assertJsonPath('data.status', 'cancelled');
+        ->assertJsonPath('data.status', 'terminated')
+        ->assertJsonPath('data.termination_date', '2026-08-21')
+        ->assertJsonPath('data.termination_reason', 'Customer requested early termination.');
 
-    expect($contract->fresh()->status)->toBe('cancelled')
-        ->and($contract->fresh()->remark)->toBe('Customer requested cancellation.')
+    expect($contract->fresh()->status)->toBe('terminated')
+        ->and($contract->fresh()->termination_date->toDateString())->toBe('2026-08-21')
+        ->and($contract->fresh()->termination_reason)->toBe('Customer requested early termination.')
         ->and($room->fresh()->status)->toBe(Room::STATUS_AVAILABLE)
         ->and(Contract::query()->find($contract->id))->not->toBeNull();
+});
+
+test('legacy cancel endpoint terminates active contracts with a default termination date', function (): void {
+    [$admin, $customer] = lifecycleActors();
+    $room = Room::factory()->occupied()->create();
+    $contract = Contract::factory()->saleApproved()->create([
+        'user_id' => $customer->id,
+        'room_id' => $room->id,
+        'created_by' => $admin->id,
+        'approved_by' => $admin->id,
+    ]);
+    $invoice = Invoice::factory()->issued()->create([
+        'contract_id' => $contract->id,
+        'created_by' => $admin->id,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/sale-contracts/approved/{$contract->id}/cancel", [
+            'reason' => 'Customer requested early termination.',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'terminated')
+        ->assertJsonPath('data.termination_date', now()->toDateString())
+        ->assertJsonPath('data.termination_reason', 'Customer requested early termination.');
+
+    expect($contract->fresh()->status)->toBe(Contract::STATUS_TERMINATED)
+        ->and($contract->fresh()->termination_date->toDateString())->toBe(now()->toDateString())
+        ->and($contract->fresh()->termination_reason)->toBe('Customer requested early termination.')
+        ->and(Contract::query()->find($contract->id))->not->toBeNull()
+        ->and(Invoice::query()->find($invoice->id))->not->toBeNull();
+});
+
+test('legacy cancel endpoint returns validation error instead of server error for non active contracts', function (): void {
+    [$admin, $customer] = lifecycleActors();
+    $contract = Contract::factory()->rent()->create([
+        'user_id' => $customer->id,
+        'created_by' => $admin->id,
+        'approved_by' => $admin->id,
+        'approved_at' => now(),
+        'status' => Contract::STATUS_COMPLETED,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/rent-contracts/active/{$contract->id}/cancel", [
+            'reason' => 'Customer requested early termination.',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('message', 'Only active contracts can be terminated.');
+
+    expect($contract->fresh()->status)->toBe(Contract::STATUS_COMPLETED);
 });
 
 test('invoice and payment delete routes preserve records through status transitions', function (): void {

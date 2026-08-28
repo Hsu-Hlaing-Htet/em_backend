@@ -6,6 +6,7 @@ use App\Models\Contract;
 use App\Models\PaymentPlan;
 use App\Models\Room;
 use App\Models\User;
+use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -25,7 +26,7 @@ class ContractFactory extends Factory
         $depositAmount = round($contractTotal * fake()->randomFloat(2, 0.05, 0.15), 2);
 
         return [
-            'contract_number' => fake()->unique()->numerify('CTR-######'),
+            'contract_number' => SeedNumberGenerator::nextRentContractNumber(),
             'user_id' => User::factory()->customer(),
             'room_id' => Room::factory()->forRent(),
             'payment_plan_id' => null,
@@ -44,7 +45,7 @@ class ContractFactory extends Factory
             'billing_day' => $paymentType === 'installment'
                 ? fake()->numberBetween(1, 28)
                 : null,
-            'status' => 'draft',
+            'status' => Contract::STATUS_PENDING,
             'remark' => fake()->optional(0.4)->sentence(),
         ];
     }
@@ -53,7 +54,7 @@ class ContractFactory extends Factory
     {
         return $this->state(fn () => [
             'type' => 'sale',
-            'contract_number' => fake()->unique()->numerify('S-######'),
+            'contract_number' => SeedNumberGenerator::nextSaleContractNumber(),
             'room_id' => Room::factory()->forSale(),
         ]);
     }
@@ -62,7 +63,7 @@ class ContractFactory extends Factory
     {
         return $this->state(fn () => [
             'type' => 'rent',
-            'contract_number' => fake()->unique()->numerify('R-######'),
+            'contract_number' => SeedNumberGenerator::nextRentContractNumber(),
             'room_id' => Room::factory()->forRent(),
         ]);
     }
@@ -70,7 +71,7 @@ class ContractFactory extends Factory
     public function draft(): static
     {
         return $this->state(fn () => [
-            'status' => 'draft',
+            'status' => Contract::STATUS_PENDING,
             'approved_by' => null,
             'approved_at' => null,
         ]);
@@ -80,7 +81,7 @@ class ContractFactory extends Factory
     {
         return $this->state(fn () => [
             'type' => 'rent',
-            'status' => 'active',
+            'status' => Contract::STATUS_ACTIVE,
             'approved_by' => User::factory()->admin(),
             'approved_at' => now(),
         ]);
@@ -90,7 +91,7 @@ class ContractFactory extends Factory
     {
         return $this->state(fn () => [
             'type' => 'sale',
-            'status' => 'approved',
+            'status' => Contract::STATUS_ACTIVE,
             'approved_by' => User::factory()->admin(),
             'approved_at' => now(),
         ]);
@@ -99,7 +100,7 @@ class ContractFactory extends Factory
     public function pending(): static
     {
         return $this->state(fn () => [
-            'status' => 'pending',
+            'status' => Contract::STATUS_PENDING,
             'approved_by' => null,
             'approved_at' => null,
         ]);
@@ -108,7 +109,7 @@ class ContractFactory extends Factory
     public function rejected(): static
     {
         return $this->state(fn () => [
-            'status' => 'rejected',
+            'status' => Contract::STATUS_REJECTED,
             'approved_by' => User::factory()->admin(),
             'approved_at' => now(),
         ]);

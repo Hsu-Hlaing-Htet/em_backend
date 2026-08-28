@@ -136,6 +136,71 @@ test('admin can create update and delete rooms with building relationship', func
     expect(Room::query()->find($roomId))->toBeNull();
 });
 
+test('room number must be unique within the same building', function () {
+    $admin = propertyAdmin();
+
+    $towerA = Building::factory()->create(['building_name' => 'Rosewood Royal Tower']);
+    $towerB = Building::factory()->create(['building_name' => 'Another Tower']);
+
+    $payload = [
+        'building_id' => $towerA->id,
+        'room_number' => 'A-101',
+        'floor_number' => 1,
+        'area_sqft' => 500,
+        'type' => 'rent',
+        'status' => 'available',
+        'sale_price' => 0,
+        'rent_price' => 400000,
+        'rent_deposit_price' => 800000,
+        'booking_deposit_price' => 0,
+    ];
+
+    $createResponse = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/rooms', $payload)
+        ->assertCreated();
+
+    $roomId = $createResponse->json('data.id');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/rooms', $payload)
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['room_number'], 'data')
+        ->assertJsonPath('data.room_number.0', 'Room A-101 already exists in this building.');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/rooms', [
+            ...$payload,
+            'room_number' => 'A-102',
+        ])
+        ->assertCreated();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/rooms', [
+            ...$payload,
+            'building_id' => $towerB->id,
+        ])
+        ->assertCreated();
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/rooms/{$roomId}", $payload)
+        ->assertOk()
+        ->assertJsonPath('data.room_number', 'A-101');
+
+    $otherRoomId = Room::query()
+        ->where('building_id', $towerA->id)
+        ->where('room_number', 'A-102')
+        ->value('id');
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/rooms/{$otherRoomId}", [
+            ...$payload,
+            'room_number' => 'A-101',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['room_number'], 'data')
+        ->assertJsonPath('data.room_number.0', 'Room A-101 already exists in this building.');
+});
+
 test('admin can bulk delete available rooms without contracts', function () {
     $admin = propertyAdmin();
     $building = Building::factory()->create();
@@ -203,7 +268,7 @@ test('bulk room delete rejects protected occupied sold and contracted rooms', fu
 
 test('customer cannot manage buildings or rooms', function () {
     $admin = propertyAdmin();
-    $customer = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Restricted Tower',

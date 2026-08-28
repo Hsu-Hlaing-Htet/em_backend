@@ -7,7 +7,9 @@ use App\Models\Room;
 use App\Models\RoomImage;
 use App\Models\User;
 use App\Models\Utility;
+use App\Support\PhoneNumber;
 use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\Support\MyanmarSampleData;
 use Database\Seeders\Support\RoomImageSeederSupport;
 use Database\Seeders\Support\SeedAssetImage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,6 +36,47 @@ test('seeded rooms have valid image records and files', function (): void {
     }
 });
 
+test('seeded fake data uses readable emails phones buildings and rooms', function (): void {
+    $this->seed(DatabaseSeeder::class);
+
+    $superAdmin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
+    expect($superAdmin->name)->toBe('U Kyaw Swar');
+
+    $users = User::query()
+        ->with('profile')
+        ->where('email', '!=', 'admin@rosewoodroyale.com')
+        ->get();
+
+    foreach ($users as $user) {
+        expect($user->email)->toEndWith('@gmail.com');
+        expect($user->email)->not->toMatch('/^(bulk|test|user)\d+@/i');
+        expect($user->email)->not->toContain('@example.com');
+
+        $base = MyanmarSampleData::emailBaseForName($user->name);
+        expect($user->email)->toMatch('/^'.preg_quote($base, '/').'\d*@gmail\.com$/');
+        expect(PhoneNumber::isValid((string) $user->profile?->phone))->toBeTrue();
+    }
+
+    expect($users->pluck('email')->duplicates()->isEmpty())->toBeTrue();
+    expect($users->pluck('profile.phone')->duplicates()->isEmpty())->toBeTrue();
+
+    $buildingNames = \App\Models\Building::query()->pluck('building_name');
+
+    expect($buildingNames->duplicates()->isEmpty())->toBeTrue();
+    expect($buildingNames->all())
+        ->each->not->toMatch('/^Building [A-Z]+$/');
+    expect($buildingNames->all())
+        ->each->toMatch('/(Residence|Tower|Heights|Court)$/');
+
+    expect(Room::query()->pluck('room_number')->all())
+        ->each->toMatch('/^[A-Z]-\d{3}$/');
+
+    expect(Room::query()->where('room_number', 'A-101')->exists())->toBeTrue();
+    expect(Room::query()->where('room_number', 'B-101')->exists())->toBeTrue();
+    expect(Room::query()->where('room_number', 'C-101')->exists())->toBeTrue();
+    expect(Room::query()->where('room_number', 'D-101')->exists())->toBeTrue();
+});
+
 test('room image api returns browser accessible urls', function (): void {
     $this->seed(DatabaseSeeder::class);
 
@@ -55,7 +98,7 @@ test('room image api returns browser accessible urls', function (): void {
 test('workflow consolidated invoice contains rent and utility line items', function (): void {
     $this->seed(DatabaseSeeder::class);
 
-    $invoice = Invoice::query()->where('invoice_number', 'INV-WF-UNPAID1')->with('items')->firstOrFail();
+    $invoice = Invoice::query()->where('invoice_number', 'INV-000007')->with('items')->firstOrFail();
 
     expect($invoice->billing_month)->not->toBeNull();
     expect($invoice->items->count())->toBeGreaterThanOrEqual(4);
@@ -83,7 +126,7 @@ test('payment and receipt demo integrity rules hold', function (): void {
         Receipt::query()->select('payment_id')->groupBy('payment_id')->havingRaw('COUNT(*) > 1')->count()
     )->toBe(0);
 
-    $paidInvoice = Invoice::query()->where('invoice_number', 'INV-WF-PAID01')->with('payments.receipt')->firstOrFail();
+    $paidInvoice = Invoice::query()->where('invoice_number', 'INV-000005')->with('payments.receipt')->firstOrFail();
     $payment = $paidInvoice->payments->first();
     expect($payment)->not->toBeNull();
     expect((float) $payment->amount)->toBe(round((float) $paidInvoice->total_amount + (float) $paidInvoice->late_fee, 2));

@@ -18,6 +18,7 @@ class StoreUtilityBatchRequest extends BaseAdminFormRequest
     {
         return [
             'billing_month' => ['required', 'date'],
+            'reading_date' => ['nullable', 'date'],
             'utility_type_id' => ['required', 'integer', Rule::exists('utility_types', 'id')],
             'entries' => ['required', 'array', 'min:1'],
             'entries.*.room_id' => ['required', 'integer', Rule::exists('rooms', 'id')],

@@ -33,6 +33,7 @@ class UserSeeder extends Seeder
         }
 
         $password = 'p@ssword';
+        $usedEmails = ['admin@rosewoodroyale.com' => true];
 
         $this->createUserWithProfile(
             $superAdminRole->id,
@@ -40,7 +41,7 @@ class UserSeeder extends Seeder
             'admin@rosewoodroyale.com',
             $password,
             [
-                'phone' => '+95 9 420 123456',
+                'phone' => '+95942012345',
                 'nrc' => '12/YaKaNa(N)123456',
                 'dob' => '1985-03-15',
                 'gender' => 'male',
@@ -50,11 +51,11 @@ class UserSeeder extends Seeder
 
         $this->createUserWithProfile(
             $adminRole->id,
-            'Daw Theingi',
-            'aungaung@rosewoodroyale.com',
+            'Aung Aung',
+            MyanmarSampleData::uniqueEmailForName('Aung Aung', $usedEmails),
             $password,
             [
-                'phone' => '+95 9 421 234567',
+                'phone' => '+95942123456',
                 'nrc' => '12/BaKaTa(N)234567',
                 'dob' => '1990-07-22',
                 'gender' => 'female',

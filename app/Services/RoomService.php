@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Building;
+use App\Models\Contract;
 use App\Models\Room;
 use App\Services\Concerns\AppliesListQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -115,7 +116,7 @@ class RoomService
 
     public function activate(Room $room): Room
     {
-        if ($room->contracts()->whereIn('status', ['active', 'approved'])->exists()) {
+        if ($room->contracts()->where('status', Contract::STATUS_ACTIVE)->exists()) {
             throw ValidationException::withMessages([
                 'status' => 'This room has an active contract and cannot be made available.',
             ]);

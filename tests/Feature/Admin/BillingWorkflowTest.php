@@ -17,6 +17,7 @@ use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Carbon;
 
 uses(RefreshDatabase::class);
 
@@ -32,7 +33,7 @@ function billingAdmin(): User
 
 function billingCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function seedPropertyStack(): array
@@ -367,4 +368,109 @@ test('customer cannot view draft receipts', function () {
     $this->actingAs($customer, 'sanctum')
         ->getJson("/api/customer/receipts/{$receiptId}")
         ->assertNotFound();
+});
+
+test('sale contract completes only after confirmed payment clears contract balance', function () {
+    $admin = billingAdmin();
+    $customer = billingCustomer();
+    ['room' => $room] = seedPropertyStack();
+    $room->update([
+        'type' => 'sale',
+        'status' => 'reserved',
+        'sale_price' => 500000,
+    ]);
+
+    $contract = Contract::query()->create([
+        'contract_number' => 'S-LIFE-0001',
+        'user_id' => $customer->id,
+        'room_id' => $room->id,
+        'contract_total' => 500000,
+        'deposit_amount' => 0,
+        'type' => 'sale',
+        'payment_type' => 'full',
+        'status' => Contract::STATUS_ACTIVE,
+        'created_by' => $admin->id,
+        'approved_by' => $admin->id,
+        'approved_at' => now(),
+        'start_date' => now()->toDateString(),
+    ]);
+    $invoice = Invoice::query()->create([
+        'contract_id' => $contract->id,
+        'invoice_number' => 'INV-SALE-LIFE',
+        'type' => 'sale',
+        'status' => 'draft',
+        'due_date' => now()->addDays(7)->toDateString(),
+        'total_amount' => 500000,
+        'created_by' => $admin->id,
+    ]);
+    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->assertOk();
+
+    expect($contract->fresh()->status)->toBe(Contract::STATUS_ACTIVE);
+
+    $paymentId = submitCustomerPayment($this, $customer, $invoice->fresh(), $paymentMethod);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", ['amount' => 500000])
+        ->assertOk();
+
+    expect($contract->fresh()->status)->toBe(Contract::STATUS_COMPLETED)
+        ->and($room->fresh()->status)->toBe('sold');
+});
+
+test('rent contract does not complete after only one paid monthly invoice before end date', function () {
+    $admin = billingAdmin();
+    $customer = billingCustomer();
+    $contract = seedBillingContract($admin, $customer);
+    $contract->update([
+        'start_date' => now()->subMonth()->toDateString(),
+        'end_date' => now()->addMonths(6)->toDateString(),
+    ]);
+    $invoice = seedDraftInvoice($contract, $admin, 100000);
+    $invoice->update(['billing_month' => now()->startOfMonth()->toDateString()]);
+    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->assertOk();
+
+    $paymentId = submitCustomerPayment($this, $customer, $invoice->fresh(), $paymentMethod);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", ['amount' => 100000])
+        ->assertOk();
+
+    expect($contract->fresh()->status)->toBe(Contract::STATUS_ACTIVE);
+});
+
+test('rent contract completes after end date when required invoice balances are settled', function () {
+    Carbon::setTestNow('2026-09-02 09:00:00');
+
+    $admin = billingAdmin();
+    $customer = billingCustomer();
+    $contract = seedBillingContract($admin, $customer);
+    $contract->update([
+        'start_date' => '2026-08-01',
+        'end_date' => '2026-09-01',
+    ]);
+    $invoice = seedDraftInvoice($contract, $admin, 100000);
+    $invoice->update(['billing_month' => '2026-09-01', 'due_date' => '2026-09-01']);
+    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->assertOk();
+
+    $paymentId = submitCustomerPayment($this, $customer, $invoice->fresh(), $paymentMethod);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", ['amount' => 100000])
+        ->assertOk();
+
+    expect($contract->fresh()->status)->toBe(Contract::STATUS_COMPLETED);
+
+    Carbon::setTestNow();
 });

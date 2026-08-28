@@ -139,7 +139,7 @@ class UtilityDocumentService
 
         $contract = Contract::query()
             ->where('room_id', $utility->room_id)
-            ->whereIn('status', ['active', 'approved'])
+            ->where('status', Contract::STATUS_ACTIVE)
             ->with('user.profile')
             ->latest()
             ->first();

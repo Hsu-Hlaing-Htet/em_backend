@@ -12,10 +12,20 @@ class Contract extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_REJECTED = 'rejected';
+
+    public const STATUS_ACTIVE = 'active';
+
+    public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_TERMINATED = 'terminated';
+
     protected $fillable = [
         'contract_number', 'user_id', 'room_id', 'payment_plan_id', 'created_by', 'approved_by', 'approved_at',
         'contract_total', 'deposit_amount', 'type', 'payment_type', 'duration_months', 'start_date', 'end_date',
-        'billing_day', 'status', 'remark',
+        'billing_day', 'status', 'termination_date', 'termination_reason', 'remark',
     ];
 
     protected function casts(): array
@@ -25,14 +35,43 @@ class Contract extends Model
             'deposit_amount' => 'decimal:2',
             'start_date' => 'date',
             'end_date' => 'date',
+            'termination_date' => 'date',
             'approved_at' => 'datetime',
         ];
     }
 
-    public function user(): BelongsTo { return $this->belongsTo(User::class); }
-    public function room(): BelongsTo { return $this->belongsTo(Room::class); }
-    public function paymentPlan(): BelongsTo { return $this->belongsTo(PaymentPlan::class); }
-    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
-    public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
-    public function invoices(): HasMany { return $this->hasMany(Invoice::class); }
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function room(): BelongsTo
+    {
+        return $this->belongsTo(Room::class);
+    }
+
+    public function paymentPlan(): BelongsTo
+    {
+        return $this->belongsTo(PaymentPlan::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    public function utilities(): HasMany
+    {
+        return $this->hasMany(Utility::class);
+    }
 }

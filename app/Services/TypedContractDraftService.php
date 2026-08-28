@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\ContractDraftProfile;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -38,7 +39,7 @@ class TypedContractDraftService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        return $this->paginateByStatus($params, 'draft');
+        return $this->paginateByStatuses($params, [Contract::STATUS_PENDING, Contract::STATUS_REJECTED]);
     }
 
     /**
@@ -46,20 +47,30 @@ class TypedContractDraftService
      */
     public function paginateActive(array $params): LengthAwarePaginator
     {
-        return $this->paginateByStatus($params, $this->profile->activeStatus);
+        return $this->paginateByStatuses($params, [
+            Contract::STATUS_ACTIVE,
+            Contract::STATUS_COMPLETED,
+            Contract::STATUS_TERMINATED,
+        ]);
     }
 
     /**
      * @param  array<string, mixed>  $params
      */
-    private function paginateByStatus(array $params, string $status): LengthAwarePaginator
+    private function paginateByStatuses(array $params, array $statuses): LengthAwarePaginator
     {
         $query = Contract::query()
             ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
             ->where('type', $this->profile->type)
-            ->where('status', $status);
+            ->whereIn('status', $statuses);
 
-        $this->applyListQuery($query, $params, ['contract_number']);
+        if (! empty($params['status']) && in_array($params['status'], $statuses, true)) {
+            $query->where('status', $params['status']);
+        }
+
+        $this->applyContractDraftSearch($query, $params);
+        $this->applyCreatedDateFilter($query, $params);
+        $this->applyListQuery($query, $params);
 
         if (! empty($params['user_id'])) {
             $query->where('user_id', $params['user_id']);
@@ -76,14 +87,61 @@ class TypedContractDraftService
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
 
+    /**
+     * @param  Builder<Contract>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyContractDraftSearch(Builder $query, array $params): void
+    {
+        if (empty($params['search'])) {
+            return;
+        }
+
+        $search = trim((string) $params['search']);
+
+        if ($search === '') {
+            return;
+        }
+
+        $query->where(function (Builder $builder) use ($search): void {
+            $builder->where('contract_number', 'like', '%'.$search.'%')
+                ->orWhereHas('user', fn (Builder $userQuery) => $userQuery
+                    ->where('name', 'like', '%'.$search.'%'))
+                ->orWhereHas('room', fn (Builder $roomQuery) => $roomQuery
+                    ->where('room_number', 'like', '%'.$search.'%'));
+        });
+    }
+
+    /**
+     * @param  Builder<Contract>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyCreatedDateFilter(Builder $query, array $params): void
+    {
+        $from = $params['date_from'] ?? $params['created_from'] ?? null;
+        $to = $params['date_to'] ?? $params['created_to'] ?? null;
+
+        if (! empty($from)) {
+            $query->whereDate('created_at', '>=', (string) $from);
+        }
+
+        if (! empty($to)) {
+            $query->whereDate('created_at', '<=', (string) $to);
+        }
+    }
+
     public function find(int $id): Contract
     {
-        return $this->findByStatus($id, 'draft');
+        return $this->findByStatuses($id, [Contract::STATUS_PENDING, Contract::STATUS_REJECTED]);
     }
 
     public function findActive(int $id): Contract
     {
-        return $this->findByStatus($id, $this->profile->activeStatus);
+        return $this->findByStatuses($id, [
+            Contract::STATUS_ACTIVE,
+            Contract::STATUS_COMPLETED,
+            Contract::STATUS_TERMINATED,
+        ]);
     }
 
     public function findForDeletion(int $id): Contract
@@ -94,12 +152,12 @@ class TypedContractDraftService
             ->findOrFail($id);
     }
 
-    private function findByStatus(int $id, string $status): Contract
+    private function findByStatuses(int $id, array $statuses): Contract
     {
         return Contract::query()
             ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
             ->where('type', $this->profile->type)
-            ->where('status', $status)
+            ->whereIn('status', $statuses)
             ->findOrFail($id);
     }
 
@@ -125,7 +183,7 @@ class TypedContractDraftService
             $hasActiveContract = Contract::query()
                 ->where('room_id', $room->id)
                 ->whereKeyNot($locked->id)
-                ->whereIn('status', ['active', 'approved'])
+                ->where('status', Contract::STATUS_ACTIVE)
                 ->lockForUpdate()
                 ->exists();
 
@@ -136,7 +194,7 @@ class TypedContractDraftService
             $locked = $this->approvalService->transition(
                 $locked,
                 $this->profile->activeStatus,
-                ['draft'],
+                [Contract::STATUS_PENDING],
             );
 
             $room->update(['status' => $this->profile->roomStatusOnApprove]);
@@ -160,7 +218,7 @@ class TypedContractDraftService
                 $locked->update(['remark' => $reason]);
             }
 
-            return $this->approvalService->reject($locked, null, ['draft'])
+            return $this->approvalService->reject($locked, null, [Contract::STATUS_PENDING])
                 ->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
         });
     }
@@ -188,7 +246,7 @@ class TypedContractDraftService
             $this->assertContractTotal($data['contract_total']);
 
             $data['type'] = $this->profile->type;
-            $data['status'] = 'draft';
+            $data['status'] = Contract::STATUS_PENDING;
             $data['contract_number'] = $this->generateContractNumber();
             $data['created_by'] = Auth::id();
             $data['approved_by'] = null;
@@ -206,6 +264,7 @@ class TypedContractDraftService
     public function update(Contract $contract, array $data): Contract
     {
         $this->assertDraftContract($contract);
+        $room = null;
 
         if (isset($data['user_id'])) {
             $this->assertCustomerActive((int) $data['user_id']);
@@ -224,9 +283,17 @@ class TypedContractDraftService
         }
 
         $paymentType = $data['payment_type'] ?? $contract->payment_type;
+        // Recurring due day is derived from start_date; clear any stale billing_day.
+        $data['billing_day'] = null;
         if ($paymentType === 'full') {
             $data['duration_months'] = null;
-            $data['billing_day'] = null;
+        }
+
+        if (
+            $this->profile->type === 'rent'
+            && array_intersect(array_keys($data), ['room_id', 'duration_months', 'payment_type', 'contract_total'])
+        ) {
+            $data = $this->applyRoomDefaults($data, $room ?? $contract->room()->firstOrFail());
         }
 
         if (isset($data['contract_total'])) {
@@ -249,13 +316,13 @@ class TypedContractDraftService
         $contract->delete();
     }
 
-    public function cancel(Contract $contract, string $reason): Contract
+    public function cancel(Contract $contract, string $reason, string $terminationDate): Contract
     {
-        if (! in_array($contract->status, ['approved', 'active'], true)) {
-            throw new InvalidArgumentException('Only approved or active contracts can be cancelled.');
+        if ($contract->status !== Contract::STATUS_ACTIVE) {
+            throw new InvalidArgumentException('Only active contracts can be terminated.');
         }
 
-        return DB::transaction(function () use ($contract, $reason): Contract {
+        return DB::transaction(function () use ($contract, $reason, $terminationDate): Contract {
             /** @var Contract $locked */
             $locked = Contract::query()
                 ->with('room')
@@ -263,13 +330,14 @@ class TypedContractDraftService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if (! in_array($locked->status, ['approved', 'active'], true)) {
-                throw new InvalidArgumentException('Only approved or active contracts can be cancelled.');
+            if ($locked->status !== Contract::STATUS_ACTIVE) {
+                throw new InvalidArgumentException('Only active contracts can be terminated.');
             }
 
             $locked->update([
-                'status' => 'cancelled',
-                'remark' => $reason,
+                'status' => Contract::STATUS_TERMINATED,
+                'termination_date' => $terminationDate,
+                'termination_reason' => $reason,
             ]);
 
             $locked->room?->update(['status' => Room::STATUS_AVAILABLE]);
@@ -297,7 +365,11 @@ class TypedContractDraftService
      */
     private function applyRoomDefaults(array $data, Room $room, bool $preserveContractTotal = false): array
     {
-        if (! $preserveContractTotal) {
+        if ($this->profile->type === 'rent') {
+            $monthlyRent = (float) $room->{$this->profile->priceColumn};
+            $durationMonths = max((int) ($data['duration_months'] ?? 1), 1);
+            $data['contract_total'] = $monthlyRent * $durationMonths;
+        } elseif (! $preserveContractTotal) {
             $priceColumn = $this->profile->priceColumn;
             $data['contract_total'] = $data['contract_total'] ?? $room->{$priceColumn};
         }
@@ -314,9 +386,11 @@ class TypedContractDraftService
      */
     private function normalizeInstallmentFields(array $data): array
     {
+        // Recurring due day is derived from start_date; never persist billing_day.
+        $data['billing_day'] = null;
+
         if (($data['payment_type'] ?? null) === 'full') {
             $data['duration_months'] = null;
-            $data['billing_day'] = null;
         }
 
         return $data;
@@ -331,7 +405,7 @@ class TypedContractDraftService
 
     private function assertDraftContract(Contract $contract): void
     {
-        if ($contract->type !== $this->profile->type || $contract->status !== 'draft') {
+        if ($contract->type !== $this->profile->type || $contract->status !== Contract::STATUS_PENDING) {
             throw new ConcurrentConflictException($this->profile->draftOnlyMessage);
         }
     }
@@ -347,7 +421,7 @@ class TypedContractDraftService
     {
         $query = Contract::query()
             ->where('room_id', $roomId)
-            ->whereIn('status', ['active', 'approved']);
+            ->where('status', Contract::STATUS_ACTIVE);
 
         if ($ignoreContractId) {
             $query->whereKeyNot($ignoreContractId);

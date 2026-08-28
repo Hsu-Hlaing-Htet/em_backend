@@ -51,13 +51,13 @@ class DatabaseSeeder extends Seeder
         $this->command?->table(
             ['Persona', 'Email'],
             [
-                ['Active rent (full billing matrix)', 'mgmg@rosewoodroyale.com'],
-                ['Active sale (approved/reserved)', 'susu@rosewoodroyale.com'],
-                ['Former rent (completed)', 'zawzaw@rosewoodroyale.com'],
-                ['Former sale (completed/sold)', 'nwenwe@rosewoodroyale.com'],
-                ['Registered only (no contract/maintenance)', 'tuntun@rosewoodroyale.com'],
-                ['Secondary active rent (approved payment, no receipt)', 'hlahla@rosewoodroyale.com'],
-                ['Bulk customers', 'bulk021@rosewoodroyale.com … bulkNNN@rosewoodroyale.com'],
+                ['Active rent (full billing matrix)', 'mgmg@gmail.com'],
+                ['Active sale (approved/reserved)', 'susu@gmail.com'],
+                ['Former rent (completed)', 'zawzaw@gmail.com'],
+                ['Former sale (completed/sold)', 'nwenwe@gmail.com'],
+                ['Registered only (no contract/maintenance)', 'tuntun@gmail.com'],
+                ['Secondary active rent (approved payment, no receipt)', 'hlahla@gmail.com'],
+                ['Bulk customers', 'name-based Gmail addresses, e.g. moephyu@gmail.com'],
             ]
         );
 
@@ -103,12 +103,11 @@ class DatabaseSeeder extends Seeder
                     .Room::query()->where('status', 'occupied')->count().'/'
                     .Room::query()->where('status', 'sold')->count().'/'
                     .Room::query()->where('status', 'maintenance')->count()],
-                ['Contracts draft/pending/active/approved/completed/rejected',
-                    Contract::query()->where('status', 'draft')->count().'/'
-                    .Contract::query()->where('status', 'pending')->count().'/'
+                ['Contracts pending/active/completed/terminated/rejected',
+                    Contract::query()->where('status', 'pending')->count().'/'
                     .Contract::query()->where('status', 'active')->count().'/'
-                    .Contract::query()->where('status', 'approved')->count().'/'
                     .Contract::query()->where('status', 'completed')->count().'/'
+                    .Contract::query()->where('status', 'terminated')->count().'/'
                     .Contract::query()->where('status', 'rejected')->count()],
                 ['Invoices draft/issued/partial/paid/overdue',
                     Invoice::query()->where('status', 'draft')->count().'/'
@@ -130,7 +129,7 @@ class DatabaseSeeder extends Seeder
                     .MaintenanceRequest::query()->where('status', 'completed')->count().'/'
                     .MaintenanceRequest::query()->where('status', 'rejected')->count()],
                 ['Contracts expiring within 60 days',
-                    Contract::query()->whereIn('status', ['active', 'approved'])
+                    Contract::query()->where('status', 'active')
                         ->whereBetween('end_date', [now()->toDateString(), now()->addDays(60)->toDateString()])
                         ->count()],
                 ['Rooms with <2 images', Room::query()->has('roomImages', '<', 2)->count()],

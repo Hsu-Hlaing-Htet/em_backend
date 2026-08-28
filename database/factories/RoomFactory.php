@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Building;
 use App\Models\Room;
+use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -23,11 +24,14 @@ class RoomFactory extends Factory
 
         $width = fake()->randomFloat(2, 15, 50);
         $length = fake()->randomFloat(2, 15, 50);
+        $roomNumber = SeedNumberGenerator::nextRoomNumber();
+        $unit = (int) substr($roomNumber, strpos($roomNumber, '-') + 1);
+        $floorNumber = max(1, intdiv($unit, 100));
 
         return [
             'building_id' => Building::factory(),
-            'room_number' => strtoupper(fake()->unique()->bothify('?-###')),
-            'floor_number' => fake()->numberBetween(1, 20),
+            'room_number' => $roomNumber,
+            'floor_number' => $floorNumber,
             'width_ft' => $width,
             'length_ft' => $length,
             'area_sqft' => round($width * $length, 2),

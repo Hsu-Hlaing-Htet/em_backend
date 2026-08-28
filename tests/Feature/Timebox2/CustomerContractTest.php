@@ -24,12 +24,12 @@ function tb2Admin(): User
 
 function tb2Customer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function tb2OtherCustomer(): User
 {
-    return User::query()->where('email', 'hlahla@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
 }
 
 function tb2ResidentPayload(string $email): array
@@ -37,8 +37,7 @@ function tb2ResidentPayload(string $email): array
     return [
         'name' => 'TB2 Customer',
         'email' => $email,
-        'password' => 'password123',
-        'phone' => '09-11112222',
+        'phone' => '+95911112222',
         'nrc' => '12/ABC(N)123456',
         'dob' => '1990-01-15',
         'gender' => 'male',
@@ -71,7 +70,7 @@ test('admin can list create show and update residents', function () {
     $admin = tb2Admin();
 
     $create = $this->actingAs($admin, 'sanctum')
-        ->postJson('/api/residents', tb2ResidentPayload('tb2.resident.'.uniqid().'@rosewoodroyale.com'))
+        ->postJson('/api/residents', tb2ResidentPayload('tb2.resident.'.uniqid().'@gmail.com'))
         ->assertCreated()
         ->assertJsonPath('data.role_name', Role::CUSTOMER)
         ->assertJsonStructure([
@@ -95,7 +94,7 @@ test('admin can list create show and update residents', function () {
         ->putJson("/api/residents/{$residentId}", [
             'name' => 'TB2 Customer Updated',
             'email' => $create->json('data.email'),
-            'phone' => '09-99998888',
+            'phone' => '+95999998888',
             'nrc' => '12/ABC(N)123456',
             'dob' => '1990-01-15',
             'gender' => 'male',
@@ -111,9 +110,9 @@ test('resident validation rejects missing and duplicate fields', function () {
     $this->actingAs($admin, 'sanctum')
         ->postJson('/api/residents', [])
         ->assertStatus(422)
-        ->assertJsonValidationErrors(['name', 'email', 'password', 'phone', 'nrc', 'dob', 'gender', 'address'], 'data');
+        ->assertJsonValidationErrors(['name', 'email', 'phone', 'nrc', 'dob', 'gender', 'address'], 'data');
 
-    $email = 'tb2.dup.'.uniqid().'@rosewoodroyale.com';
+    $email = 'tb2.dup.'.uniqid().'@gmail.com';
     $this->actingAs($admin, 'sanctum')
         ->postJson('/api/residents', tb2ResidentPayload($email))
         ->assertCreated();
@@ -121,7 +120,8 @@ test('resident validation rejects missing and duplicate fields', function () {
     $this->actingAs($admin, 'sanctum')
         ->postJson('/api/residents', tb2ResidentPayload($email))
         ->assertStatus(422)
-        ->assertJsonValidationErrors(['email'], 'data');
+        ->assertJsonValidationErrors(['email'], 'data')
+        ->assertJsonPath('data.email.0', 'This email is already in use.');
 });
 
 test('admin can create and approve rent contract draft workflow', function () {
@@ -137,7 +137,7 @@ test('admin can create and approve rent contract draft workflow', function () {
             'start_date' => now()->toDateString(),
         ])
         ->assertCreated()
-        ->assertJsonPath('data.status', 'draft')
+        ->assertJsonPath('data.status', 'pending')
         ->assertJsonPath('data.type', 'rent')
         ->assertJsonPath('data.contract_number', 'R-000001')
         ->json('data.id');
@@ -170,14 +170,14 @@ test('admin can create and approve sale contract draft workflow', function () {
             'start_date' => now()->addDay()->toDateString(),
         ])
         ->assertCreated()
-        ->assertJsonPath('data.status', 'draft')
+        ->assertJsonPath('data.status', 'pending')
         ->assertJsonPath('data.type', 'sale')
         ->json('data.id');
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/sale-contract-drafts/{$draftId}/approve")
         ->assertOk()
-        ->assertJsonPath('data.status', 'approved');
+        ->assertJsonPath('data.status', 'active');
 
     expect($room->fresh()->status)->toBe('reserved');
 
@@ -205,7 +205,7 @@ test('contract draft validation rejects missing fields and installment without d
             'start_date' => now()->toDateString(),
         ])
         ->assertStatus(422)
-        ->assertJsonValidationErrors(['duration_months', 'billing_day'], 'data');
+        ->assertJsonValidationErrors(['duration_months'], 'data');
 });
 
 test('admin can create and retrieve payment plans', function () {

@@ -50,11 +50,11 @@ class TypedContractDocumentService
         ])->render();
     }
 
-    public function downloadResponse(Contract $contract): Response
+    public function downloadResponse(Contract $contract, ?string $filename = null): Response
     {
         return $this->downloadPdfResponse(
             $this->renderHtml($contract),
-            $this->filename($contract),
+            $filename ?? $this->downloadFilename($contract),
         );
     }
 
@@ -86,6 +86,33 @@ class TypedContractDocumentService
     }
 
     /**
+     * @param  array{html?: string|null}  $data
+     */
+    public function sendEmailToContractCustomer(Contract $contract, array $data = []): string
+    {
+        $contract->loadMissing(['user.profile', 'room']);
+        $email = $contract->user?->email;
+
+        if (! $email) {
+            throw new InvalidArgumentException('Customer email is required to send the contract document.');
+        }
+
+        $pdf = isset($data['html']) && trim((string) $data['html']) !== ''
+            ? $this->documentPdfService()->renderPreviewPdf((string) $data['html'])
+            : $this->renderPdfBinary($this->renderHtml($contract));
+        $mailClass = $this->profile->mailClass;
+
+        Mail::to($email)->send(new $mailClass(
+            $contract,
+            $pdf,
+            $this->downloadFilename($contract),
+            $this->customerContractUrl($contract),
+        ));
+
+        return $email;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function buildDocumentData(Contract $contract): array
@@ -94,15 +121,18 @@ class TypedContractDocumentService
         $roomPrice = (float) ($contract->room?->{$priceColumn} ?? $contract->contract_total);
         $depositAmount = (float) $contract->deposit_amount;
         $contractTotal = (float) $contract->contract_total;
-        $remainingBalance = max($contractTotal - $depositAmount, 0);
+        $isRent = $contract->type === 'rent';
+        $remainingBalance = $isRent ? $contractTotal : max($contractTotal - $depositAmount, 0);
         $interestPercentage = (float) ($contract->paymentPlan?->interest_percentage ?? 0);
         $interestAmount = $remainingBalance * ($interestPercentage / 100);
         $totalInstallmentAmount = $contract->payment_type === 'installment'
             ? $remainingBalance + $interestAmount
             : 0;
-        $estimatedMonthlyPayment = $contract->payment_type === 'installment' && $contract->duration_months
-            ? (int) ceil($totalInstallmentAmount / $contract->duration_months)
-            : 0;
+        $estimatedMonthlyPayment = $isRent
+            ? $roomPrice
+            : ($contract->payment_type === 'installment' && $contract->duration_months
+                ? (int) ceil($totalInstallmentAmount / $contract->duration_months)
+                : 0);
         $isInstallment = $contract->payment_type === 'installment';
         $activeProfile = ContractDraftProfile::fromType($contract->type);
         $isActive = $contract->status === $activeProfile->activeStatus;
@@ -114,7 +144,9 @@ class TypedContractDocumentService
             ['label' => 'Contract Duration', 'value' => $contract->duration_months ? $contract->duration_months.' months' : '-'],
             ['label' => 'Contract Total', 'value' => $this->formatCurrency($contractTotal)],
             ['label' => 'Commencement Date', 'value' => optional($contract->start_date)->toDateString() ?? '-'],
-            ['label' => 'Billing Day', 'value' => $contract->billing_day ? 'Day '.$contract->billing_day.' of each month' : '-'],
+            ['label' => 'Billing Day', 'value' => $contract->start_date
+                ? 'Day '.$contract->start_date->day.' of each month'
+                : '-'],
             ['label' => 'Contract Status', 'value' => $this->statusLabel($contract->status)],
         ];
 
@@ -125,6 +157,36 @@ class TypedContractDocumentService
             ]]);
         }
 
+        $leaseEndDate = $this->contractEndDate($contract);
+        $financialRows = [
+            ['label' => $this->profile->priceLabel, 'value' => $this->formatCurrency($roomPrice)],
+            ['label' => $this->profile->depositLabel, 'value' => $this->formatCurrency($depositAmount)],
+            ['label' => $isRent ? 'Lease Start' : 'Commencement Date', 'value' => optional($contract->start_date)->toDateString() ?? '-'],
+            ['label' => $isRent ? 'Lease End' : 'End Date', 'value' => $leaseEndDate],
+            ['label' => 'Duration', 'value' => $contract->duration_months ? $contract->duration_months.' months' : '-'],
+            ['label' => 'Payment Due Day', 'value' => $contract->start_date ? 'Day '.$contract->start_date->day.' of each month' : '-'],
+            ['label' => 'Payment Plan', 'value' => $contract->paymentPlan?->name ?? '-'],
+            ['label' => 'Payment Method', 'value' => $this->paymentTypeLabel($contract->payment_type)],
+            ['label' => 'Total', 'value' => $this->formatCurrency($contractTotal)],
+        ];
+
+        $authorization = [
+            'preparedBy' => $contract->creator?->name ?? '-',
+            'preparedAt' => optional($contract->created_at)->format('Y-m-d H:i') ?? '-',
+            'approvedBy' => $isActive ? ($contract->approver?->name ?? '') : '',
+            'approvedAt' => $isActive ? (optional($contract->approved_at)->format('Y-m-d H:i') ?? '') : '',
+        ];
+        $authorizationRows = array_values(array_filter([
+            [
+                'label' => 'Prepared by',
+                'value' => $this->authorizationLine($authorization['preparedBy'], $authorization['preparedAt']),
+            ],
+            [
+                'label' => 'Approved by',
+                'value' => $this->authorizationLine($authorization['approvedBy'], $authorization['approvedAt']),
+            ],
+        ], fn (array $row): bool => $this->hasDocumentValue($row['value'])));
+
         return [
             'header' => [
                 'contractNo' => $contract->contract_number,
@@ -134,6 +196,7 @@ class TypedContractDocumentService
                 ['label' => 'Full Name', 'value' => $contract->user?->name ?? '-'],
                 ['label' => 'NRC / ID', 'value' => $contract->user?->profile?->nrc ?? '-'],
                 ['label' => 'Phone', 'value' => $contract->user?->profile?->phone ?? '-'],
+                ['label' => 'Address', 'value' => $contract->user?->profile?->address ?? '-'],
                 ['label' => 'Email', 'value' => $contract->user?->email ?? '-'],
             ],
             'company' => [
@@ -150,7 +213,13 @@ class TypedContractDocumentService
                 ['label' => $this->profile->priceLabel, 'value' => $this->formatCurrency($roomPrice)],
                 ['label' => $this->profile->depositLabel, 'value' => $this->formatCurrency($depositAmount)],
             ],
+            'propertyLocation' => [
+                ['label' => 'Residence', 'value' => $contract->room?->building?->building_name ?? '-'],
+                ['label' => 'Unit', 'value' => $contract->room?->room_number ?? '-'],
+                ['label' => 'Address', 'value' => $contract->user?->profile?->address ?? '-'],
+            ],
             'contract' => $contractFields,
+            'financial' => $financialRows,
             'payment' => $isInstallment ? [
                 ['label' => 'Contract Total', 'value' => $this->formatCurrency($contractTotal)],
                 ['label' => 'Deposit', 'value' => $this->formatCurrency($depositAmount)],
@@ -178,6 +247,8 @@ class TypedContractDocumentService
                 ['label' => 'Prepared By', 'value' => $contract->creator?->name ?? '-'],
                 ['label' => 'Created Date', 'value' => optional($contract->created_at)->format('Y-m-d H:i') ?? '-'],
             ],
+            'authorization' => $authorization,
+            'authorizationRows' => $authorizationRows,
             'remarks' => trim((string) $contract->remark) !== '' ? $contract->remark : 'No additional remarks.',
             'signatures' => [
                 [
@@ -216,6 +287,37 @@ class TypedContractDocumentService
         );
     }
 
+    private function downloadFilename(Contract $contract): string
+    {
+        $type = $contract->type === 'rent' ? 'Rent' : 'Sale';
+        $prefix = $contract->type === 'rent' ? 'R' : 'S';
+        $contractNumber = $contract->contract_number ?: sprintf('%s-%06d', $prefix, $contract->id);
+
+        return "Rosewood_Royale_{$type}_Contract_{$contractNumber}.pdf";
+    }
+
+    private function customerContractUrl(Contract $contract): string
+    {
+        return rtrim((string) config('app.frontend_url'), '/').'/customer/contracts/'.$contract->id;
+    }
+
+    private function contractEndDate(Contract $contract): string
+    {
+        if ($contract->end_date) {
+            return $contract->end_date->toDateString();
+        }
+
+        if (! $contract->start_date || ! $contract->duration_months) {
+            return '-';
+        }
+
+        return $contract->start_date
+            ->copy()
+            ->addMonths((int) $contract->duration_months)
+            ->subDay()
+            ->toDateString();
+    }
+
     private function htmlFilename(Contract $contract): string
     {
         return ($contract->contract_number ?: $this->profile->defaultFilename).'.html';
@@ -223,7 +325,7 @@ class TypedContractDocumentService
 
     private function formatCurrency(float $amount): string
     {
-        return number_format($amount, 0).' MMK';
+        return 'MMK '.number_format($amount, 0);
     }
 
     private function paymentTypeLabel(?string $paymentType): string
@@ -238,12 +340,40 @@ class TypedContractDocumentService
     private function statusLabel(?string $status): string
     {
         return match ($status) {
-            'draft' => 'Draft',
-            'approved' => 'Approved',
+            'pending' => 'Pending',
             'active' => 'Active',
+            'completed' => 'Completed',
+            'terminated' => 'Terminated',
             'rejected' => 'Rejected',
-            'cancelled' => 'Cancelled',
             default => $status ?? '-',
         };
+    }
+
+    private function authorizationLine(?string $name, ?string $date): string
+    {
+        $parts = [];
+
+        if ($this->hasDocumentValue($name) && ! ctype_digit(trim((string) $name))) {
+            $parts[] = trim((string) $name);
+        }
+
+        if ($this->hasDocumentValue($date)) {
+            $parts[] = trim((string) $date);
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    private function hasDocumentValue(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_string($value)) {
+            return ! in_array(trim($value), ['', '-', '—'], true);
+        }
+
+        return true;
     }
 }

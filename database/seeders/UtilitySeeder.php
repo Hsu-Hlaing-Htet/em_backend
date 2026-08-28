@@ -15,6 +15,8 @@ use Illuminate\Support\Collection;
 
 class UtilitySeeder extends Seeder
 {
+    private const BULK_IMPORT_READY_THROUGH = '2026-07-01';
+
     public function run(): void
     {
         $admin = User::query()
@@ -65,8 +67,10 @@ class UtilitySeeder extends Seeder
                 $status = $this->utilityStatusFor($contract, $monthIndex, $months->count());
 
                 $utility = Utility::query()->create([
+                    'contract_id' => $contract->id,
                     'room_id' => $contract->room_id,
                     'billing_month' => $billingMonth->toDateString(),
+                    'reading_date' => $billingMonth->copy()->addMonth()->startOfMonth()->toDateString(),
                     'total_amount' => 0,
                     'status' => $status,
                     'created_by' => $admin->id,
@@ -92,6 +96,7 @@ class UtilitySeeder extends Seeder
             'completed' => Carbon::parse($contract->end_date)->startOfMonth(),
             default => now()->startOfMonth(),
         };
+        $end = $end->min(Carbon::parse(self::BULK_IMPORT_READY_THROUGH)->startOfMonth());
 
         $months = collect();
         $cursor = $start->copy();
@@ -136,7 +141,8 @@ class UtilitySeeder extends Seeder
                 ->latest('effective_date')
                 ->first();
 
-            $previousReading = $baseReading + ($utilityTypeIndex * 400);
+            $previousReading = $this->latestReadingFor($contract->room_id, $utilityType->id)
+                ?? $baseReading + ($utilityTypeIndex * 400);
             $usage = match ($utilityTypeIndex) {
                 0 => 95 + ($monthIndex * 3),
                 1 => 160 + ($monthIndex * 5),
@@ -163,5 +169,20 @@ class UtilitySeeder extends Seeder
         }
 
         return round($totalAmount, 2);
+    }
+
+    private function latestReadingFor(int $roomId, int $utilityTypeId): ?float
+    {
+        $utility = Utility::query()
+            ->where('room_id', $roomId)
+            ->whereHas('items', fn ($query) => $query->where('utility_type_id', $utilityTypeId))
+            ->with(['items' => fn ($query) => $query->where('utility_type_id', $utilityTypeId)])
+            ->orderByDesc('billing_month')
+            ->orderByDesc('id')
+            ->first();
+
+        return $utility?->items->first()
+            ? (float) $utility->items->first()->current_reading
+            : null;
     }
 }

@@ -86,7 +86,7 @@ final class ConsolidatedBillingSeederSupport
      */
     public static function buildRentConsolidatedItems(
         Contract $contract,
-        Utility $utility,
+        ?Utility $utility,
         Collection $chargeTypes,
         Carbon $billingMonth,
         bool $includeServiceCharge = true,
@@ -102,7 +102,7 @@ final class ConsolidatedBillingSeederSupport
             $items[] = self::rentLineItem($rentCharge, $rent, $billingMonth);
         }
 
-        if ($utilityCharge) {
+        if ($utilityCharge && $utility) {
             $items = self::mergeLineItems($items, self::utilityLineItems($utility, $utilityCharge));
         }
 
@@ -119,7 +119,7 @@ final class ConsolidatedBillingSeederSupport
      */
     public static function buildSaleConsolidatedItems(
         Contract $contract,
-        Utility $utility,
+        ?Utility $utility,
         Collection $chargeTypes,
         Carbon $billingMonth,
         bool $includeServiceCharge = true,
@@ -138,7 +138,7 @@ final class ConsolidatedBillingSeederSupport
             );
         }
 
-        if ($utilityCharge) {
+        if ($utilityCharge && $utility) {
             $items = self::mergeLineItems($items, self::utilityLineItems($utility, $utilityCharge));
         }
 

@@ -78,9 +78,9 @@ class SaleContractDraftService
         $this->service()->delete($contract);
     }
 
-    public function cancel(Contract $contract, string $reason): Contract
+    public function cancel(Contract $contract, string $reason, string $terminationDate): Contract
     {
-        return $this->service()->cancel($contract, $reason);
+        return $this->service()->cancel($contract, $reason, $terminationDate);
     }
 
     public function generateContractNumber(): string

@@ -19,7 +19,6 @@ use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
@@ -36,12 +35,12 @@ function concurrencyAdmin(): User
 
 function concurrencyCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function concurrencyOtherCustomer(): User
 {
-    return User::query()->where('email', 'hlahla@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
 }
 
 function concurrencyRoom(string $type = 'rent', string $status = 'available'): Room
@@ -115,7 +114,7 @@ it('prevents approving a second active rent contract for the same room', functio
         'deposit_amount' => 50000,
         'type' => 'rent',
         'payment_type' => 'full',
-        'status' => 'draft',
+        'status' => Contract::STATUS_PENDING,
         'created_by' => $admin->id,
         'start_date' => now()->toDateString(),
         'end_date' => now()->addYear()->toDateString(),

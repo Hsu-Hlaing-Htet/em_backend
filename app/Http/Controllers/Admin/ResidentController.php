@@ -56,7 +56,7 @@ class ResidentController extends Controller
         );
 
         return response()->json([
-            'message' => 'Resident created successfully.',
+            'message' => 'Resident created successfully. A welcome email with a temporary password was sent.',
             'data' => new AccountResource($user),
         ], 201);
     }

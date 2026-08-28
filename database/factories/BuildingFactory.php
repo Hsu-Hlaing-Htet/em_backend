@@ -24,7 +24,7 @@ class BuildingFactory extends Factory
         $index++;
 
         return [
-            'building_name' => $building['building_name'].' '.fake()->unique()->numerify('##'),
+            'building_name' => $building['building_name'],
             'location' => $building['location'],
             'description' => $building['description'],
         ];

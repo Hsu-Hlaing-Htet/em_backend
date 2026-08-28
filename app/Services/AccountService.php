@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Notifications\WelcomeAccountNotification;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\TemporaryPassword;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -57,10 +59,16 @@ class AccountService
      */
     public function create(array $data, int $roleId, UserService $userService, ProfileService $profileService): User
     {
-        return DB::transaction(function () use ($data, $roleId, $userService, $profileService): User {
+        $temporaryPassword = TemporaryPassword::generate();
+
+        $user = DB::transaction(function () use ($data, $roleId, $userService, $profileService, $temporaryPassword): User {
+            unset($data['password']);
+
             $user = $userService->create([
                 ...$this->splitUserData($data),
                 'role_id' => $roleId,
+                'password' => $temporaryPassword,
+                'must_change_password' => true,
             ]);
 
             $profileService->create([
@@ -70,6 +78,14 @@ class AccountService
 
             return $user->fresh(['role', 'profile']);
         });
+
+        try {
+            $user->notify(new WelcomeAccountNotification($temporaryPassword));
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
+        return $user;
     }
 
     /**
@@ -78,6 +94,8 @@ class AccountService
     public function update(User $user, array $data, UserService $userService, ProfileService $profileService): User
     {
         return DB::transaction(function () use ($user, $data, $userService, $profileService): User {
+            unset($data['password']);
+
             $userData = $this->splitUserData($data);
 
             if (isset($data['role_id'])) {
@@ -127,7 +145,7 @@ class AccountService
      */
     private function splitUserData(array $data): array
     {
-        return array_intersect_key($data, array_flip(['name', 'email', 'password', 'role_id']));
+        return array_intersect_key($data, array_flip(['name', 'email', 'password', 'role_id', 'must_change_password']));
     }
 
     /**

@@ -123,6 +123,7 @@ class AuthService
             function (User $user, string $password): void {
                 $user->forceFill([
                     'password' => Hash::make($password),
+                    'must_change_password' => false,
                 ])->save();
 
                 $user->tokens()->delete();
@@ -152,6 +153,7 @@ class AuthService
 
         $user->forceFill([
             'password' => Hash::make($newPassword),
+            'must_change_password' => false,
         ])->save();
 
         $user->tokens()->delete();

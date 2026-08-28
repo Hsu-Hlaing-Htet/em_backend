@@ -8,20 +8,18 @@ use App\Models\Role;
 use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\Support\CustomerHistoryProfiles;
+use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Collection;
 
 class ContractSeeder extends Seeder
 {
-    private int $saleSequence = 0;
-
-    private int $rentSequence = 0;
-
     /** @var list<int> */
     private array $usedRoomIds = [];
 
     public function run(): void
     {
+        SeedNumberGenerator::reset();
+
         $admin = User::query()
             ->whereHas('role', fn ($query) => $query->where('name', Role::ADMIN))
             ->first();
@@ -127,7 +125,7 @@ class ContractSeeder extends Seeder
                 admin: $admin,
                 customer: $customer,
                 room: $room,
-                status: 'approved',
+                status: Contract::STATUS_ACTIVE,
                 fullPaymentPlan: $fullPaymentPlan,
                 installmentPlan: $index === 0 ? $installmentPlan : null,
                 startDate: now()->subMonths(2),
@@ -159,7 +157,7 @@ class ContractSeeder extends Seeder
             );
         }
 
-        foreach (['draft', 'pending', 'rejected'] as $index => $status) {
+        foreach ([Contract::STATUS_PENDING, Contract::STATUS_PENDING, Contract::STATUS_REJECTED] as $index => $status) {
             $customer = $customers->get($profiles['pipeline'][$index + 1] ?? '') ?? $customers->first();
             $room = $takeRent();
 
@@ -177,8 +175,9 @@ class ContractSeeder extends Seeder
                 startDate: now()->subMonths(1),
                 endDate: now()->addMonths(11),
                 remark: match ($status) {
-                    'draft' => 'Rent draft pending tenant review.',
-                    'pending' => 'Awaiting lease approval.',
+                    Contract::STATUS_PENDING => $index === 0
+                        ? 'Rent draft pending tenant review.'
+                        : 'Awaiting lease approval.',
                     default => 'Rejected due to incomplete documentation.',
                 },
                 roomStatus: 'available',
@@ -234,13 +233,13 @@ class ContractSeeder extends Seeder
         $plan = $useInstallment ? $installmentPlan : $fullPaymentPlan;
 
         $contract = Contract::query()->create([
-            'contract_number' => 'S-'.str_pad((string) (++$this->saleSequence), 6, '0', STR_PAD_LEFT),
+            'contract_number' => SeedNumberGenerator::nextSaleContractNumber(),
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
             'created_by' => $admin->id,
-            'approved_by' => in_array($status, ['approved', 'completed', 'rejected'], true) ? $admin->id : null,
-            'approved_at' => in_array($status, ['approved', 'completed', 'rejected'], true) ? $startDate : null,
+            'approved_by' => in_array($status, [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED, Contract::STATUS_REJECTED], true) ? $admin->id : null,
+            'approved_at' => in_array($status, [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED, Contract::STATUS_REJECTED], true) ? $startDate : null,
             'contract_total' => $room->sale_price,
             'deposit_amount' => $room->booking_deposit_price,
             'type' => 'sale',
@@ -277,13 +276,13 @@ class ContractSeeder extends Seeder
             : max(1, (int) ceil($startDate->diff($endDate)->days / 30));
 
         $contract = Contract::query()->create([
-            'contract_number' => 'R-'.str_pad((string) (++$this->rentSequence), 6, '0', STR_PAD_LEFT),
+            'contract_number' => SeedNumberGenerator::nextRentContractNumber(),
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
             'created_by' => $admin->id,
-            'approved_by' => in_array($status, ['active', 'completed', 'rejected'], true) ? $admin->id : null,
-            'approved_at' => in_array($status, ['active', 'completed', 'rejected'], true) ? $startDate : null,
+            'approved_by' => in_array($status, [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED, Contract::STATUS_REJECTED], true) ? $admin->id : null,
+            'approved_at' => in_array($status, [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED, Contract::STATUS_REJECTED], true) ? $startDate : null,
             'contract_total' => round($room->rent_price * $durationMonths, 2),
             'deposit_amount' => $room->rent_deposit_price,
             'type' => 'rent',

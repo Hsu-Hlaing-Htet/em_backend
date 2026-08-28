@@ -23,7 +23,7 @@ function tb1PropertyAdmin(): User
 
 function tb1PropertyCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function tb1RoomPayload(int $buildingId, string $roomNumber = 'TB1-101'): array
@@ -287,7 +287,7 @@ test('timebox 1 model relationships are wired', function () {
         'sort_order' => 0,
     ]);
 
-    $user = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $user = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 
     expect($building->rooms)->toHaveCount(1);
     expect($room->building->id)->toBe($building->id);

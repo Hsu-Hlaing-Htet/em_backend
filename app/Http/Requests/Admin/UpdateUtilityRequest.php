@@ -18,7 +18,9 @@ class UpdateUtilityRequest extends BaseAdminFormRequest
     {
         return [
             'room_id' => ['sometimes', 'integer', Rule::exists('rooms', 'id')],
+            'contract_id' => ['nullable', 'integer', Rule::exists('contracts', 'id')],
             'billing_month' => ['sometimes', 'date'],
+            'reading_date' => ['nullable', 'date'],
             'utility_items' => ['sometimes', 'array', 'min:1'],
             'utility_items.*.id' => ['nullable', 'integer', Rule::exists('utility_items', 'id')],
             'utility_items.*.utility_type_id' => ['required_with:utility_items', 'integer', Rule::exists('utility_types', 'id')],

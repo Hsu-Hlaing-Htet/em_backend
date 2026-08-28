@@ -19,7 +19,14 @@ class UpdateRoomRequest extends BaseAdminFormRequest
     {
         return [
             'building_id' => ['required', 'integer', 'exists:buildings,id'],
-            'room_number' => ['required', 'string', 'max:255'],
+            'room_number' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('rooms', 'room_number')
+                    ->where(fn ($query) => $query->where('building_id', $this->input('building_id')))
+                    ->ignore($this->route('room')),
+            ],
             'floor_number' => ['required', 'integer', 'min:0'],
             'width_ft' => ['nullable', 'numeric', 'min:0'],
             'length_ft' => ['nullable', 'numeric', 'min:0'],
@@ -38,6 +45,20 @@ class UpdateRoomRequest extends BaseAdminFormRequest
             'rent_price' => ['required', 'numeric', 'min:0'],
             'rent_deposit_price' => ['required', 'numeric', 'min:0'],
             'booking_deposit_price' => ['required', 'numeric', 'min:0'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        $roomNumber = trim((string) $this->input('room_number', ''));
+
+        return [
+            'room_number.unique' => $roomNumber !== ''
+                ? "Room {$roomNumber} already exists in this building."
+                : 'Room number already exists in this building.',
         ];
     }
 }

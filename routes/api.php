@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BuildingController;
 use App\Http\Controllers\Admin\ChargeTypeController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DocumentPreviewPdfController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\LateFeeController;
 use App\Http\Controllers\Admin\ListExportController;
@@ -63,6 +64,10 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
     Route::get('maintenance-requests/{maintenance_request}', [CustomerPortalController::class, 'showMaintenanceRequest']);
 });
 
+Route::middleware(['auth:sanctum', 'role:super_admin,admin,customer'])->group(function (): void {
+    Route::post('document-preview/pdf', [DocumentPreviewPdfController::class, 'store']);
+});
+
 Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function (): void {
     Route::get('admin/dashboard/charts', [DashboardController::class, 'charts']);
     Route::post('list-exports/pdf', [ListExportController::class, 'pdf']);
@@ -118,6 +123,8 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
 
     Route::get('utilities/form-data', [UtilityController::class, 'formData']);
     Route::get('utilities/active-rate', [UtilityController::class, 'activeRate']);
+    Route::post('utilities/bulk-import/preview', [UtilityController::class, 'previewBulkImport']);
+    Route::post('utilities/bulk-import/confirm', [UtilityController::class, 'confirmBulkImport']);
     Route::post('utilities/batch', [UtilityController::class, 'storeBatch']);
     Route::post('utilities/{utility}/submit', [UtilityController::class, 'submit']);
     Route::post('utilities/{utility}/approve', [UtilityController::class, 'approve']);

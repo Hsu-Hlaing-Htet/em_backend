@@ -18,7 +18,9 @@ class StoreUtilityRequest extends BaseAdminFormRequest
     {
         return [
             'room_id' => ['required', 'integer', Rule::exists('rooms', 'id')],
+            'contract_id' => ['nullable', 'integer', Rule::exists('contracts', 'id')],
             'billing_month' => ['required', 'date'],
+            'reading_date' => ['nullable', 'date'],
             'utility_items' => ['required', 'array', 'min:1'],
             'utility_items.*.utility_type_id' => ['required', 'integer', Rule::exists('utility_types', 'id')],
             'utility_items.*.previous_reading' => ['required', 'numeric', 'min:0'],

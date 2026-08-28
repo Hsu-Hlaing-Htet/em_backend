@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Models\User;
+use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -21,7 +22,7 @@ class ReceiptFactory extends Factory
     {
         return [
             'payment_id' => Payment::factory()->approved(),
-            'receipt_number' => fake()->unique()->numerify('RCP-######'),
+            'receipt_number' => SeedNumberGenerator::nextReceiptNumber(),
             'receipt_pdf_path' => fake()->optional(0.5)->filePath(),
             'status' => 'draft',
             'approval_status' => 'pending',

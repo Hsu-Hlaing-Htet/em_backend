@@ -18,6 +18,7 @@ class SendContractDocumentRequest extends FormRequest
     {
         return [
             'email' => ['nullable', 'email', 'max:255'],
+            'html' => ['nullable', 'string'],
         ];
     }
 }

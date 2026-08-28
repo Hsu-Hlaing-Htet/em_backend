@@ -69,7 +69,7 @@ class StaffController extends Controller
         );
 
         return response()->json([
-            'message' => 'Staff member created successfully.',
+            'message' => 'Staff member created successfully. A welcome email with a temporary password was sent.',
             'data' => new AccountResource($user),
         ], 201);
     }

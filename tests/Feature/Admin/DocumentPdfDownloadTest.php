@@ -1,5 +1,6 @@
 <?php
 
+use App\Contracts\DocumentPdfConverter;
 use App\Mail\InvoiceDocumentMail;
 use App\Mail\ReceiptDocumentMail;
 use App\Mail\UtilityDocumentMail;
@@ -37,7 +38,7 @@ function pdfDownloadAdmin(): User
 
 function pdfDownloadCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function pdfDownloadStack(User $admin): array
@@ -78,6 +79,93 @@ function pdfDownloadStack(User $admin): array
 
     return compact('building', 'room', 'customer', 'contract');
 }
+
+test('admin can download a pdf from preview document html', function () {
+    $admin = pdfDownloadAdmin();
+    $capturedHtml = null;
+    $this->app->bind(DocumentPdfConverter::class, function () use (&$capturedHtml) {
+        return new class($capturedHtml) implements DocumentPdfConverter
+        {
+            public function __construct(private mixed &$capturedHtml) {}
+
+            public function convert(string $html): string
+            {
+                $this->capturedHtml = $html;
+
+                return "%PDF-1.4\n%%EOF";
+            }
+        };
+    });
+    $html = <<<'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Property Sale Agreement S-000041</title>
+    <style>
+        .contract-doc-foot { margin-top: 2rem; }
+        @media print {
+            #pdf-print.contract-doc-sheet .contract-doc-foot {
+                position: fixed;
+                bottom: 8mm;
+            }
+
+            .contract-doc-foot-page::after {
+                content: 'Page ' counter(page);
+            }
+        }
+        @media (max-width: 768px) {
+            .contract-doc-parties,
+            .contract-doc-field,
+            .contract-doc-row {
+                grid-template-columns: 1fr;
+            }
+
+            .contract-doc-row-value {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <article id="pdf-print" class="pdf-sheet contract-doc-sheet">
+        <footer class="contract-doc-foot">
+            <span class="contract-doc-foot-page"></span>
+        </footer>
+        <h1 class="contract-doc-title">Property Sale Agreement</h1>
+    </article>
+</body>
+</html>
+HTML;
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/document-preview/pdf', [
+            'html' => $html,
+            'filename' => 'Rosewood_Royale_Sale_Contract_S-000041.pdf',
+        ])
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf')
+        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Sale_Contract_S-000041.pdf"')
+        ->assertSee('%PDF', false);
+
+    expect($capturedHtml)
+        ->toContain('.contract-doc-foot { margin-top: 2rem; }')
+        ->toContain('<footer class="contract-doc-foot">')
+        ->toContain('#pdf-print.contract-doc-sheet .contract-doc-row')
+        ->toContain('grid-template-columns: minmax(5.5rem, 38%) minmax(0, 1fr);')
+        ->toContain('text-align: right;')
+        ->toContain("#pdf-print.contract-doc-sheet .contract-doc-section {\n    break-inside: auto;")
+        ->toContain("#pdf-print.contract-doc-sheet .contract-doc-body > .contract-doc-section:nth-of-type(2) {\n    break-after: page;")
+        ->toContain("#pdf-print.contract-doc-sheet .contract-doc-body > .contract-doc-section:nth-of-type(3) {\n    break-inside: avoid;")
+        ->toContain('padding-top: 28px;')
+        ->toContain("#pdf-print.contract-doc-sheet .contract-doc-section-title {\n    break-after: avoid;")
+        ->toContain("#pdf-print.contract-doc-sheet .contract-doc-signatures,\n#pdf-print.contract-doc-sheet .contract-doc-rows--property {\n    break-inside: avoid;")
+        ->not->toContain('@media print')
+        ->not->toContain('@media (max-width: 768px)')
+        ->not->toContain('position: fixed')
+        ->not->toContain("content: 'Page ' counter(page)")
+        ->not->toContain("grid-template-columns: 1fr;\n            }");
+});
 
 test('utility invoice and receipt downloads return named pdf attachments', function () {
     Mail::fake();

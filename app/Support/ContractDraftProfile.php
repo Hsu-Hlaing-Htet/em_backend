@@ -24,7 +24,7 @@ final class ContractDraftProfile
         return new self(
             type: 'sale',
             numberPrefix: 'S-',
-            activeStatus: 'approved',
+            activeStatus: 'active',
             roomStatusOnApprove: 'reserved',
             roomTypes: ['sale', 'both'],
             priceColumn: 'sale_price',

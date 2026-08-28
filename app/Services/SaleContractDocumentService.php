@@ -31,9 +31,9 @@ class SaleContractDocumentService
         return $this->service()->renderHtml($contract);
     }
 
-    public function downloadResponse(Contract $contract): Response
+    public function downloadResponse(Contract $contract, ?string $filename = null): Response
     {
-        return $this->service()->downloadResponse($contract);
+        return $this->service()->downloadResponse($contract, $filename);
     }
 
     public function exportResponse(Contract $contract): Response
@@ -47,5 +47,13 @@ class SaleContractDocumentService
     public function sendEmail(Contract $contract, array $data): void
     {
         $this->service()->sendEmail($contract, $data);
+    }
+
+    /**
+     * @param  array{html?: string|null}  $data
+     */
+    public function sendEmailToContractCustomer(Contract $contract, array $data = []): string
+    {
+        return $this->service()->sendEmailToContractCustomer($contract, $data);
     }
 }

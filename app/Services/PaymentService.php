@@ -21,6 +21,7 @@ class PaymentService
 
     public function __construct(
         private readonly ReceiptService $receiptService,
+        private readonly ContractLifecycleService $contractLifecycleService,
     ) {}
 
     /**
@@ -269,8 +270,13 @@ class PaymentService
                 'rejection_reason' => null,
             ]);
 
-            $this->syncInvoicePaymentStatus($invoice->fresh(['payments']));
+            $invoice = $this->syncInvoicePaymentStatus($invoice->fresh(['payments']));
             $this->ensureReceiptForPayment($lockedPayment->fresh());
+            $invoice->loadMissing('contract.room');
+
+            if ($invoice->contract) {
+                $this->contractLifecycleService->syncAfterPayment($invoice->contract);
+            }
 
             return $this->find($lockedPayment->id);
         });

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\RejectSaleContractDraftRequest;
 use App\Http\Requests\Admin\SendSaleContractDocumentRequest;
@@ -14,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use InvalidArgumentException;
+use Throwable;
 
 class SaleContractDraftController extends Controller
 {
@@ -112,17 +114,22 @@ class SaleContractDraftController extends Controller
     ): JsonResponse {
         $validated = $request->validate([
             'reason' => ['required', 'string', 'max:1000'],
+            'termination_date' => ['nullable', 'date'],
         ]);
 
         try {
             $contract = $saleContractDraftService->findApproved($sale_contract);
-            $contract = $saleContractDraftService->cancel($contract, $validated['reason']);
-        } catch (InvalidArgumentException $exception) {
+            $contract = $saleContractDraftService->cancel(
+                $contract,
+                $validated['reason'],
+                $validated['termination_date'] ?? now()->toDateString(),
+            );
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
         return response()->json([
-            'message' => 'Sale contract cancelled successfully.',
+            'message' => 'Sale contract terminated successfully.',
             'data' => new ContractResource($contract),
         ]);
     }
@@ -221,15 +228,18 @@ class SaleContractDraftController extends Controller
         int $sale_contract,
         SaleContractDocumentService $saleContractDocumentService,
     ): JsonResponse {
+        $contract = $saleContractDocumentService->findApproved($sale_contract);
+
         try {
-            $contract = $saleContractDocumentService->findApproved($sale_contract);
-            $saleContractDocumentService->sendEmail($contract, $request->validated());
+            $email = $saleContractDocumentService->sendEmailToContractCustomer($contract, $request->validated());
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (Throwable) {
+            return response()->json(['message' => 'Unable to send the contract. Please try again.'], 500);
         }
 
         return response()->json([
-            'message' => 'Sale contract document sent successfully.',
+            'message' => "Contract sent successfully to {$email}.",
         ]);
     }
 }

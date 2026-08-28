@@ -29,7 +29,7 @@ class PublicPropertyResource extends JsonResource
         $approvedContract = $this->whenLoaded('contracts', function () {
             return $this->contracts
                 ->where('type', 'sale')
-                ->where('status', 'approved')
+                ->where('status', 'active')
                 ->sortByDesc('id')
                 ->first();
         });

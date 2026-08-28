@@ -14,7 +14,6 @@ use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 
 uses(RefreshDatabase::class);
@@ -31,7 +30,7 @@ function receiptDeliveryAdmin(): User
 
 function receiptDeliveryCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function seedReceiptDeliveryPayment(User $admin, User $customer): array
@@ -326,7 +325,7 @@ test('another customer cannot access a sent receipt', function () {
 
     $admin = receiptDeliveryAdmin();
     $customer = receiptDeliveryCustomer();
-    $otherCustomer = User::query()->where('email', 'hlahla@rosewoodroyale.com')->firstOrFail();
+    $otherCustomer = User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
     ['payment' => $payment] = seedReceiptDeliveryPayment($admin, $customer);
 
     $this->actingAs($admin, 'sanctum')

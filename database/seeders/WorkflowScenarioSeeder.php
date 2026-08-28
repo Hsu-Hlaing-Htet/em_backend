@@ -21,6 +21,7 @@ use App\Models\UtilityType;
 use Carbon\Carbon;
 use Database\Seeders\Support\BillingSeederSupport;
 use Database\Seeders\Support\ConsolidatedBillingSeederSupport;
+use Database\Seeders\Support\MyanmarSampleData;
 use Illuminate\Database\Seeder;
 
 /**
@@ -36,6 +37,8 @@ use Illuminate\Database\Seeder;
  */
 class WorkflowScenarioSeeder extends Seeder
 {
+    private const BULK_IMPORT_READY_THROUGH = '2026-07-01';
+
     /** @var array<string, array<string, mixed>> */
     private array $matrix = [];
 
@@ -73,18 +76,18 @@ class WorkflowScenarioSeeder extends Seeder
         $rooms = $this->seedRooms($buildings);
 
         // --- Sale contracts ---
-        $this->seedSaleDraft($admin, $customers->get('yeyee@rosewoodroyale.com'), $rooms['S-DRAFT'], $fullPlan);
-        $this->seedSalePending($admin, $customers->get('seinsein@rosewoodroyale.com'), $rooms['S-PENDING'], $fullPlan);
-        $this->seedSaleApproved($admin, $customers->get('susu@rosewoodroyale.com'), $rooms['S-APPROVED'], $installmentPlan ?? $fullPlan);
-        $this->seedSaleCompleted($admin, $customers->get('nwenwe@rosewoodroyale.com'), $rooms['S-COMPLETED'], $fullPlan);
-        $this->seedSaleRejected($admin, $customers->get('hninhnin@rosewoodroyale.com'), $rooms['S-REJECTED'], $fullPlan);
+        $this->seedSaleDraft($admin, $customers->get('yeyee@gmail.com'), $rooms['S-DRAFT'], $fullPlan);
+        $this->seedSalePending($admin, $customers->get('seinsein@gmail.com'), $rooms['S-PENDING'], $fullPlan);
+        $this->seedSaleApproved($admin, $customers->get('susu@gmail.com'), $rooms['S-APPROVED'], $installmentPlan ?? $fullPlan);
+        $this->seedSaleCompleted($admin, $customers->get('nwenwe@gmail.com'), $rooms['S-COMPLETED'], $fullPlan);
+        $this->seedSaleRejected($admin, $customers->get('hninhnin@gmail.com'), $rooms['S-REJECTED'], $fullPlan);
 
         // --- Rent contracts ---
-        $this->seedRentDraft($admin, $customers->get('waiwai@rosewoodroyale.com'), $rooms['R-DRAFT'], $fullPlan);
-        $this->seedRentPending($admin, $customers->get('thandar@rosewoodroyale.com'), $rooms['R-PENDING'], $fullPlan);
+        $this->seedRentDraft($admin, $customers->get('waiwai@gmail.com'), $rooms['R-DRAFT'], $fullPlan);
+        $this->seedRentPending($admin, $customers->get('thandar@gmail.com'), $rooms['R-PENDING'], $fullPlan);
         $activeRent = $this->seedRentActive(
             $admin,
-            $customers->get('mgmg@rosewoodroyale.com'),
+            $customers->get('mgmg@gmail.com'),
             $rooms['R-ACTIVE'],
             $fullPlan,
             $chargeTypes,
@@ -92,13 +95,13 @@ class WorkflowScenarioSeeder extends Seeder
             $cash,
             $kbz,
         );
-        $this->seedRentCompleted($admin, $customers->get('zawzaw@rosewoodroyale.com'), $rooms['R-COMPLETED'], $fullPlan, $chargeTypes);
-        $this->seedRentRejected($admin, $customers->get('eiei@rosewoodroyale.com'), $rooms['R-REJECTED'], $fullPlan);
+        $this->seedRentCompleted($admin, $customers->get('zawzaw@gmail.com'), $rooms['R-COMPLETED'], $fullPlan, $chargeTypes);
+        $this->seedRentRejected($admin, $customers->get('eiei@gmail.com'), $rooms['R-REJECTED'], $fullPlan);
 
         // Secondary occupied rental (utilities history, no maintenance for tuntun = no-request customer)
         $this->seedSecondaryOccupiedRent(
             $admin,
-            $customers->get('hlahla@rosewoodroyale.com'),
+            $customers->get('hlahla@gmail.com'),
             $rooms['R-ACTIVE-2'],
             $fullPlan,
             $chargeTypes,
@@ -108,7 +111,7 @@ class WorkflowScenarioSeeder extends Seeder
 
         // Available room with images only — no contract
         $this->matrix['available-no-contract'] = [
-            'demo_account' => 'tuntun@rosewoodroyale.com (registered only, no contract/maintenance)',
+            'demo_account' => 'tuntun@gmail.com (registered only, no contract/maintenance)',
             'room' => $rooms['AVAILABLE']->room_number.' @ '.$buildings['royal']->building_name,
             'contract' => '—',
             'invoice' => '—',
@@ -140,10 +143,10 @@ class WorkflowScenarioSeeder extends Seeder
     private function seedBuildings(): array
     {
         $defs = [
-            'royal' => ['Rosewood Royal Tower', 'Kamayut Township, Yangon, Myanmar', 'Flagship tower near Inya Lake with 24-hour security and covered parking.'],
-            'inya' => ['Inya Lake View Condominium', 'Bahan Township, Yangon, Myanmar', 'Lake-facing residences with clubhouse and swimming pool.'],
-            'kabar' => ['Kabar Aye Premium Homes', 'Mayangone Township, Yangon, Myanmar', 'Quiet mid-rise near Kabar Aye Pagoda with lift access.'],
-            'pyay' => ['Pyay Road Residences', 'Hlaing Township, Yangon, Myanmar', 'Convenient Pyay Road address for professionals.'],
+            'royal' => [MyanmarSampleData::buildingNameForIndex(0), 'Kamayut Township, Yangon, Myanmar', 'Residential building with 24-hour security and covered parking.'],
+            'inya' => [MyanmarSampleData::buildingNameForIndex(1), 'Bahan Township, Yangon, Myanmar', 'Residential building with lift access and family-friendly amenities.'],
+            'kabar' => [MyanmarSampleData::buildingNameForIndex(2), 'Mayangone Township, Yangon, Myanmar', 'Residential building near daily shops and transport.'],
+            'pyay' => [MyanmarSampleData::buildingNameForIndex(3), 'Hlaing Township, Yangon, Myanmar', 'Residential building for professionals commuting across Yangon.'],
         ];
 
         $buildings = [];
@@ -165,19 +168,19 @@ class WorkflowScenarioSeeder extends Seeder
     {
         $defs = [
             'AVAILABLE' => [$buildings['royal'], 'A-101', 1, 'rent', 850, 450000, 0],
-            'S-DRAFT' => [$buildings['inya'], 'B-201', 2, 'sale', 1100, 0, 185000000],
-            'S-PENDING' => [$buildings['inya'], 'B-305', 3, 'sale', 1180, 0, 248000000],
-            'S-APPROVED' => [$buildings['kabar'], 'C-301', 3, 'sale', 1250, 0, 275000000],
-            'S-COMPLETED' => [$buildings['kabar'], 'C-701', 7, 'sale', 1400, 0, 320000000],
-            'S-REJECTED' => [$buildings['pyay'], 'D-110', 1, 'sale', 990, 0, 198000000],
-            'R-DRAFT' => [$buildings['royal'], 'A-210', 2, 'rent', 780, 420000, 0],
-            'R-PENDING' => [$buildings['pyay'], 'D-220', 2, 'rent', 860, 490000, 0],
-            'R-ACTIVE' => [$buildings['royal'], 'A-501', 5, 'rent', 1050, 650000, 0],
-            'R-ACTIVE-2' => [$buildings['pyay'], 'D-402', 4, 'rent', 880, 480000, 0],
-            'R-COMPLETED' => [$buildings['inya'], 'B-410', 4, 'rent', 920, 520000, 0],
-            'R-REJECTED' => [$buildings['kabar'], 'C-120', 1, 'rent', 800, 400000, 0],
-            'MAINTENANCE' => [$buildings['royal'], 'M-001', 9, 'both', 700, 380000, 150000000],
-            'EXTRA-AVAIL' => [$buildings['inya'], 'B-102', 1, 'both', 980, 600000, 210000000],
+            'S-DRAFT' => [$buildings['inya'], 'B-101', 1, 'sale', 1100, 0, 185000000],
+            'S-PENDING' => [$buildings['kabar'], 'C-101', 1, 'sale', 1180, 0, 248000000],
+            'S-APPROVED' => [$buildings['pyay'], 'D-101', 1, 'sale', 1250, 0, 275000000],
+            'S-COMPLETED' => [$buildings['royal'], 'A-102', 1, 'sale', 1400, 0, 320000000],
+            'S-REJECTED' => [$buildings['inya'], 'B-102', 1, 'sale', 990, 0, 198000000],
+            'R-DRAFT' => [$buildings['kabar'], 'C-102', 1, 'rent', 780, 420000, 0],
+            'R-PENDING' => [$buildings['pyay'], 'D-102', 1, 'rent', 860, 490000, 0],
+            'R-ACTIVE' => [$buildings['royal'], 'A-103', 1, 'rent', 1050, 650000, 0],
+            'R-ACTIVE-2' => [$buildings['inya'], 'B-103', 1, 'rent', 880, 480000, 0],
+            'R-COMPLETED' => [$buildings['kabar'], 'C-103', 1, 'rent', 920, 520000, 0],
+            'R-REJECTED' => [$buildings['pyay'], 'D-103', 1, 'rent', 800, 400000, 0],
+            'MAINTENANCE' => [$buildings['royal'], 'A-104', 1, 'both', 700, 380000, 150000000],
+            'EXTRA-AVAIL' => [$buildings['inya'], 'B-104', 1, 'both', 980, 600000, 210000000],
         ];
 
         $rooms = [];
@@ -220,7 +223,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('S-WF-000001', [
+        $contract = $this->upsertContract('S-000001', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -235,7 +238,7 @@ class WorkflowScenarioSeeder extends Seeder
             'start_date' => now()->toDateString(),
             'end_date' => null,
             'billing_day' => null,
-            'status' => 'draft',
+            'status' => Contract::STATUS_PENDING,
             'remark' => 'Sale draft awaiting customer confirmation.',
         ]);
         $room->update(['status' => 'available']);
@@ -249,7 +252,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('S-WF-000002', [
+        $contract = $this->upsertContract('S-000002', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -279,7 +282,7 @@ class WorkflowScenarioSeeder extends Seeder
         }
 
         $useInstallment = $plan && $plan->payment_type === 'installment';
-        $contract = $this->upsertContract('S-WF-000003', [
+        $contract = $this->upsertContract('S-000003', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -294,14 +297,14 @@ class WorkflowScenarioSeeder extends Seeder
             'start_date' => now()->subMonths(2)->toDateString(),
             'end_date' => $useInstallment ? now()->addMonths(10)->toDateString() : null,
             'billing_day' => $useInstallment ? 5 : null,
-            'status' => 'approved',
+            'status' => Contract::STATUS_ACTIVE,
             'remark' => 'Approved sale contract. Unit reserved pending completion.',
         ]);
         $room->update(['status' => 'reserved']);
 
         $deposit = (float) $room->booking_deposit_price;
         $depositInvoice = BillingSeederSupport::upsertInvoice(
-            'INV-WF-SALE-DEP',
+            'INV-000001',
             $admin,
             $contract->id,
             null,
@@ -340,7 +343,7 @@ class WorkflowScenarioSeeder extends Seeder
         $saleUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $installmentMonth, 'approved', $admin);
 
         BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-SALE-BAL',
+            'INV-000002',
             $admin,
             $contract,
             $installmentMonth,
@@ -362,7 +365,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('S-WF-000004', [
+        $contract = $this->upsertContract('S-000004', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -384,7 +387,7 @@ class WorkflowScenarioSeeder extends Seeder
 
         $saleTotal = (float) $room->sale_price;
         $saleInvoice = BillingSeederSupport::upsertInvoice(
-            'INV-WF-SALE-FULL',
+            'INV-000003',
             $admin,
             $contract->id,
             null,
@@ -426,7 +429,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('S-WF-000005', [
+        $contract = $this->upsertContract('S-000005', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -455,7 +458,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('R-WF-000001', [
+        $contract = $this->upsertContract('R-000001', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -470,7 +473,7 @@ class WorkflowScenarioSeeder extends Seeder
             'start_date' => now()->toDateString(),
             'end_date' => now()->addYear()->toDateString(),
             'billing_day' => 5,
-            'status' => 'draft',
+            'status' => Contract::STATUS_PENDING,
             'remark' => 'Rent draft pending tenant review.',
         ]);
         $room->update(['status' => 'available']);
@@ -484,7 +487,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('R-WF-000002', [
+        $contract = $this->upsertContract('R-000002', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -528,7 +531,7 @@ class WorkflowScenarioSeeder extends Seeder
         }
 
         $start = now()->subMonths(6)->startOfMonth();
-        $contract = $this->upsertContract('R-WF-000003', [
+        $contract = $this->upsertContract('R-000003', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -554,7 +557,7 @@ class WorkflowScenarioSeeder extends Seeder
         $draftMonth = now()->startOfMonth();
         $draftUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $draftMonth, 'approved', $admin);
         BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-DRAFT1',
+            'INV-000004',
             $admin,
             $contract,
             $draftMonth,
@@ -564,14 +567,14 @@ class WorkflowScenarioSeeder extends Seeder
             now()->addDays(7),
             ConsolidatedBillingSeederSupport::buildRentConsolidatedItems($contract, $draftUtility, $chargeTypes, $draftMonth),
             0,
-            [$draftUtility->id],
+            $draftUtility ? [$draftUtility->id] : [],
         );
 
         // Paid consolidated invoice + approved payment + issued/sent receipt
         $paidMonth = $start->copy();
         $paidUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $paidMonth, 'approved', $admin);
         $paidInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-PAID01',
+            'INV-000005',
             $admin,
             $contract,
             $paidMonth,
@@ -609,7 +612,7 @@ class WorkflowScenarioSeeder extends Seeder
         $partialMonth = $start->copy()->addMonths(1);
         $partialUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $partialMonth, 'approved', $admin);
         $partialInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-PART01',
+            'INV-000006',
             $admin,
             $contract,
             $partialMonth,
@@ -646,7 +649,7 @@ class WorkflowScenarioSeeder extends Seeder
         $unpaidMonth = $start->copy()->addMonths(2);
         $unpaidUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $unpaidMonth, 'approved', $admin);
         $unpaidInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-UNPAID1',
+            'INV-000007',
             $admin,
             $contract,
             $unpaidMonth,
@@ -664,7 +667,7 @@ class WorkflowScenarioSeeder extends Seeder
         $overdueMonth = $start->copy()->addMonths(3);
         $overdueUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $overdueMonth, 'approved', $admin);
         $overdueInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-OVERDUE',
+            'INV-000008',
             $admin,
             $contract,
             $overdueMonth,
@@ -694,7 +697,7 @@ class WorkflowScenarioSeeder extends Seeder
         $rejectMonth = $start->copy()->addMonths(4);
         $rejectUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $rejectMonth, 'approved', $admin);
         $rejectInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-REJECT1',
+            'INV-000009',
             $admin,
             $contract,
             $rejectMonth,
@@ -724,7 +727,7 @@ class WorkflowScenarioSeeder extends Seeder
         $receiptMonth = $start->copy()->addMonths(5);
         $receiptUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $receiptMonth, 'approved', $admin);
         $receiptInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-RCPT01',
+            'INV-000010',
             $admin,
             $contract,
             $receiptMonth,
@@ -760,7 +763,7 @@ class WorkflowScenarioSeeder extends Seeder
         // Approved payment with rejected receipt approval (maintenance fee invoice kept separate)
         $maintCharge = $chargeTypes->get('maintenance-fee')?->id ?? $chargeTypes->get('monthly-rent')?->id;
         $rejReceiptInvoice = BillingSeederSupport::upsertInvoice(
-            'INV-WF-RCPT02',
+            'INV-000011',
             $admin,
             $contract->id,
             null,
@@ -791,8 +794,7 @@ class WorkflowScenarioSeeder extends Seeder
             now()->subMonths(1)->day(6),
         );
 
-        // Pending utility bill for a future month without invoice yet
-        $this->seedUtilityForRoom($admin, $room, $utilityTypes, $start->copy()->addMonths(6), 'pending', null);
+        // August 2026 remains unseeded so it can be tested through manual/bulk utility import.
 
         $this->matrix['rent-active-primary'] = $this->row(
             $customer->email,
@@ -825,7 +827,7 @@ class WorkflowScenarioSeeder extends Seeder
         }
 
         $start = now()->subMonths(3)->startOfMonth();
-        $contract = $this->upsertContract('R-WF-000004', [
+        $contract = $this->upsertContract('R-000004', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -853,7 +855,7 @@ class WorkflowScenarioSeeder extends Seeder
             ->firstOrFail();
 
         $paid = BillingSeederSupport::upsertConsolidatedInvoice(
-            'INV-WF-SEC-PAID',
+            'INV-000012',
             $admin,
             $contract,
             $start,
@@ -903,7 +905,7 @@ class WorkflowScenarioSeeder extends Seeder
 
         $start = now()->subMonths(18)->startOfMonth();
         $end = now()->subMonths(6)->startOfMonth();
-        $contract = $this->upsertContract('R-WF-000005', [
+        $contract = $this->upsertContract('R-000005', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -924,7 +926,7 @@ class WorkflowScenarioSeeder extends Seeder
         $room->update(['status' => 'available']);
 
         $invoice = BillingSeederSupport::upsertInvoice(
-            'INV-WF-COMP01',
+            'INV-000013',
             $admin,
             $contract->id,
             null,
@@ -966,7 +968,7 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
-        $contract = $this->upsertContract('R-WF-000006', [
+        $contract = $this->upsertContract('R-000006', [
             'user_id' => $customer->id,
             'room_id' => $room->id,
             'payment_plan_id' => $plan?->id,
@@ -1002,23 +1004,100 @@ class WorkflowScenarioSeeder extends Seeder
     ): ?Utility {
         $month = $billingMonth->copy()->startOfMonth();
 
-        $utility = Utility::query()->updateOrCreate(
-            [
-                'room_id' => $room->id,
+        if ($month->gt($this->latestSeedableUtilityMonth())) {
+            return null;
+        }
+
+        $contractId = Contract::query()
+            ->where('room_id', $room->id)
+            ->whereDate('start_date', '<=', $month->copy()->endOfMonth())
+            ->where(function ($query) use ($month) {
+                $query->whereNull('end_date')
+                    ->orWhereDate('end_date', '>=', $month->copy()->startOfMonth());
+            })
+            ->orderByDesc('id')
+            ->value('id');
+
+        if ($contractId) {
+            $this->backfillUtilityHistory($admin, $room, $utilityTypes, $contractId, $month);
+        }
+
+        $attributes = [
+            'contract_id' => $contractId,
+            'room_id' => $room->id,
+            'reading_date' => $month->copy()->addMonth()->startOfMonth()->toDateString(),
+            'total_amount' => 0,
+            'status' => $status,
+            'created_by' => $admin->id,
+            'approved_by' => $approver?->id,
+            'approved_at' => $approver ? $month->copy()->endOfMonth() : null,
+        ];
+
+        $utility = Utility::query()
+            ->where('room_id', $room->id)
+            ->whereDate('billing_month', $month->toDateString())
+            ->first();
+
+        if ($utility) {
+            $utility->update($attributes);
+        } else {
+            $utility = Utility::query()->create([
+                ...$attributes,
                 'billing_month' => $month->toDateString(),
-            ],
-            [
-                'total_amount' => 0,
-                'status' => $status,
-                'created_by' => $admin->id,
-                'approved_by' => $approver?->id,
-                'approved_at' => $approver ? $month->copy()->endOfMonth() : null,
-            ],
-        );
+            ]);
+        }
 
         $utility->items()->delete();
+        $total = $this->populateUtilityItems($utility, $room, $utilityTypes, $month);
+
+        $utility->update(['total_amount' => round($total, 2)]);
+
+        return $utility->fresh('items');
+    }
+
+    private function backfillUtilityHistory(
+        User $admin,
+        Room $room,
+        $utilityTypes,
+        int $contractId,
+        Carbon $targetMonth,
+    ): void {
+        $contractStart = Contract::query()->whereKey($contractId)->value('start_date');
+        if (! $contractStart) {
+            return;
+        }
+
+        $cursor = Carbon::parse($contractStart)->startOfMonth();
+
+        while ($cursor->lt($targetMonth)) {
+            if (! Utility::query()
+                ->where('room_id', $room->id)
+                ->whereDate('billing_month', $cursor->toDateString())
+                ->exists()) {
+                $utility = Utility::query()->create([
+                    'contract_id' => $contractId,
+                    'room_id' => $room->id,
+                    'billing_month' => $cursor->toDateString(),
+                    'reading_date' => $cursor->copy()->addMonth()->startOfMonth()->toDateString(),
+                    'total_amount' => 0,
+                    'status' => 'approved',
+                    'created_by' => $admin->id,
+                    'approved_by' => $admin->id,
+                    'approved_at' => $cursor->copy()->endOfMonth(),
+                ]);
+                $utility->update([
+                    'total_amount' => round($this->populateUtilityItems($utility, $room, $utilityTypes, $cursor), 2),
+                ]);
+            }
+
+            $cursor->addMonth();
+        }
+    }
+
+    private function populateUtilityItems(Utility $utility, Room $room, $utilityTypes, Carbon $month): float
+    {
         $total = 0.0;
-        $base = 1000 + ($room->id * 15) + ((int) $month->format('n') * 20);
+        $base = 1000 + ($room->id * 15) + ($month->year * 12 + $month->month);
 
         foreach ($utilityTypes->take(3) as $index => $type) {
             $rate = UtilityRate::query()
@@ -1026,7 +1105,8 @@ class WorkflowScenarioSeeder extends Seeder
                 ->where('status', 'active')
                 ->latest('effective_date')
                 ->first();
-            $previous = $base + ($index * 300);
+            $previous = $this->latestUtilityReadingBefore($room->id, $type->id, $month)
+                ?? $base + ($index * 300);
             $usage = match ($index) {
                 0 => 110.0,
                 1 => 175.0,
@@ -1047,9 +1127,31 @@ class WorkflowScenarioSeeder extends Seeder
             ]);
         }
 
-        $utility->update(['total_amount' => round($total, 2)]);
+        return $total;
+    }
 
-        return $utility->fresh('items');
+    private function latestSeedableUtilityMonth(): Carbon
+    {
+        return now()
+            ->subMonth()
+            ->startOfMonth()
+            ->min(Carbon::parse(self::BULK_IMPORT_READY_THROUGH)->startOfMonth());
+    }
+
+    private function latestUtilityReadingBefore(int $roomId, int $utilityTypeId, Carbon $month): ?float
+    {
+        $utility = Utility::query()
+            ->where('room_id', $roomId)
+            ->whereDate('billing_month', '<', $month->toDateString())
+            ->whereHas('items', fn ($query) => $query->where('utility_type_id', $utilityTypeId))
+            ->with(['items' => fn ($query) => $query->where('utility_type_id', $utilityTypeId)])
+            ->orderByDesc('billing_month')
+            ->orderByDesc('id')
+            ->first();
+
+        return $utility?->items->first()
+            ? (float) $utility->items->first()->current_reading
+            : null;
     }
 
     private function seedMaintenanceBundle(User $admin, ?Contract $activeRent, $customers): void

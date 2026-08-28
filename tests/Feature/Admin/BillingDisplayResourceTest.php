@@ -28,7 +28,7 @@ function billingDisplayAdmin(): User
 
 function seedBillingDisplayFixture(User $admin): array
 {
-    $customer = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 
     $building = \App\Models\Building::query()->create([
         'building_name' => 'Display Audit Tower',
@@ -196,7 +196,7 @@ test('invoice list includes customer building and room fields', function () {
 
 test('customer cannot access admin payment endpoints', function () {
     $admin = billingDisplayAdmin();
-    $customer = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
     seedBillingDisplayFixture($admin);
 
     $this->actingAs($customer, 'sanctum')

@@ -43,7 +43,7 @@ final class ContractDocumentProfile
             defaultFilename: 'rent-contract',
             priceLabel: 'Rent Price',
             depositLabel: 'Security Deposit',
-            mailSubjectPrefix: 'Property Rent Agreement',
+            mailSubjectPrefix: 'Rental/Lease Agreement',
             tenantSignatureLabel: 'Tenant Signature',
             mailClass: RentContractDocumentMail::class,
         );

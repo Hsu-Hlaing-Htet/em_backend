@@ -6,6 +6,7 @@ use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Models\Utility;
+use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -28,7 +29,7 @@ class InvoiceFactory extends Factory
             'created_by' => User::factory()->admin(),
             'approved_by' => null,
             'approved_at' => null,
-            'invoice_number' => fake()->unique()->numerify('INV-######'),
+            'invoice_number' => SeedNumberGenerator::nextInvoiceNumber(),
             'type' => fake()->randomElement(['rent', 'utility', 'other']),
             'issued_date' => fake()->optional(0.7)->dateTimeBetween('-3 months', 'now'),
             'due_date' => fake()->dateTimeBetween('now', '+1 month'),

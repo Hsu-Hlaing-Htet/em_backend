@@ -2,10 +2,13 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Http\Requests\Concerns\ValidatesPhoneNumber;
 use Illuminate\Validation\Rule;
 
 class StoreProfileRequest extends BaseAdminFormRequest
 {
+    use ValidatesPhoneNumber;
+
     public function authorize(): bool
     {
         return true;
@@ -18,12 +21,20 @@ class StoreProfileRequest extends BaseAdminFormRequest
     {
         return [
             'user_id' => ['required', 'integer', Rule::exists('users', 'id'), Rule::unique('profiles', 'user_id')],
-            'phone' => ['required', 'string', 'max:50'],
+            'phone' => $this->phoneRules(),
             'nrc' => ['required', 'string', 'max:100'],
             'dob' => ['required', 'date'],
             'gender' => ['required', 'string', 'max:50'],
             'address' => ['required', 'string'],
             'avatar_path' => ['nullable', 'string', 'max:255'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return $this->phoneMessages();
     }
 }

@@ -1,80 +1,92 @@
 <?php
 
 use App\Models\ChargeType;
-use App\Models\Contract;
 use App\Models\Invoice;
-use App\Models\User;
 use App\Models\Utility;
 use App\Models\UtilityRate;
 use App\Models\UtilityType;
-use Database\Seeders\ChargeTypeSeeder;
-use Database\Seeders\RoleSeeder;
-use Database\Seeders\UserSeeder;
-use Database\Seeders\UtilityRateSeeder;
-use Database\Seeders\UtilityTypeSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-function utilityWorkflowAdmin(): User
-{
-    (new RoleSeeder)->run();
-    (new UserSeeder)->run();
-    (new ChargeTypeSeeder)->run();
-    (new UtilityTypeSeeder)->run();
-    (new UtilityRateSeeder)->run();
-
-    return User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-}
-
-function utilityWorkflowCustomer(): User
-{
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
-}
-
-function seedUtilityWorkflowStack(User $admin): array
-{
-    $building = \App\Models\Building::query()->create([
-        'building_name' => 'Utility Tower',
-        'location' => 'Yangon',
-    ]);
-
-    $room = \App\Models\Room::query()->create([
-        'building_id' => $building->id,
-        'room_number' => '9A',
-        'floor_number' => 9,
-        'type' => 'rent',
-        'status' => 'available',
-        'area_sqft' => 1000,
-        'sale_price' => 0,
-        'rent_price' => 400000,
-        'rent_deposit_price' => 40000,
-        'booking_deposit_price' => 8000,
-    ]);
-
-    $customer = utilityWorkflowCustomer();
-
-    $contract = Contract::query()->create([
-        'contract_number' => 'CTR-UTIL-0001',
-        'user_id' => $customer->id,
-        'room_id' => $room->id,
-        'contract_total' => 4800000,
-        'type' => 'rent',
-        'payment_type' => 'installment',
-        'duration_months' => 12,
-        'billing_day' => 1,
-        'status' => 'active',
-        'created_by' => $admin->id,
-    ]);
-
+test('utility submit and approve generates consolidated invoice with line items', function () {
+    $admin = tb3Admin();
+    $customer = tb3Customer();
+    ['room' => $room, 'contract' => $contract] = tb3ActiveContract($admin, $customer, 'TB3-INV');
     $utilityType = UtilityType::query()->where('slug', 'electricity')->firstOrFail();
+    $rate = UtilityRate::query()->where('utility_type_id', $utilityType->id)->where('status', 'active')->firstOrFail();
+    $billingMonth = \Illuminate\Support\Carbon::parse($contract->start_date)->startOfMonth()->toDateString();
 
-    return compact('building', 'room', 'customer', 'contract', 'utilityType');
-}
+    $utilityId = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/utilities', [
+            'room_id' => $room->id,
+            'billing_month' => $billingMonth,
+            'utility_items' => [[
+                'utility_type_id' => $utilityType->id,
+                'previous_reading' => 500,
+                'current_reading' => 600,
+                'unit_price' => (float) $rate->unit_price,
+            ]],
+        ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/utilities/{$utilityId}/submit")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/utilities/{$utilityId}/approve")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'approved');
+
+    $invoice = Invoice::query()->where('contract_id', $contract->id)->first();
+    expect($invoice)->not->toBeNull();
+    expect($invoice->status)->toBe('draft');
+    expect($invoice->items)->not->toBeEmpty();
+    expect(ChargeType::query()->where('slug', 'utility-charges')->exists())->toBeTrue();
+});
+
+test('rejected utility does not generate an invoice', function () {
+    $admin = tb3Admin();
+    $customer = tb3Customer();
+    ['room' => $room, 'contract' => $contract] = tb3ActiveContract($admin, $customer, 'TB3-REJ');
+    $utilityType = UtilityType::query()->where('slug', 'electricity')->firstOrFail();
+    $rate = UtilityRate::query()->where('utility_type_id', $utilityType->id)->where('status', 'active')->firstOrFail();
+    $billingMonth = \Illuminate\Support\Carbon::parse($contract->start_date)->startOfMonth()->toDateString();
+
+    $utilityId = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/utilities', [
+            'room_id' => $room->id,
+            'billing_month' => $billingMonth,
+            'utility_items' => [[
+                'utility_type_id' => $utilityType->id,
+                'previous_reading' => 500,
+                'current_reading' => 600,
+                'unit_price' => (float) $rate->unit_price,
+            ]],
+        ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/utilities/{$utilityId}/submit")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/utilities/{$utilityId}/reject")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'rejected');
+
+    expect(Invoice::query()->where('contract_id', $contract->id)->count())->toBe(0);
+    expect(Utility::query()->find($utilityId)?->invoice_id)->toBeNull();
+});
 
 test('utility batch create uses previous reading and active rate then approval generates draft invoice', function () {
-    $admin = utilityWorkflowAdmin();
-    ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType] = seedUtilityWorkflowStack($admin);
+    $admin = tb3Admin();
+    ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType] = tb3BatchStack($admin);
 
     $rate = UtilityRate::query()
         ->where('utility_type_id', $utilityType->id)
@@ -86,7 +98,9 @@ test('utility batch create uses previous reading and active rate then approval g
 
     $utility = Utility::query()->create([
         'room_id' => $room->id,
+        'contract_id' => $contract->id,
         'billing_month' => $previousMonth,
+        'reading_date' => now()->startOfMonth()->toDateString(),
         'status' => 'approved',
         'total_amount' => 15000,
         'created_by' => $admin->id,
@@ -102,7 +116,7 @@ test('utility batch create uses previous reading and active rate then approval g
     ]);
 
     $this->actingAs($admin, 'sanctum')
-        ->getJson('/api/utilities/form-data?' . http_build_query([
+        ->getJson('/api/utilities/form-data?'.http_build_query([
             'utility_type_id' => $utilityType->id,
             'billing_month' => $billingMonth,
             'room_ids' => [$room->id],
@@ -162,11 +176,11 @@ test('utility batch create uses previous reading and active rate then approval g
 });
 
 test('utility form data defaults previous reading to zero when no prior month exists', function () {
-    $admin = utilityWorkflowAdmin();
-    ['room' => $room, 'utilityType' => $utilityType] = seedUtilityWorkflowStack($admin);
+    $admin = tb3Admin();
+    ['room' => $room, 'utilityType' => $utilityType] = tb3BatchStack($admin);
 
     $this->actingAs($admin, 'sanctum')
-        ->getJson('/api/utilities/form-data?' . http_build_query([
+        ->getJson('/api/utilities/form-data?'.http_build_query([
             'utility_type_id' => $utilityType->id,
             'billing_month' => now()->startOfMonth()->toDateString(),
             'room_ids' => [$room->id],

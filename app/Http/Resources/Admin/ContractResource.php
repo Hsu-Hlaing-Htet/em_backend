@@ -18,15 +18,18 @@ class ContractResource extends JsonResource
         $roomPrice = $this->resolveRoomPrice();
         $depositAmount = (float) $this->deposit_amount;
         $contractTotal = (float) $this->contract_total;
-        $remainingBalance = max($contractTotal - $depositAmount, 0);
+        $isRent = $this->type === 'rent';
+        $remainingBalance = $isRent ? $contractTotal : max($contractTotal - $depositAmount, 0);
         $interestPercentage = (float) ($this->paymentPlan?->interest_percentage ?? 0);
         $interestAmount = $remainingBalance * ($interestPercentage / 100);
         $totalInstallmentAmount = $this->payment_type === 'installment'
             ? $remainingBalance + $interestAmount
             : 0;
-        $estimatedMonthlyPayment = $this->payment_type === 'installment' && $this->duration_months
-            ? (int) ceil($totalInstallmentAmount / $this->duration_months)
-            : 0;
+        $estimatedMonthlyPayment = $isRent
+            ? (float) $roomPrice
+            : ($this->payment_type === 'installment' && $this->duration_months
+                ? (int) ceil($totalInstallmentAmount / $this->duration_months)
+                : 0);
 
         return [
             'id' => $this->id,
@@ -83,6 +86,8 @@ class ContractResource extends JsonResource
             'end_date' => $this->end_date?->toDateString(),
             'billing_day' => $this->billing_day,
             'status' => $this->status,
+            'termination_date' => $this->termination_date?->toDateString(),
+            'termination_reason' => $this->termination_reason,
             'remark' => $this->remark,
             'created_by' => $this->created_by,
             'created_by_name' => $this->creator?->name,

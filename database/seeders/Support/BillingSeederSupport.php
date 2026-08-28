@@ -15,40 +15,29 @@ use Illuminate\Support\Collection;
 
 final class BillingSeederSupport
 {
-    private static int $invoiceSequence = 0;
-
-    private static int $receiptSequence = 0;
-
     public static function resetSequences(): void
     {
-        $lastInvoice = Invoice::query()
-            ->where('invoice_number', 'like', 'INV-%')
-            ->pluck('invoice_number')
-            ->map(fn (string $number): int => (int) substr($number, 4))
-            ->max() ?? 0;
-
-        $lastReceipt = Receipt::query()
-            ->where('receipt_number', 'like', 'RCP-%')
-            ->pluck('receipt_number')
-            ->map(fn (string $number): int => (int) substr($number, 4))
-            ->max() ?? 0;
-
-        self::$invoiceSequence = $lastInvoice;
-        self::$receiptSequence = $lastReceipt;
+        SeedNumberGenerator::reset();
     }
 
     public static function nextInvoiceNumber(): string
     {
-        self::$invoiceSequence++;
-
-        return 'INV-'.str_pad((string) self::$invoiceSequence, 6, '0', STR_PAD_LEFT);
+        return SeedNumberGenerator::nextInvoiceNumber();
     }
 
     public static function nextReceiptNumber(): string
     {
-        self::$receiptSequence++;
+        return SeedNumberGenerator::nextReceiptNumber();
+    }
 
-        return 'RCP-'.str_pad((string) self::$receiptSequence, 6, '0', STR_PAD_LEFT);
+    public static function nextSaleContractNumber(): string
+    {
+        return SeedNumberGenerator::nextSaleContractNumber();
+    }
+
+    public static function nextRentContractNumber(): string
+    {
+        return SeedNumberGenerator::nextRentContractNumber();
     }
 
     public static function storePaymentProof(string $relativePath): string

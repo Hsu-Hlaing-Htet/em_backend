@@ -11,36 +11,36 @@ final class CustomerHistoryProfiles
     {
         return [
             'active_rent' => [
-                'mgmg@rosewoodroyale.com',
-                'hlahla@rosewoodroyale.com',
-                'koko@rosewoodroyale.com',
+                'mgmg@gmail.com',
+                'hlahla@gmail.com',
+                'koko@gmail.com',
             ],
             'active_sale' => [
-                'susu@rosewoodroyale.com',
-                'myintmyint@rosewoodroyale.com',
-                'khinkhin@rosewoodroyale.com',
+                'susu@gmail.com',
+                'myintmyint@gmail.com',
+                'khinkhin@gmail.com',
             ],
             'former_rent' => [
-                'zawzaw@rosewoodroyale.com',
-                'phyuphyu@rosewoodroyale.com',
-                'htunhtun@rosewoodroyale.com',
+                'zawzaw@gmail.com',
+                'phyuphyu@gmail.com',
+                'htunhtun@gmail.com',
             ],
             'former_sale' => [
-                'nwenwe@rosewoodroyale.com',
-                'aungkyaw@rosewoodroyale.com',
-                'thinthin@rosewoodroyale.com',
+                'nwenwe@gmail.com',
+                'aungkyaw@gmail.com',
+                'thinthin@gmail.com',
             ],
             'registered_only' => [
-                'tuntun@rosewoodroyale.com',
-                'eiei@rosewoodroyale.com',
-                'minmin@rosewoodroyale.com',
+                'tuntun@gmail.com',
+                'eiei@gmail.com',
+                'minmin@gmail.com',
             ],
             'pipeline' => [
-                'yeyee@rosewoodroyale.com',
-                'seinsein@rosewoodroyale.com',
-                'hninhnin@rosewoodroyale.com',
-                'waiwai@rosewoodroyale.com',
-                'thandar@rosewoodroyale.com',
+                'yeyee@gmail.com',
+                'seinsein@gmail.com',
+                'hninhnin@gmail.com',
+                'waiwai@gmail.com',
+                'thandar@gmail.com',
             ],
         ];
     }

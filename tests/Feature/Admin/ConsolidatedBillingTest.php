@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Building;
-use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -12,7 +11,6 @@ use App\Models\Room;
 use App\Models\User;
 use App\Models\Utility;
 use App\Models\UtilityItem;
-use App\Models\UtilityRate;
 use App\Models\UtilityType;
 use App\Services\InvoiceService;
 use Database\Seeders\ChargeTypeSeeder;
@@ -36,7 +34,7 @@ function consolidatedAdmin(): User
 
 function consolidatedCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
 function consolidatedRoom(string $type = 'rent'): Room

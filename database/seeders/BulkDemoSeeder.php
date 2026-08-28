@@ -24,6 +24,7 @@ use Carbon\Carbon;
 use Database\Seeders\Support\BillingSeederSupport;
 use Database\Seeders\Support\ConsolidatedBillingSeederSupport;
 use Database\Seeders\Support\MyanmarSampleData;
+use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 
@@ -36,6 +37,8 @@ use Illuminate\Support\Collection;
  */
 class BulkDemoSeeder extends Seeder
 {
+    private const BULK_IMPORT_READY_THROUGH = '2026-07-01';
+
     private const CUSTOMER_TARGET = 100;
 
     private const ROOM_TARGET = 160;
@@ -80,6 +83,7 @@ class BulkDemoSeeder extends Seeder
         }
 
         $this->admin = $admin;
+        BillingSeederSupport::resetSequences();
         $this->fullPlan = PaymentPlan::query()->where('payment_type', 'full')->first();
         $this->installmentPlan = PaymentPlan::query()
             ->where('payment_type', 'installment')
@@ -102,7 +106,9 @@ class BulkDemoSeeder extends Seeder
         $rooms = $this->seedRooms($buildings);
         $contracts = $this->seedContracts($customers, $rooms);
         $this->seedUtilities($contracts, $rooms);
+        $this->normalizeUtilityHistories();
         $this->seedInvoicesPaymentsReceipts($contracts);
+        $this->normalizeUtilityHistories();
         $this->seedMaintenance($contracts);
         $this->syncBulkRoomStatuses();
 
@@ -213,14 +219,14 @@ class BulkDemoSeeder extends Seeder
             $building = $targetBuildings[$i % $buildingCount];
             $buildingIndex = $i % $buildingCount;
             $code = chr(65 + ($buildingIndex % 26));
-            $floor = 1 + intdiv($i, $buildingCount) % 12;
-            $unit = 1 + ($i % 8);
-            $roomNumber = sprintf('%s-%d%02d', $code, $floor, $unit);
+            $roomNumber = SeedNumberGenerator::roomNumberForIndex($i, $buildingIndex, $buildingCount);
 
             // Skip if room number already exists in this building (collision).
             if (Room::query()->where('building_id', $building->id)->where('room_number', $roomNumber)->exists()) {
-                $roomNumber = sprintf('%s-%d%02dB', $code, $floor, $unit);
+                $roomNumber = sprintf('%s-%d', $code, 101 + intdiv($i, $buildingCount) + 500);
             }
+
+            $floor = max(1, intdiv((int) substr($roomNumber, strpos($roomNumber, '-') + 1), 100));
 
             $typeRoll = $i % 10;
             $type = match (true) {
@@ -288,8 +294,7 @@ class BulkDemoSeeder extends Seeder
 
         $workflowRoomIds = Contract::query()
             ->where(function ($query) {
-                $query->where('contract_number', 'like', 'S-WF-%')
-                    ->orWhere('contract_number', 'like', 'R-WF-%');
+                $query->where('remark', 'not like', 'Bulk demo%');
             })
             ->pluck('room_id')
             ->unique()
@@ -312,12 +317,11 @@ class BulkDemoSeeder extends Seeder
             ['type' => 'rent', 'status' => 'active'],
             ['type' => 'rent', 'status' => 'active'],
             ['type' => 'rent', 'status' => 'pending'],
-            ['type' => 'rent', 'status' => 'draft'],
+            ['type' => 'rent', 'status' => 'pending'],
             ['type' => 'rent', 'status' => 'completed'],
             ['type' => 'rent', 'status' => 'rejected'],
-            ['type' => 'sale', 'status' => 'approved'],
+            ['type' => 'sale', 'status' => 'active'],
             ['type' => 'sale', 'status' => 'pending'],
-            ['type' => 'sale', 'status' => 'draft'],
             ['type' => 'sale', 'status' => 'completed'],
             ['type' => 'sale', 'status' => 'rejected'],
         ];
@@ -350,8 +354,9 @@ class BulkDemoSeeder extends Seeder
                 }
             }
 
-            $prefix = $spec['type'] === 'sale' ? 'S-BL-' : 'R-BL-';
-            $number = $prefix.str_pad((string) ($i + 1), 6, '0', STR_PAD_LEFT);
+            $number = $spec['type'] === 'sale'
+                ? BillingSeederSupport::nextSaleContractNumber()
+                : BillingSeederSupport::nextRentContractNumber();
 
             if (Contract::query()->where('contract_number', $number)->exists()) {
                 continue;
@@ -435,49 +440,79 @@ class BulkDemoSeeder extends Seeder
             return;
         }
 
-        $activeRooms = $contracts
-            ->whereIn('status', ['active', 'approved'])
-            ->pluck('room')
-            ->filter()
-            ->unique('id')
-            ->values();
-
-        if ($activeRooms->isEmpty()) {
-            $activeRooms = $rooms->whereIn('status', ['occupied', 'reserved'])->values();
-        }
-
         $statuses = ['pending', 'approved', 'approved', 'draft', 'rejected'];
         $created = 0;
+        $activeContracts = $contracts->where('status', Contract::STATUS_ACTIVE)->values();
+        $candidates = collect();
 
-        for ($i = 0; $i < $needed; $i++) {
-            $room = $activeRooms[$i % max(1, $activeRooms->count())];
-            $month = now()->subMonths($i % 12)->startOfMonth();
-            $status = $statuses[$i % count($statuses)];
+        foreach ($activeContracts as $contractIndex => $contract) {
+            $room = $contract->room;
+            if (! $room) {
+                continue;
+            }
 
-            $utility = Utility::query()->firstOrCreate(
-                [
+            foreach ($this->bulkUtilityMonthsForContract($contract) as $monthIndex => $month) {
+                $candidates->push([
+                    'contract' => $contract,
+                    'room' => $room,
+                    'month' => $month,
+                    'month_index' => $monthIndex,
+                    'status' => $statuses[($contractIndex + $monthIndex) % count($statuses)],
+                ]);
+            }
+        }
+
+        $candidates = $candidates->sortBy([
+            fn (array $candidate) => $candidate['room']->id,
+            fn (array $candidate) => $candidate['month']->toDateString(),
+            fn (array $candidate) => $candidate['contract']->id,
+        ])->values();
+
+        foreach ($candidates as $candidate) {
+            $contract = $candidate['contract'];
+            $room = $candidate['room'];
+            $month = $candidate['month'];
+            $monthIndex = $candidate['month_index'];
+            $status = $candidate['status'];
+
+            $utility = Utility::query()
+                ->where('room_id', $room->id)
+                ->whereDate('billing_month', $month->toDateString())
+                ->first();
+
+            if ($utility) {
+                $utility->update([
+                    'room_id' => $room->id,
+                    'reading_date' => $month->copy()->addMonth()->startOfMonth()->toDateString(),
+                    'status' => $status,
+                    'approved_by' => in_array($status, ['approved', 'rejected'], true) ? $this->admin->id : null,
+                    'approved_at' => in_array($status, ['approved', 'rejected'], true) ? $month->copy()->endOfMonth() : null,
+                ]);
+            } else {
+                $utility = Utility::query()->create([
+                    'contract_id' => $contract->id,
                     'room_id' => $room->id,
                     'billing_month' => $month->toDateString(),
-                ],
-                [
+                    'reading_date' => $month->copy()->addMonth()->startOfMonth()->toDateString(),
                     'total_amount' => 0,
                     'status' => $status,
                     'created_by' => $this->admin->id,
                     'approved_by' => in_array($status, ['approved', 'rejected'], true) ? $this->admin->id : null,
                     'approved_at' => in_array($status, ['approved', 'rejected'], true) ? $month->copy()->endOfMonth() : null,
-                ],
-            );
+                ]);
+            }
 
             if ($utility->items()->exists()) {
                 continue;
             }
 
             $total = 0.0;
-            $base = 800 + ($room->id * 11) + ((int) $month->format('n') * 17);
+            $base = 800 + ($room->id * 11) + ($monthIndex * 45);
 
             foreach ($this->utilityTypes->take(2) as $index => $type) {
-                $previous = $base + ($index * 250);
-                $usage = 40 + (($i + $index * 13) % 160);
+                $previous = $this->latestUtilityReadingBefore($room->id, $type->id, $month)
+                    ?? $base + ($index * 250);
+                $usage = 40 + (($contractIndex + $monthIndex + $index * 13) % 160);
                 $unitPrice = $this->utilityRatesByType[$type->id] ?? [120.0, 85.0][$index] ?? 100.0;
                 $amount = round($usage * $unitPrice, 2);
                 $total += $amount;
@@ -501,11 +536,42 @@ class BulkDemoSeeder extends Seeder
     }
 
     /**
+     * @return Collection<int, Carbon>
+     */
+    private function bulkUtilityMonthsForContract(Contract $contract): Collection
+    {
+        $start = Carbon::parse($contract->start_date)->startOfMonth();
+        $end = $this->latestSeedableUtilityMonth();
+
+        if ($contract->type === 'rent' && $contract->end_date) {
+            $end = $end->min(Carbon::parse($contract->end_date)->startOfMonth());
+        }
+
+        $months = collect();
+        $cursor = $start->copy();
+
+        while ($cursor->lte($end)) {
+            $months->push($cursor->copy());
+            $cursor->addMonth();
+        }
+
+        return $months;
+    }
+
+    private function latestSeedableUtilityMonth(): Carbon
+    {
+        return now()
+            ->subMonth()
+            ->startOfMonth()
+            ->min(Carbon::parse(self::BULK_IMPORT_READY_THROUGH)->startOfMonth());
+    }
+
+    /**
      * @param  Collection<int, Contract>  $contracts
      */
     private function seedInvoicesPaymentsReceipts(Collection $contracts): void
     {
-        $billable = $contracts->whereIn('status', ['active', 'approved', 'completed'])->values();
+        $billable = $contracts->whereIn('status', [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED])->values();
         if ($billable->isEmpty()) {
             return;
         }
@@ -526,7 +592,7 @@ class BulkDemoSeeder extends Seeder
         for ($i = 0; $i < $neededInvoices; $i++) {
             $contract = $billable[$i % $billable->count()];
             $status = $invoiceStatuses[$i % count($invoiceStatuses)];
-            $number = 'INV-BL-'.str_pad((string) ($i + 1), 6, '0', STR_PAD_LEFT);
+            $number = BillingSeederSupport::nextInvoiceNumber();
 
             if (Invoice::query()->where('invoice_number', $number)->exists()) {
                 continue;
@@ -677,7 +743,7 @@ class BulkDemoSeeder extends Seeder
         if ($paymentsCreated < $neededPayments) {
             $openInvoices = Invoice::query()
                 ->where('status', 'issued')
-                ->where('invoice_number', 'like', 'INV-BL-%')
+                ->whereHas('contract', fn ($query) => $query->where('remark', 'like', 'Bulk demo%'))
                 ->whereDoesntHave('payments')
                 ->limit($neededPayments - $paymentsCreated)
                 ->get();
@@ -711,7 +777,7 @@ class BulkDemoSeeder extends Seeder
 
         for ($j = 0; $j < max(0, 5 - $approvedWithoutReceipt); $j++) {
             $contract = $billable[$j % $billable->count()];
-            $number = 'INV-BL-NR'.str_pad((string) ($j + 1), 4, '0', STR_PAD_LEFT);
+            $number = BillingSeederSupport::nextInvoiceNumber();
             if (Invoice::query()->where('invoice_number', $number)->exists()) {
                 continue;
             }
@@ -775,7 +841,7 @@ class BulkDemoSeeder extends Seeder
             return;
         }
 
-        $eligible = $contracts->whereIn('status', ['active', 'approved'])->values();
+        $eligible = $contracts->where('status', Contract::STATUS_ACTIVE)->values();
         if ($eligible->isEmpty()) {
             return;
         }
@@ -830,10 +896,7 @@ class BulkDemoSeeder extends Seeder
     private function syncBulkRoomStatuses(): void
     {
         $bulkContracts = Contract::query()
-            ->where(function ($query) {
-                $query->where('contract_number', 'like', 'S-BL-%')
-                    ->orWhere('contract_number', 'like', 'R-BL-%');
-            })
+            ->where('remark', 'like', 'Bulk demo%')
             ->orderByDesc('id')
             ->get()
             ->groupBy('room_id');
@@ -856,17 +919,14 @@ class BulkDemoSeeder extends Seeder
             };
 
             Room::query()->whereKey($roomId)->whereDoesntHave('contracts', function ($query) {
-                $query->where(function ($inner) {
-                    $inner->where('contract_number', 'like', 'S-WF-%')
-                        ->orWhere('contract_number', 'like', 'R-WF-%');
-                });
+                $query->where('remark', 'not like', 'Bulk demo%');
             })->update(['status' => $status]);
         }
 
         // Dedicated maintenance showcase room (no contracts).
         Room::query()
-            ->where('room_number', 'M-001')
-            ->whereHas('building', fn ($query) => $query->where('building_name', 'Rosewood Royal Tower'))
+            ->where('room_number', 'A-104')
+            ->whereHas('building', fn ($query) => $query->where('building_name', MyanmarSampleData::buildingNameForIndex(0)))
             ->whereDoesntHave('contracts')
             ->update(['status' => 'maintenance']);
     }
@@ -877,29 +937,58 @@ class BulkDemoSeeder extends Seeder
             return null;
         }
 
-        $utility = Utility::query()->firstOrCreate(
-            [
-                'room_id' => $contract->room_id,
+        $month = $billingMonth->copy()->startOfMonth();
+        $contractStart = Carbon::parse($contract->start_date)->startOfMonth();
+
+        if ($month->lt($contractStart) || $month->gt($this->latestSeedableUtilityMonth())) {
+            return null;
+        }
+
+        if ($contract->type === 'rent' && $contract->end_date && $month->gt(Carbon::parse($contract->end_date)->startOfMonth())) {
+            return null;
+        }
+
+        $this->backfillBulkUtilityHistory($contract, $month);
+
+        $attributes = [
+            'room_id' => $contract->room_id,
+            'reading_date' => $billingMonth->copy()->addMonth()->startOfMonth()->toDateString(),
+            'total_amount' => 0,
+            'status' => 'approved',
+            'created_by' => $this->admin->id,
+            'approved_by' => $this->admin->id,
+            'approved_at' => $billingMonth->copy()->endOfMonth(),
+        ];
+
+        $utility = Utility::query()
+            ->where('room_id', $contract->room_id)
+            ->whereDate('billing_month', $billingMonth->toDateString())
+            ->first();
+
+        if ($utility) {
+            if ((int) $utility->contract_id !== (int) $contract->id) {
+                return null;
+            }
+
+            $utility->update($attributes);
+        } else {
+            $utility = Utility::query()->create([
+                'contract_id' => $contract->id,
                 'billing_month' => $billingMonth->toDateString(),
-            ],
-            [
-                'total_amount' => 0,
-                'status' => 'approved',
-                'created_by' => $this->admin->id,
-                'approved_by' => $this->admin->id,
-                'approved_at' => $billingMonth->copy()->endOfMonth(),
-            ],
-        );
+                ...$attributes,
+            ]);
+        }
 
         if ($utility->items()->exists()) {
             return $utility->fresh('items.utilityType');
         }
 
         $total = 0.0;
-        $base = 900 + ($contract->room_id * 11) + ((int) $billingMonth->format('n') * 19) + ($seed % 50);
+        $base = 900 + ($contract->room_id * 11) + ($month->diffInMonths($contractStart) * 45) + ($seed % 50);
 
         foreach ($this->utilityTypes->take(2) as $index => $type) {
-            $previous = $base + ($index * 220);
+            $previous = $this->latestUtilityReadingBefore($contract->room_id, $type->id, $month)
+                ?? $base + ($index * 220);
             $usage = 35 + (($seed + $index * 11) % 120);
             $unitPrice = $this->utilityRatesByType[$type->id] ?? [120.0, 85.0][$index] ?? 100.0;
             $amount = round($usage * $unitPrice, 2);
@@ -919,6 +1008,157 @@ class BulkDemoSeeder extends Seeder
         $utility->update(['total_amount' => round($total, 2)]);
 
         return $utility->fresh('items.utilityType');
+    }
+
+    private function backfillBulkUtilityHistory(Contract $contract, Carbon $targetMonth): void
+    {
+        $cursor = Carbon::parse($contract->start_date)->startOfMonth();
+
+        while ($cursor->lt($targetMonth)) {
+            if (! Utility::query()
+                ->where('contract_id', $contract->id)
+                ->whereDate('billing_month', $cursor->toDateString())
+                ->exists()) {
+                $this->createBulkUtilityRecord($contract, $cursor, 'approved', $this->admin, $cursor->month);
+            }
+
+            $cursor->addMonth();
+        }
+    }
+
+    private function createBulkUtilityRecord(
+        Contract $contract,
+        Carbon $billingMonth,
+        string $status,
+        ?User $approver,
+        int $seed,
+    ): Utility {
+        $utility = Utility::query()->create([
+            'contract_id' => $contract->id,
+            'room_id' => $contract->room_id,
+            'billing_month' => $billingMonth->toDateString(),
+            'reading_date' => $billingMonth->copy()->addMonth()->startOfMonth()->toDateString(),
+            'total_amount' => 0,
+            'status' => $status,
+            'created_by' => $this->admin->id,
+            'approved_by' => $approver?->id,
+            'approved_at' => $approver ? $billingMonth->copy()->endOfMonth() : null,
+        ]);
+
+        $total = 0.0;
+        $contractStart = Carbon::parse($contract->start_date)->startOfMonth();
+        $base = 900 + ($contract->room_id * 11) + ($billingMonth->diffInMonths($contractStart) * 45) + ($seed % 50);
+
+        foreach ($this->utilityTypes->take(2) as $index => $type) {
+            $previous = $this->latestUtilityReadingBefore($contract->room_id, $type->id, $billingMonth)
+                ?? $base + ($index * 220);
+            $usage = 35 + (($seed + $index * 11) % 120);
+            $unitPrice = $this->utilityRatesByType[$type->id] ?? [120.0, 85.0][$index] ?? 100.0;
+            $amount = round($usage * $unitPrice, 2);
+            $total += $amount;
+
+            UtilityItem::query()->create([
+                'utility_id' => $utility->id,
+                'utility_type_id' => $type->id,
+                'previous_reading' => $previous,
+                'current_reading' => $previous + $usage,
+                'usage' => $usage,
+                'unit_price' => $unitPrice,
+                'amount' => $amount,
+            ]);
+        }
+
+        $utility->update(['total_amount' => round($total, 2)]);
+
+        return $utility->fresh('items.utilityType');
+    }
+
+    private function latestUtilityReadingBefore(int $roomId, int $utilityTypeId, Carbon $month): ?float
+    {
+        $utility = Utility::query()
+            ->where('room_id', $roomId)
+            ->whereDate('billing_month', '<', $month->copy()->startOfMonth()->toDateString())
+            ->whereHas('items', fn ($query) => $query->where('utility_type_id', $utilityTypeId))
+            ->with(['items' => fn ($query) => $query->where('utility_type_id', $utilityTypeId)])
+            ->orderByDesc('billing_month')
+            ->orderByDesc('id')
+            ->first();
+
+        return $utility?->items->first()
+            ? (float) $utility->items->first()->current_reading
+            : null;
+    }
+
+    private function normalizeUtilityHistories(): void
+    {
+        $this->deduplicateUtilityItems();
+
+        UtilityItem::query()
+            ->with('utility')
+            ->whereHas('utility')
+            ->get()
+            ->groupBy(fn (UtilityItem $item) => $item->utility->room_id.'|'.$item->utility_type_id)
+            ->each(function (Collection $history) {
+                $lastReading = null;
+
+                $history
+                    ->sortBy(fn (UtilityItem $item) => sprintf(
+                        '%s-%010d',
+                        $item->utility->billing_month->toDateString(),
+                        $item->utility->id,
+                    ))
+                    ->values()
+                    ->each(function (UtilityItem $item) use (&$lastReading) {
+                        $previous = $lastReading ?? (float) $item->previous_reading;
+                        $usage = max((float) $item->usage, 1.0);
+                        $current = $previous + $usage;
+                        $amount = round($usage * (float) $item->unit_price, 2);
+
+                        $item->update([
+                            'previous_reading' => $previous,
+                            'current_reading' => $current,
+                            'usage' => $usage,
+                            'amount' => $amount,
+                        ]);
+
+                        $item->utility->update([
+                            'total_amount' => round((float) $item->utility->items()->sum('amount'), 2),
+                        ]);
+
+                        $lastReading = $current;
+                    });
+            });
+    }
+
+    private function deduplicateUtilityItems(): void
+    {
+        UtilityItem::query()
+            ->with('utility')
+            ->whereHas('utility')
+            ->get()
+            ->groupBy(fn (UtilityItem $item) => implode('|', [
+                $item->utility->room_id,
+                $item->utility_type_id,
+                $item->utility->billing_month->toDateString(),
+            ]))
+            ->each(function (Collection $duplicates) {
+                $duplicates = $duplicates
+                    ->sortBy(fn (UtilityItem $item) => sprintf('%010d-%010d', $item->utility->id, $item->id))
+                    ->values();
+
+                if ($duplicates->count() < 2) {
+                    return;
+                }
+
+                $duplicates->slice(1)->each(function (UtilityItem $item) {
+                    $utility = $item->utility;
+                    $item->delete();
+
+                    if (! $utility->items()->exists()) {
+                        $utility->delete();
+                    }
+                });
+            });
     }
 
     /**
@@ -985,11 +1225,9 @@ class BulkDemoSeeder extends Seeder
             return null;
         }
 
-        $seq = Receipt::query()->where('receipt_number', 'like', 'RCP-BL-%')->count() + 1;
-        $number = 'RCP-BL-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
+        $number = BillingSeederSupport::nextReceiptNumber();
         while (Receipt::query()->where('receipt_number', $number)->exists()) {
-            $seq++;
-            $number = 'RCP-BL-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
+            $number = BillingSeederSupport::nextReceiptNumber();
         }
 
         return Receipt::query()->create([

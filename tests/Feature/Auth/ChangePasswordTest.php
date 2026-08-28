@@ -50,7 +50,7 @@ test('change password rejects an incorrect current password', function () {
 
 test('change password updates only that user and revokes all of their tokens', function () {
     $admin = changePasswordAdmin();
-    $other = User::query()->where('email', 'aungaung@rosewoodroyale.com')->firstOrFail();
+    $other = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
     $otherPassword = $other->password;
 
     $login = $this->postJson('/api/auth/login', [
@@ -79,6 +79,8 @@ test('change password updates only that user and revokes all of their tokens', f
         ->and(Hash::check('p@ssword', $admin->password))->toBeFalse()
         ->and($admin->tokens()->count())->toBe(0)
         ->and($other->password)->toBe($otherPassword);
+
+    $this->app['auth']->forgetGuards();
 
     $this->withToken($token)
         ->getJson('/api/auth/me')

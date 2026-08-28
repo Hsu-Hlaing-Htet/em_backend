@@ -21,14 +21,19 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        static $usedEmails = [];
+
+        foreach (User::query()->pluck('email') as $email) {
+            $usedEmails[(string) $email] = true;
+        }
+
         $customers = MyanmarSampleData::customers();
         $customer = fake()->randomElement($customers);
-        $localPart = strtolower(str_replace([' ', '.'], '', explode('@', $customer['email'])[0]));
 
         return [
             'role_id' => $this->roleId(Role::CUSTOMER),
             'name' => $customer['name'],
-            'email' => $localPart.'.'.fake()->unique()->numerify('##').'@rosewoodroyale.com',
+            'email' => MyanmarSampleData::uniqueEmailForName($customer['name'], $usedEmails),
             'password' => static::$password ??= Hash::make('password'),
         ];
     }
@@ -38,7 +43,7 @@ class UserFactory extends Factory
         return $this->state(fn () => [
             'role_id' => $this->roleId(Role::SUPER_ADMIN),
             'name' => 'U Kyaw Swar',
-            'email' => 'kyawswar@rosewoodroyale.com',
+            'email' => 'admin@rosewoodroyale.com',
         ]);
     }
 
@@ -47,7 +52,7 @@ class UserFactory extends Factory
         return $this->state(fn () => [
             'role_id' => $this->roleId(Role::ADMIN),
             'name' => 'Daw Theingi',
-            'email' => 'theingi@rosewoodroyale.com',
+            'email' => 'theingi@gmail.com',
         ]);
     }
 

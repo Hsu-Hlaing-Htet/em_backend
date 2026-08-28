@@ -15,14 +15,17 @@ class UtilityResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $occupant = $this->relationLoaded('room') ? $this->resolveOccupant() : null;
+        $occupant = $this->resolveOccupant();
 
         return [
             'id' => $this->id,
             'room_id' => $this->room_id,
+            'contract_id' => $this->contract_id,
+            'contract_number' => $this->whenLoaded('contract', fn () => $this->contract?->contract_number),
             'room_number' => $this->relationLoaded('room') ? $this->room?->room_number : null,
             'building_name' => $this->relationLoaded('room') ? $this->room?->building?->building_name : null,
             'billing_month' => $this->billing_month?->toDateString(),
+            'reading_date' => $this->reading_date?->toDateString(),
             'total_amount' => $this->total_amount,
             'status' => $this->status,
             'items' => UtilityItemResource::collection($this->whenLoaded('items')),
@@ -43,13 +46,21 @@ class UtilityResource extends JsonResource
 
     private function resolveOccupant(): ?\App\Models\User
     {
+        if ($this->relationLoaded('contract') && $this->contract) {
+            if ($this->contract->relationLoaded('user')) {
+                return $this->contract->user;
+            }
+
+            return $this->contract->user()->with('profile')->first();
+        }
+
         if (! $this->room_id) {
             return null;
         }
 
         $contract = \App\Models\Contract::query()
             ->where('room_id', $this->room_id)
-            ->whereIn('status', ['active', 'approved'])
+            ->where('status', \App\Models\Contract::STATUS_ACTIVE)
             ->with('user.profile')
             ->latest()
             ->first();

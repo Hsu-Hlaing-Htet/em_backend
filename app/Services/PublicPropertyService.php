@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Contract;
 use App\Models\Room;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -61,7 +62,7 @@ class PublicPropertyService
         $query = Room::query()
             ->with(['building', 'roomImages', 'contracts'])
             ->whereHas('contracts', function (Builder $builder): void {
-                $builder->where('type', 'sale')->where('status', 'approved');
+                $builder->where('type', 'sale')->where('status', Contract::STATUS_ACTIVE);
             });
 
         if ($purpose === 'sale') {

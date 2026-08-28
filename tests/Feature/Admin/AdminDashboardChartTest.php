@@ -5,7 +5,6 @@ use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
-use App\Models\Role;
 use App\Models\Room;
 use App\Models\User;
 use Database\Seeders\PaymentMethodSeeder;
@@ -26,7 +25,7 @@ function dashboardAdmin(): User
 
 test('admin dashboard charts endpoint returns live chart metrics', function () {
     $admin = dashboardAdmin();
-    $customer = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Rosewood Tower',
@@ -136,7 +135,7 @@ test('customer cannot access admin dashboard charts endpoint', function () {
     (new RoleSeeder)->run();
     (new UserSeeder)->run();
 
-    $customer = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/admin/dashboard/charts')

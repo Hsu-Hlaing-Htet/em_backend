@@ -13,6 +13,7 @@ use App\Models\Utility;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\BillingEagerLoads;
+use App\Support\ContractInvoiceSchedule;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -25,7 +26,10 @@ class InvoiceService
     use AppliesBillingPropertyFilters;
     use AppliesListQuery;
 
-    public function __construct(private readonly InvoiceDocumentService $invoiceDocumentService) {}
+    public function __construct(
+        private readonly InvoiceDocumentService $invoiceDocumentService,
+        private readonly ContractLifecycleService $contractLifecycleService,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $params
@@ -135,7 +139,7 @@ class InvoiceService
 
     public function generateFromContract(Contract $contract, ?Carbon $billingMonth = null): Invoice
     {
-        if (! in_array($contract->status, ['active', 'approved'], true)) {
+        if ($contract->status !== Contract::STATUS_ACTIVE) {
             throw new InvalidArgumentException('Invoices can only be generated for active contracts.');
         }
 
@@ -156,6 +160,80 @@ class InvoiceService
 
             return $invoice->fresh(BillingEagerLoads::invoice());
         });
+    }
+
+    /**
+     * Auto-create draft invoices whose generate date (due_date - 7 days) is on or before $asOf.
+     * Skips Sale Full Payment and periods that already have an invoice.
+     *
+     * @return array{created: int, skipped: int, errors: int}
+     */
+    public function generateScheduledInvoices(?Carbon $asOf = null): array
+    {
+        $asOf = ($asOf ?? now())->copy()->startOfDay();
+        $created = 0;
+        $skipped = 0;
+        $errors = 0;
+
+        $contracts = Contract::query()
+            ->with(['room', 'paymentPlan'])
+            ->where('status', Contract::STATUS_ACTIVE)
+            ->where(function ($query): void {
+                $query->where('type', 'rent')
+                    ->orWhere(function ($saleQuery): void {
+                        $saleQuery->where('type', 'sale')
+                            ->where('payment_type', 'installment');
+                    });
+            })
+            ->orderBy('id')
+            ->get();
+
+        foreach ($contracts as $contract) {
+            if (! ContractInvoiceSchedule::supportsRecurringGeneration($contract)) {
+                $skipped++;
+
+                continue;
+            }
+
+            if ($asOf->lt(Carbon::parse($contract->start_date)->startOfDay())) {
+                $skipped++;
+
+                continue;
+            }
+
+            foreach (ContractInvoiceSchedule::periodsDueForGeneration($contract, $asOf) as $period) {
+                $billingMonth = $period['billing_month'];
+
+                $exists = Invoice::query()
+                    ->where('contract_id', $contract->id)
+                    ->whereDate('billing_month', $billingMonth->toDateString())
+                    ->exists();
+
+                if ($exists) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                try {
+                    $this->generateFromContract($contract, $billingMonth);
+                    $created++;
+                } catch (ConcurrentConflictException) {
+                    $skipped++;
+                } catch (\Throwable $exception) {
+                    report($exception);
+                    $errors++;
+                }
+            }
+        }
+
+        $this->contractLifecycleService->syncEndedRentContracts($asOf);
+
+        return [
+            'created' => $created,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ];
     }
 
     public function generateInvoiceNumber(): string
@@ -274,6 +352,14 @@ class InvoiceService
 
     private function resolveContractForUtility(Utility $utility): Contract
     {
+        if ($utility->contract_id) {
+            $linked = Contract::query()->find($utility->contract_id);
+
+            if ($linked) {
+                return $linked;
+            }
+        }
+
         $contract = Contract::query()
             ->where('room_id', $utility->room_id)
             ->where('type', 'rent')
@@ -349,10 +435,9 @@ class InvoiceService
 
     private function resolveDueDate(Contract $contract, Carbon $billingMonth): Carbon
     {
-        $billingDay = (int) ($contract->billing_day ?: 7);
-        $dueDay = min(max($billingDay, 1), 28);
+        $dueDay = ContractInvoiceSchedule::recurringDueDay($contract);
 
-        return $billingMonth->copy()->day($dueDay)->addDays(7);
+        return ContractInvoiceSchedule::dueDateInMonth($billingMonth, $dueDay);
     }
 
     private function ensureContractChargeItem(Invoice $invoice, Contract $contract, Carbon $billingMonth): void

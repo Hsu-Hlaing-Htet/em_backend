@@ -35,7 +35,7 @@ class CustomerPortalService
     {
         $activeContracts = Contract::query()
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active'])
+            ->where('status', Contract::STATUS_ACTIVE)
             ->count();
 
         $completedContracts = Contract::query()
@@ -119,7 +119,11 @@ class CustomerPortalService
         $query = Contract::query()
             ->with(['user.profile', 'room.building', 'paymentPlan'])
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active', 'completed']);
+            ->whereIn('status', [
+                Contract::STATUS_ACTIVE,
+                Contract::STATUS_COMPLETED,
+                Contract::STATUS_TERMINATED,
+            ]);
 
         if (! empty($params['type'])) {
             $query->where('type', $params['type']);
@@ -135,9 +139,13 @@ class CustomerPortalService
     public function findContract(User $user, int $contractId): Contract
     {
         return Contract::query()
-            ->with(['user.profile', 'room.building', 'paymentPlan'])
+            ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active', 'completed'])
+            ->whereIn('status', [
+                Contract::STATUS_ACTIVE,
+                Contract::STATUS_COMPLETED,
+                Contract::STATUS_TERMINATED,
+            ])
             ->findOrFail($contractId);
     }
 
@@ -543,7 +551,7 @@ class CustomerPortalService
     {
         return Contract::query()
             ->where('user_id', $user->id)
-            ->whereIn('status', ['approved', 'active'])
+            ->where('status', Contract::STATUS_ACTIVE)
             ->pluck('room_id')
             ->unique()
             ->map(fn ($id) => (int) $id)

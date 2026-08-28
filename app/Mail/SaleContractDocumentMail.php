@@ -4,8 +4,8 @@ namespace App\Mail;
 
 class SaleContractDocumentMail extends ContractDocumentMail
 {
-    public function __construct(\App\Models\Contract $contract, string $documentPdf, string $filename)
+    public function __construct(\App\Models\Contract $contract, string $documentPdf, string $filename, ?string $customerContractUrl = null)
     {
-        parent::__construct($contract, $documentPdf, 'Property Sale Agreement', $filename);
+        parent::__construct($contract, $documentPdf, 'Property Sale Agreement', $filename, $customerContractUrl);
     }
 }

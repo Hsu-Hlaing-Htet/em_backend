@@ -18,14 +18,14 @@ class MaintenanceRequestSeeder extends Seeder
 
         $eligibleContracts = Contract::query()
             ->with(['room', 'user'])
-            ->whereIn('status', ['active', 'approved'])
+            ->where('status', Contract::STATUS_ACTIVE)
             ->whereHas('room')
             ->whereHas('user')
             ->orderBy('id')
             ->get();
 
         if (! $admin || $eligibleContracts->isEmpty()) {
-            $this->command?->warn('Active/approved contracts are required for maintenance seeding.');
+            $this->command?->warn('Active contracts are required for maintenance seeding.');
 
             return;
         }

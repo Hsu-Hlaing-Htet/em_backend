@@ -19,6 +19,7 @@ class AuthResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
+            'must_change_password' => (bool) $this->must_change_password,
             'role' => $this->when(
                 $this->relationLoaded('role'),
                 fn () => $this->getRelation('role')->name

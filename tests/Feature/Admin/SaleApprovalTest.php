@@ -38,7 +38,7 @@ function seedSaleProperty(): array
         'booking_deposit_price' => 85000000,
     ]);
 
-    $customer = User::query()->where('email', 'mgmg@rosewoodroyale.com')->firstOrFail();
+    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 
     return compact('building', 'room', 'customer');
 }
@@ -61,7 +61,7 @@ test('admin can approve and reject sale contract drafts', function () {
     $createResponse = $this->actingAs($admin, 'sanctum')
         ->postJson('/api/sale-contract-drafts', createSaleDraftPayload($room->id, $customer->id))
         ->assertCreated()
-        ->assertJsonPath('data.status', 'draft');
+        ->assertJsonPath('data.status', 'pending');
 
     $contractId = $createResponse->json('data.id');
 
@@ -73,7 +73,7 @@ test('admin can approve and reject sale contract drafts', function () {
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/sale-contract-drafts/{$contractId}/approve")
         ->assertOk()
-        ->assertJsonPath('data.status', 'approved');
+        ->assertJsonPath('data.status', 'active');
 
     expect(Room::query()->find($room->id)?->status)->toBe('reserved');
 
@@ -137,5 +137,5 @@ test('public sale listing returns only approved sale contracts', function () {
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('data.0.id', $room->id);
 
-    expect(Contract::query()->find($contractId)?->status)->toBe('approved');
+    expect(Contract::query()->find($contractId)?->status)->toBe('active');
 });

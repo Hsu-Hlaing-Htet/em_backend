@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\PreviewUtilityBulkImportRequest;
 use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StoreUtilityBatchRequest;
 use App\Http\Requests\Admin\StoreUtilityRequest;
@@ -14,6 +15,7 @@ use App\Services\UtilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 class UtilityController extends Controller
@@ -45,6 +47,8 @@ class UtilityController extends Controller
                 $validated['billing_month'],
                 array_map('intval', $validated['room_ids']),
             );
+        } catch (ValidationException $exception) {
+            return response()->json(['data' => $exception->errors()], 422);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -71,10 +75,51 @@ class UtilityController extends Controller
         ]);
     }
 
+    public function previewBulkImport(
+        PreviewUtilityBulkImportRequest $request,
+        UtilityService $utilityService,
+    ): JsonResponse {
+        $validated = $request->validated();
+
+        return response()->json([
+            'data' => $utilityService->previewBulkImport(
+                (int) $validated['utility_type_id'],
+                $validated['rows'],
+            ),
+        ]);
+    }
+
+    public function confirmBulkImport(
+        PreviewUtilityBulkImportRequest $request,
+        UtilityService $utilityService,
+    ): JsonResponse {
+        $validated = $request->validated();
+
+        try {
+            $utilities = $utilityService->confirmBulkImport(
+                (int) $validated['utility_type_id'],
+                $validated['rows'],
+            );
+        } catch (ValidationException $exception) {
+            return response()->json(['data' => $exception->errors()], 422);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => count($utilities) === 1
+                ? 'Utility imported successfully.'
+                : sprintf('%d utilities imported successfully.', count($utilities)),
+            'data' => UtilityResource::collection($utilities)->resolve(),
+        ], 201);
+    }
+
     public function storeBatch(StoreUtilityBatchRequest $request, UtilityService $utilityService): JsonResponse
     {
         try {
             $utilities = $utilityService->createBatch($request->validated());
+        } catch (ValidationException $exception) {
+            return response()->json(['data' => $exception->errors()], 422);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -91,6 +136,8 @@ class UtilityController extends Controller
     {
         try {
             $utility = $utilityService->create($request->validated());
+        } catch (ValidationException $exception) {
+            return response()->json(['data' => $exception->errors()], 422);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -103,7 +150,7 @@ class UtilityController extends Controller
 
     public function show(Utility $utility): JsonResponse
     {
-        $utility->load(['room.building', 'items.utilityType', 'creator', 'approver']);
+        $utility->load(['room.building', 'contract.user.profile', 'items.utilityType', 'creator', 'approver']);
 
         return response()->json([
             'data' => new UtilityResource($utility),
@@ -117,6 +164,8 @@ class UtilityController extends Controller
     ): JsonResponse {
         try {
             $utility = $utilityService->update($utility, $request->validated());
+        } catch (ValidationException $exception) {
+            return response()->json(['data' => $exception->errors()], 422);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
