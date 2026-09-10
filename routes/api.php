@@ -26,7 +26,14 @@ use App\Http\Controllers\Admin\UtilityRateController;
 use App\Http\Controllers\Admin\UtilityTypeController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Customer\CustomerPortalController;
+use App\Http\Controllers\PublicPropertyController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('public')->group(function (): void {
+    Route::get('properties', [PublicPropertyController::class, 'index']);
+    Route::get('properties/featured', [PublicPropertyController::class, 'featured']);
+    Route::get('properties/{id}', [PublicPropertyController::class, 'show']);
+});
 
 Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login']);
