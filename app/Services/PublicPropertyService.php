@@ -20,6 +20,8 @@ class PublicPropertyService
     }
 
     /**
+     * Latest public sale listings (no invented "featured" flag exists on Room/Building).
+     *
      * @return list<Room>
      */
     public function featured(int $limit = 6): array
@@ -31,23 +33,39 @@ class PublicPropertyService
     }
 
     /**
-     * @return array{total: int, available: int, featured: int}
+     * @return array{total: int, available: int}
      */
     public function stats(): array
     {
-        $total = $this->baseQuery(['purpose' => 'sale'])->count();
+        $saleTotal = $this->baseQuery(['purpose' => 'sale'])->count();
+        $rentTotal = $this->baseQuery(['purpose' => 'rent'])->count();
 
         return [
-            'total' => $total,
-            'available' => $total,
-            'featured' => min($total, 6),
+            'total' => $saleTotal + $rentTotal,
+            'available' => $rentTotal,
         ];
     }
 
     public function find(int $id): Room
     {
-        return $this->baseQuery(['purpose' => 'sale'])
+        return Room::query()
+            ->with(['building', 'roomImages', 'contracts'])
             ->where('rooms.id', $id)
+            ->where(function (Builder $builder): void {
+                $builder
+                    ->where(function (Builder $saleQuery): void {
+                        $saleQuery
+                            ->whereIn('type', ['sale', 'both'])
+                            ->whereHas('contracts', function (Builder $contracts): void {
+                                $contracts->where('type', 'sale')->where('status', Contract::STATUS_ACTIVE);
+                            });
+                    })
+                    ->orWhere(function (Builder $rentQuery): void {
+                        $rentQuery
+                            ->whereIn('type', ['rent', 'both'])
+                            ->where('status', 'available');
+                    });
+            })
             ->firstOrFail();
     }
 
@@ -60,22 +78,22 @@ class PublicPropertyService
         $purpose = $params['purpose'] ?? 'sale';
 
         $query = Room::query()
-            ->with(['building', 'roomImages', 'contracts'])
-            ->whereHas('contracts', function (Builder $builder): void {
-                $builder->where('type', 'sale')->where('status', Contract::STATUS_ACTIVE);
-            });
-
-        if ($purpose === 'sale') {
-            $query->whereIn('type', ['sale', 'both']);
-        }
+            ->with(['building', 'roomImages', 'contracts']);
 
         if ($purpose === 'rent') {
-            $query->whereIn('type', ['rent', 'both'])
+            $query
+                ->whereIn('type', ['rent', 'both'])
                 ->where('status', 'available');
+        } else {
+            $query
+                ->whereIn('type', ['sale', 'both'])
+                ->whereHas('contracts', function (Builder $builder): void {
+                    $builder->where('type', 'sale')->where('status', Contract::STATUS_ACTIVE);
+                });
         }
 
         if (! empty($params['search'])) {
-            $search = $params['search'];
+            $search = trim((string) $params['search']);
 
             $query->where(function (Builder $builder) use ($search): void {
                 $builder->where('room_number', 'like', '%'.$search.'%')

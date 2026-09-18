@@ -21,13 +21,9 @@ class Room extends Model
 
     public const STATUS_AVAILABLE = 'available';
 
-    public const STATUS_RESERVED = 'reserved';
-
     public const STATUS_OCCUPIED = 'occupied';
 
     public const STATUS_SOLD = 'sold';
-
-    public const STATUS_MAINTENANCE = 'maintenance';
 
     public const STATUS_INACTIVE = 'inactive';
 
@@ -47,7 +43,6 @@ class Room extends Model
         'sale_price',
         'rent_price',
         'rent_deposit_price',
-        'booking_deposit_price',
     ];
 
     /**
@@ -63,7 +58,6 @@ class Room extends Model
             'sale_price' => 'decimal:2',
             'rent_price' => 'decimal:2',
             'rent_deposit_price' => 'decimal:2',
-            'booking_deposit_price' => 'decimal:2',
         ];
     }
 

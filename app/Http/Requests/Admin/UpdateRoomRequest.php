@@ -35,16 +35,13 @@ class UpdateRoomRequest extends BaseAdminFormRequest
             'type' => ['required', 'string', Rule::in([Room::TYPE_SALE, Room::TYPE_RENT, Room::TYPE_BOTH])],
             'status' => ['required', 'string', Rule::in([
                 Room::STATUS_AVAILABLE,
-                Room::STATUS_RESERVED,
                 Room::STATUS_OCCUPIED,
                 Room::STATUS_SOLD,
-                Room::STATUS_MAINTENANCE,
                 Room::STATUS_INACTIVE,
             ])],
             'sale_price' => ['required', 'numeric', 'min:0'],
             'rent_price' => ['required', 'numeric', 'min:0'],
             'rent_deposit_price' => ['required', 'numeric', 'min:0'],
-            'booking_deposit_price' => ['required', 'numeric', 'min:0'],
         ];
     }
 

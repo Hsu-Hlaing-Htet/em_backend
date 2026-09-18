@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Contracts\DocumentPdfConverter;
 use App\Services\ChromeDocumentPdfConverter;
 use App\Services\FakeDocumentPdfConverter;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -28,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        RateLimiter::for('ai-public', function (Request $request): Limit {
+            return Limit::perMinute(20)->by($request->ip());
+        });
     }
 }

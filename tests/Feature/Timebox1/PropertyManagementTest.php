@@ -40,7 +40,6 @@ function tb1RoomPayload(int $buildingId, string $roomNumber = 'TB1-101'): array
         'sale_price' => 0,
         'rent_price' => 500000,
         'rent_deposit_price' => 1000000,
-        'booking_deposit_price' => 0,
         'description' => 'Timebox 1 test room',
     ];
 }
@@ -128,14 +127,13 @@ test('admin can list create show and update rooms with building relationship', f
     $this->actingAs($admin, 'sanctum')
         ->putJson("/api/rooms/{$roomId}", array_merge(tb1RoomPayload($building->id, 'TB1-101B'), [
             'type' => 'both',
-            'status' => 'maintenance',
+            'status' => 'available',
             'sale_price' => 90000000,
-            'booking_deposit_price' => 500000,
         ]))
         ->assertOk()
         ->assertJsonPath('data.room_number', 'TB1-101B')
         ->assertJsonPath('data.type', 'both')
-        ->assertJsonPath('data.status', 'maintenance');
+        ->assertJsonPath('data.status', 'available');
 
     expect(Room::query()->find($roomId)?->building_id)->toBe($building->id);
     expect($building->fresh()->rooms)->toHaveCount(1);
@@ -155,7 +153,6 @@ test('room validation rejects invalid building and status', function () {
             'sale_price' => 0,
             'rent_price' => 0,
             'rent_deposit_price' => 0,
-            'booking_deposit_price' => 0,
         ])
         ->assertStatus(422)
         ->assertJsonValidationErrors(['building_id', 'type', 'status'], 'data');

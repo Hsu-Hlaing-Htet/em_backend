@@ -41,7 +41,6 @@ class RoomFactory extends Factory
             'sale_price' => $salePrice,
             'rent_price' => $rentPrice,
             'rent_deposit_price' => round($rentPrice * 2, 2),
-            'booking_deposit_price' => round($salePrice * 0.1, 2),
         ];
     }
 

@@ -25,8 +25,15 @@ use App\Http\Controllers\Admin\UtilityController;
 use App\Http\Controllers\Admin\UtilityRateController;
 use App\Http\Controllers\Admin\UtilityTypeController;
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Customer\AiRentAssistantController;
 use App\Http\Controllers\Customer\CustomerPortalController;
+use App\Http\Controllers\Public\AiPropertyAssistantController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('public')->group(function (): void {
+    Route::post('ai/property/ask', [AiPropertyAssistantController::class, 'ask'])
+        ->middleware('throttle:ai-public');
+});
 
 Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login']);
@@ -62,6 +69,7 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
     Route::get('maintenance-requests', [CustomerPortalController::class, 'maintenanceRequests']);
     Route::post('maintenance-requests', [CustomerPortalController::class, 'storeMaintenanceRequest']);
     Route::get('maintenance-requests/{maintenance_request}', [CustomerPortalController::class, 'showMaintenanceRequest']);
+    Route::post('ai/rent/ask', [AiRentAssistantController::class, 'ask']);
 });
 
 Route::middleware(['auth:sanctum', 'role:super_admin,admin,customer'])->group(function (): void {

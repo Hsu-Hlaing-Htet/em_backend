@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
+ * Public property payload sourced only from Building/Room (and related) data.
+ *
  * @mixin \App\Models\Room
  */
 class PublicPropertyResource extends JsonResource
@@ -26,7 +28,10 @@ class PublicPropertyResource extends JsonResource
             ->values()
             ->all();
 
-        $approvedContract = $this->whenLoaded('contracts', function () {
+        $purpose = $this->resolvePurpose(
+            $request->input('purpose', $request->query('purpose'))
+        );
+        $approvedSaleContract = $this->whenLoaded('contracts', function () {
             return $this->contracts
                 ->where('type', 'sale')
                 ->where('status', 'active')
@@ -34,47 +39,69 @@ class PublicPropertyResource extends JsonResource
                 ->first();
         });
 
-        $salePrice = $approvedContract?->contract_total ?? $this->sale_price;
-        $propertyCode = $approvedContract?->contract_number ?? ('RR-S-'.str_pad((string) $this->id, 4, '0', STR_PAD_LEFT));
+        $salePrice = $purpose === 'sale'
+            ? $this->positiveDecimal($approvedSaleContract?->contract_total ?? $this->sale_price)
+            : null;
+        $monthlyRent = $purpose === 'rent'
+            ? $this->positiveDecimal($this->rent_price)
+            : null;
+        $rentDeposit = $purpose === 'rent'
+            ? $this->positiveDecimal($this->rent_deposit_price)
+            : null;
 
-        return [
+        $buildingName = trim((string) ($this->building?->building_name ?? ''));
+        $roomNumber = trim((string) ($this->room_number ?? ''));
+        $propertyName = trim($buildingName.' '.$roomNumber);
+
+        $payload = [
             'id' => $this->id,
-            'property_name' => trim(($this->building?->building_name ?? 'Rosewood Property').' '.$this->room_number),
-            'property_code' => $propertyCode,
-            'property_type' => $this->resolvePropertyType(),
+            'property_name' => $propertyName !== '' ? $propertyName : null,
             'township' => $this->resolveTownship(),
-            'address' => $this->building?->location,
-            'status' => $this->status,
-            'bedrooms' => $this->resolveBedrooms(),
-            'bathrooms' => $this->resolveBathrooms(),
-            'area_sqft' => $this->area_sqft,
-            'width_ft' => $this->width_ft,
-            'length_ft' => $this->length_ft,
-            'purpose' => 'sale',
+            'city' => $this->resolveCity(),
+            'address' => $this->nonEmptyString($this->building?->location),
+            'status' => $this->nonEmptyString($this->status),
+            'floor_number' => $this->floor_number !== null ? (int) $this->floor_number : null,
+            'area_sqft' => $this->positiveDecimal($this->area_sqft),
+            'width_ft' => $this->positiveDecimal($this->width_ft),
+            'length_ft' => $this->positiveDecimal($this->length_ft),
+            'purpose' => $purpose,
             'sale_price' => $salePrice,
+            'monthly_rent' => $monthlyRent,
+            'rent_price' => $monthlyRent,
+            'rent_deposit_price' => $rentDeposit,
             'featured_image' => $primaryImage
                 ? $roomImageService->resolveImageUrl($primaryImage->image_path)
                 : null,
             'gallery_images' => $galleryImages,
-            'description' => $this->description,
+            'description' => $this->nonEmptyString($this->description),
         ];
+
+        return array_filter(
+            $payload,
+            static fn (mixed $value): bool => $value !== null && $value !== []
+        );
     }
 
-    private function resolvePropertyType(): string
+    private function resolvePurpose(mixed $requestedPurpose): string
     {
-        $area = (float) $this->area_sqft;
+        if ($requestedPurpose === 'rent' || $requestedPurpose === 'sale') {
+            return $requestedPurpose;
+        }
 
-        return match (true) {
-            $area >= 3000 => 'villa',
-            $area >= 2000 => 'house',
-            $area >= 1500 => 'penthouse',
-            default => 'condo',
-        };
+        if (in_array($this->type, ['rent', 'sale'], true)) {
+            return $this->type;
+        }
+
+        if ($this->type === 'both') {
+            return 'sale';
+        }
+
+        return 'sale';
     }
 
     private function resolveTownship(): ?string
     {
-        $location = $this->building?->location;
+        $location = $this->nonEmptyString($this->building?->location);
 
         if (! $location) {
             return null;
@@ -84,18 +111,49 @@ class PublicPropertyResource extends JsonResource
             return trim($matches[1]);
         }
 
-        return trim(explode(',', $location)[0] ?? $location);
+        $first = trim(explode(',', $location)[0] ?? '');
+
+        return $first !== '' ? $first : null;
     }
 
-    private function resolveBedrooms(): int
+    private function resolveCity(): ?string
     {
-        $area = (float) $this->area_sqft;
+        $location = $this->nonEmptyString($this->building?->location);
 
-        return max(1, (int) round($area / 400));
+        if (! $location) {
+            return null;
+        }
+
+        $parts = array_values(array_filter(array_map('trim', explode(',', $location))));
+
+        if ($parts === []) {
+            return null;
+        }
+
+        $city = end($parts) ?: null;
+
+        return $this->nonEmptyString($city);
     }
 
-    private function resolveBathrooms(): int
+    private function positiveDecimal(mixed $value): ?float
     {
-        return max(1, (int) ceil($this->resolveBedrooms() / 1.5));
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $number = (float) $value;
+
+        return $number > 0 ? $number : null;
+    }
+
+    private function nonEmptyString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $string = trim((string) $value);
+
+        return $string !== '' ? $string : null;
     }
 }

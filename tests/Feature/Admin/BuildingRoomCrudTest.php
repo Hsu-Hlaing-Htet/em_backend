@@ -103,7 +103,6 @@ test('admin can create update and delete rooms with building relationship', func
             'sale_price' => 0,
             'rent_price' => 650000,
             'rent_deposit_price' => 1300000,
-            'booking_deposit_price' => 0,
             'description' => 'Lake-facing rental unit.',
         ])
         ->assertCreated()
@@ -123,7 +122,6 @@ test('admin can create update and delete rooms with building relationship', func
             'sale_price' => 85000000,
             'rent_price' => 650000,
             'rent_deposit_price' => 1300000,
-            'booking_deposit_price' => 500000,
             'description' => 'Updated lake-facing unit.',
         ])
         ->assertOk()
@@ -152,7 +150,6 @@ test('room number must be unique within the same building', function () {
         'sale_price' => 0,
         'rent_price' => 400000,
         'rent_deposit_price' => 800000,
-        'booking_deposit_price' => 0,
     ];
 
     $createResponse = $this->actingAs($admin, 'sanctum')
@@ -229,14 +226,14 @@ test('bulk room delete rejects protected occupied sold and contracted rooms', fu
         'building_id' => $building->id,
         'status' => Room::STATUS_AVAILABLE,
     ]);
-    $reservedRoom = Room::factory()->create([
+    $soldRoomA = Room::factory()->create([
         'building_id' => $building->id,
-        'status' => Room::STATUS_RESERVED,
+        'status' => Room::STATUS_SOLD,
     ]);
     $occupiedRoom = Room::factory()->occupied()->create([
         'building_id' => $building->id,
     ]);
-    $soldRoom = Room::factory()->sold()->create([
+    $soldRoomB = Room::factory()->sold()->create([
         'building_id' => $building->id,
     ]);
     $contractedRoom = Room::factory()->create([
@@ -253,15 +250,15 @@ test('bulk room delete rejects protected occupied sold and contracted rooms', fu
         ->deleteJson('/api/rooms/bulk', [
             'ids' => [
                 $availableRoom->id,
-                $reservedRoom->id,
+                $soldRoomA->id,
                 $occupiedRoom->id,
-                $soldRoom->id,
+                $soldRoomB->id,
                 $contractedRoom->id,
             ],
         ])
         ->assertStatus(422);
 
-    foreach ([$availableRoom, $reservedRoom, $occupiedRoom, $soldRoom, $contractedRoom] as $room) {
+    foreach ([$availableRoom, $soldRoomA, $occupiedRoom, $soldRoomB, $contractedRoom] as $room) {
         expect(Room::query()->find($room->id))->not->toBeNull();
     }
 });

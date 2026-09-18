@@ -78,7 +78,6 @@ class RoomSeeder extends Seeder
                 'sale_price' => $sale,
                 'rent_price' => $rent,
                 'rent_deposit_price' => $rent > 0 ? round($rent * 2, 2) : 0,
-                'booking_deposit_price' => $sale > 0 ? round($sale * 0.1, 2) : 0,
             ]);
         }
 
