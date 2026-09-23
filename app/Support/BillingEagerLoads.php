@@ -15,6 +15,7 @@ final class BillingEagerLoads
     {
         return [
             'invoice.contract.user.profile',
+            'invoice.contract.secondUser.profile',
             'invoice.contract.room.building',
             'invoice.items.chargeType',
             'invoice.utility.items.utilityType',
@@ -34,6 +35,7 @@ final class BillingEagerLoads
     {
         return [
             'invoice.contract.user.profile',
+            'invoice.contract.secondUser.profile',
             'invoice.contract.room.building',
             'invoice.items.chargeType',
             'invoice.utility.items.utilityType',
@@ -41,6 +43,7 @@ final class BillingEagerLoads
             'invoice.payments',
             'paymentMethod',
             'receipt',
+            'creator',
         ];
     }
 
@@ -51,6 +54,7 @@ final class BillingEagerLoads
     {
         return [
             'contract.user.profile',
+            'contract.secondUser.profile',
             'contract.room.building',
             'items.chargeType',
             'utility.items.utilityType',
@@ -68,6 +72,7 @@ final class BillingEagerLoads
     {
         return [
             'contract.user.profile',
+            'contract.secondUser.profile',
             'contract.room.building',
             'items.chargeType',
             'utility.items.utilityType',
@@ -85,12 +90,14 @@ final class BillingEagerLoads
     {
         return [
             'payment.invoice.contract.user.profile',
+            'payment.invoice.contract.secondUser.profile',
             'payment.invoice.contract.room.building',
             'payment.invoice.items.chargeType',
             'payment.invoice.utility.items.utilityType',
             'payment.invoice.utilities.items.utilityType',
             'payment.invoice.payments',
             'payment.paymentMethod',
+            'payment.creator',
             'creator',
             'approver',
             'sender',

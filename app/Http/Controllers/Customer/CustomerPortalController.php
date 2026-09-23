@@ -289,6 +289,13 @@ class CustomerPortalController extends Controller
         ]);
     }
 
+    public function maintenanceCategories(CustomerPortalService $customerPortalService): JsonResponse
+    {
+        return response()->json([
+            'data' => $customerPortalService->maintenanceCategories(),
+        ]);
+    }
+
     public function maintenanceRooms(Request $request, CustomerPortalService $customerPortalService): JsonResponse
     {
         return response()->json([

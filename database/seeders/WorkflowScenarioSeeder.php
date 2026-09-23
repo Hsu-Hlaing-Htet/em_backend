@@ -37,7 +37,7 @@ use Illuminate\Database\Seeder;
  */
 class WorkflowScenarioSeeder extends Seeder
 {
-    private const BULK_IMPORT_READY_THROUGH = '2026-07-01';
+    private const BULK_IMPORT_READY_THROUGH = '2026-09-01';
 
     /** @var array<string, array<string, mixed>> */
     private array $matrix = [];
@@ -341,6 +341,12 @@ class WorkflowScenarioSeeder extends Seeder
         $utilityTypes = UtilityType::query()->where('status', 'active')->orderBy('id')->get();
         $chargeTypes = ChargeType::query()->where('status', 'active')->get()->keyBy('slug');
         $saleUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $installmentMonth, 'approved', $admin);
+
+        if (! $saleUtility) {
+            $this->matrix['sale-approved'] = $this->row($customer->email, $room, $contract, 'deposit paid (utility month outside seed window)', 'approved deposit / none on balance', 'issued/approved on deposit', '—');
+
+            return;
+        }
 
         BillingSeederSupport::upsertConsolidatedInvoice(
             'INV-000002',

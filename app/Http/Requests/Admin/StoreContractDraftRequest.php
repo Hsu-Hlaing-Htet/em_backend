@@ -18,6 +18,12 @@ class StoreContractDraftRequest extends BaseAdminFormRequest
     {
         return [
             'user_id' => ['required', 'integer', Rule::exists('users', 'id')],
+            'second_user_id' => [
+                'nullable',
+                'integer',
+                'different:user_id',
+                Rule::exists('users', 'id'),
+            ],
             'room_id' => ['required', 'integer', Rule::exists('rooms', 'id')],
             'contract_total' => ['nullable', 'numeric', 'gt:0'],
             'payment_type' => ['required', 'string', Rule::in(['full', 'installment'])],

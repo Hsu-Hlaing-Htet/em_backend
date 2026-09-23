@@ -18,6 +18,12 @@ class UpdateContractDraftRequest extends BaseAdminFormRequest
     {
         return [
             'user_id' => ['sometimes', 'integer', Rule::exists('users', 'id')],
+            'second_user_id' => [
+                'nullable',
+                'integer',
+                'different:user_id',
+                Rule::exists('users', 'id'),
+            ],
             'room_id' => ['sometimes', 'integer', Rule::exists('rooms', 'id')],
             'contract_total' => ['sometimes', 'numeric', 'gt:0'],
             'payment_type' => ['sometimes', 'string', Rule::in(['full', 'installment'])],

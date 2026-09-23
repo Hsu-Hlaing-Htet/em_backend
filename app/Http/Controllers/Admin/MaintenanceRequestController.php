@@ -43,7 +43,7 @@ class MaintenanceRequestController extends Controller
 
     public function show(MaintenanceRequest $maintenanceRequest): JsonResponse
     {
-        $maintenanceRequest->load(['room.building', 'user.profile', 'creator', 'approver']);
+        $maintenanceRequest->load(['room.building', 'user.profile', 'creator', 'approver', 'maintenanceCategory']);
 
         return response()->json([
             'data' => new MaintenanceRequestResource($maintenanceRequest),

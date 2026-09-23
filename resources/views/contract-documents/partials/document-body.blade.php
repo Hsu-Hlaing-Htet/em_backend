@@ -25,12 +25,15 @@
         ['value' => ($companyFields->firstWhere('label', 'Website')['value'] ?? null) ? 'Website: '.$companyFields->firstWhere('label', 'Website')['value'] : null],
     ]);
     $customerFields = collect($document['customer'] ?? [])->reject(fn ($item): bool => ($item['label'] ?? null) === 'Address')->values()->all();
+    $secondCustomerFields = collect($document['secondCustomer'] ?? [])->reject(fn ($item): bool => ($item['label'] ?? null) === 'Address')->values()->all();
     $authorizationRows = $documentRows($document['authorizationRows'] ?? $document['approval'] ?? []);
     $covenants = array_values(array_filter([
         $contractVariant['customerObligation'] ?? null,
         $contractVariant['companyObligation'] ?? null,
         ! empty($document['remarks']) ? 'Remarks: '.$document['remarks'] : null,
     ], static fn ($item): bool => $hasDocumentValue($item)));
+    $hasSecondCustomer = count($secondCustomerFields) > 0;
+    $customerRole = $contractVariant['customerRole'] ?? 'Customer';
 @endphp
 
 <section class="contract-doc-section">
@@ -45,7 +48,7 @@
         </div>
         <div class="contract-doc-party-divider" aria-hidden="true"></div>
         <div class="contract-doc-party">
-            <p class="contract-doc-party-role">{{ $contractVariant['customerRole'] }}</p>
+            <p class="contract-doc-party-role">{{ $hasSecondCustomer ? $customerRole.' 1' : $customerRole }}</p>
             <div class="contract-doc-fields">
                 @foreach ($documentRows($customerFields) as $item)
                     <div class="contract-doc-field">
@@ -55,6 +58,20 @@
                 @endforeach
             </div>
         </div>
+        @if ($hasSecondCustomer)
+            <div class="contract-doc-party-divider" aria-hidden="true"></div>
+            <div class="contract-doc-party">
+                <p class="contract-doc-party-role">{{ $customerRole }} 2</p>
+                <div class="contract-doc-fields">
+                    @foreach ($documentRows($secondCustomerFields) as $item)
+                        <div class="contract-doc-field">
+                            <span class="contract-doc-field-label">{{ $item['label'] }}</span>
+                            <span class="contract-doc-field-value">{{ $item['value'] }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     </div>
 </section>
 

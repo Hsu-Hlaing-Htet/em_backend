@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\ConcurrentConflictException;
+use App\Models\MaintenanceCategory;
 use App\Models\MaintenanceRequest;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\AdminListSorts;
@@ -21,7 +22,7 @@ class MaintenanceRequestService
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = MaintenanceRequest::query()->with(['room.building', 'user']);
+        $query = MaintenanceRequest::query()->with(['room.building', 'user', 'maintenanceCategory']);
 
         $this->applyStatusFilter($query, $params);
 
@@ -45,7 +46,7 @@ class MaintenanceRequestService
     public function find(int $id): MaintenanceRequest
     {
         return MaintenanceRequest::query()
-            ->with(['room.building', 'user.profile', 'creator', 'approver'])
+            ->with(['room.building', 'user.profile', 'creator', 'approver', 'maintenanceCategory'])
             ->findOrFail($id);
     }
 
@@ -54,13 +55,15 @@ class MaintenanceRequestService
      */
     public function create(array $data): MaintenanceRequest
     {
+        $data = $this->syncCategoryFields($data);
+
         return MaintenanceRequest::query()->create([
             ...$data,
             'status' => 'pending',
             'rejection_reason' => null,
             'resolution_note' => null,
             'created_by' => Auth::id(),
-        ])->load(['room.building', 'user']);
+        ])->load(['room.building', 'user', 'maintenanceCategory']);
     }
 
     /**
@@ -79,9 +82,9 @@ class MaintenanceRequestService
                 throw new ConcurrentConflictException('Only pending maintenance requests can be updated.');
             }
 
-            $locked->update($data);
+            $locked->update($this->syncCategoryFields($data));
 
-            return $locked->fresh(['room.building', 'user']);
+            return $locked->fresh(['room.building', 'user', 'maintenanceCategory']);
         });
     }
 
@@ -175,5 +178,35 @@ class MaintenanceRequestService
 
             return $locked->fresh(['room.building', 'user', 'approver']);
         });
+    }
+
+    /**
+     * Keep the legacy category slug column and FK in sync without rewriting history.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function syncCategoryFields(array $data): array
+    {
+        if (! array_key_exists('category', $data) && ! array_key_exists('maintenance_category_id', $data)) {
+            return $data;
+        }
+
+        $category = null;
+
+        if (! empty($data['maintenance_category_id'])) {
+            $category = MaintenanceCategory::query()->find((int) $data['maintenance_category_id']);
+        } elseif (! empty($data['category'])) {
+            $category = MaintenanceCategory::query()
+                ->where('slug', (string) $data['category'])
+                ->first();
+        }
+
+        if ($category) {
+            $data['maintenance_category_id'] = $category->id;
+            $data['category'] = $category->slug;
+        }
+
+        return $data;
     }
 }

@@ -17,6 +17,7 @@ class MaintenanceRequest extends Model
         'approved_by',
         'approved_at',
         'title',
+        'maintenance_category_id',
         'category',
         'priority',
         'description',
@@ -34,4 +35,8 @@ class MaintenanceRequest extends Model
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
     public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
+    public function maintenanceCategory(): BelongsTo
+    {
+        return $this->belongsTo(MaintenanceCategory::class);
+    }
 }

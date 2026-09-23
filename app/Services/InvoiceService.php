@@ -131,9 +131,10 @@ class InvoiceService
 
         // Email is best-effort — never roll back a successful issue on mail failure.
         try {
-            if ($issued->contract?->user?->email) {
+            $issued->loadMissing(['contract.user', 'contract.secondUser']);
+            foreach ($issued->contract?->partyEmails() ?? [] as $email) {
                 $this->invoiceDocumentService->sendEmail($issued, [
-                    'email' => $issued->contract->user->email,
+                    'email' => $email,
                 ]);
             }
         } catch (\Throwable $exception) {

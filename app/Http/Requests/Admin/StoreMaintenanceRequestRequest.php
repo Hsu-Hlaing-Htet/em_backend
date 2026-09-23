@@ -21,7 +21,7 @@ class StoreMaintenanceRequestRequest extends BaseAdminFormRequest
             'room_id' => ['required', 'integer', Rule::exists('rooms', 'id')],
             'user_id' => ['required', 'integer', Rule::exists('users', 'id')],
             'title' => ['required', 'string', 'max:255'],
-            'category' => ['required', 'string', Rule::in(MaintenanceRequestOptions::CATEGORIES)],
+            'category' => ['required', 'string', 'max:255', MaintenanceRequestOptions::activeCategoryRule()],
             'priority' => ['required', 'string', Rule::in(MaintenanceRequestOptions::PRIORITIES)],
             'description' => ['nullable', 'string'],
             'status' => ['prohibited'],

@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\DocumentPreviewPdfController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\LateFeeController;
 use App\Http\Controllers\Admin\ListExportController;
+use App\Http\Controllers\Admin\MaintenanceCategoryController;
 use App\Http\Controllers\Admin\MaintenanceRequestController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\PaymentMethodController;
@@ -75,6 +76,7 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
         ->where('notification', '[A-Za-z]+-\d+');
     Route::get('payment-methods', [CustomerPortalController::class, 'paymentMethods']);
     Route::get('maintenance-rooms', [CustomerPortalController::class, 'maintenanceRooms']);
+    Route::get('maintenance-categories', [CustomerPortalController::class, 'maintenanceCategories']);
     Route::get('maintenance-requests', [CustomerPortalController::class, 'maintenanceRequests']);
     Route::post('maintenance-requests', [CustomerPortalController::class, 'storeMaintenanceRequest']);
     Route::get('maintenance-requests/{maintenance_request}', [CustomerPortalController::class, 'showMaintenanceRequest']);
@@ -108,6 +110,8 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('utility-types', UtilityTypeController::class);
     Route::apiResource('utility-rates', UtilityRateController::class);
     Route::apiResource('charge-types', ChargeTypeController::class);
+    Route::get('maintenance-categories/options', [MaintenanceCategoryController::class, 'options']);
+    Route::apiResource('maintenance-categories', MaintenanceCategoryController::class);
     Route::apiResource('late-fees', LateFeeController::class);
     Route::apiResource('payment-methods', PaymentMethodController::class);
     // Multipart updates (QR upload) — PHP does not reliably parse files on PUT.

@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             PaymentPlanSeeder::class,
             ChargeTypeSeeder::class,
+            MaintenanceCategorySeeder::class,
             PaymentMethodSeeder::class,
             LateFeeSeeder::class,
             UtilityTypeSeeder::class,

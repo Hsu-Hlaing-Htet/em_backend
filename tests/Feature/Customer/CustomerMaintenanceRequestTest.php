@@ -5,6 +5,7 @@ use App\Models\Contract;
 use App\Models\MaintenanceRequest;
 use App\Models\Room;
 use App\Models\User;
+use Database\Seeders\MaintenanceCategorySeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +16,7 @@ function maintenanceUsers(): array
 {
     (new RoleSeeder)->run();
     (new UserSeeder)->run();
+    (new MaintenanceCategorySeeder)->run();
 
     return [
         'admin' => User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail(),

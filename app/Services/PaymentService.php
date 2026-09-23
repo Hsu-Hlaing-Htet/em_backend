@@ -322,17 +322,38 @@ class PaymentService
     private function notifyCustomerOfPaymentDecision(Payment $payment, string $decision): void
     {
         try {
-            $payment->loadMissing(['invoice.contract.user', 'receipt']);
-            $customer = $payment->invoice?->contract?->user;
+            $payment->loadMissing(['invoice.contract.user', 'invoice.contract.secondUser', 'creator', 'receipt']);
+            $contract = $payment->invoice?->contract;
 
-            if (! $customer || ! $customer->email) {
+            if (! $contract) {
                 return;
             }
 
-            if ($decision === 'approved') {
-                $customer->notify(new PaymentApprovedNotification($payment));
-            } else {
-                $customer->notify(new PaymentRejectedNotification($payment));
+            $recipients = $contract->partyUsers();
+
+            // Ensure the actual payer is notified even if relations were incomplete.
+            if ($payment->creator && ! $recipients->contains('id', $payment->creator->id)) {
+                $recipients->push($payment->creator);
+            }
+
+            $notified = [];
+
+            foreach ($recipients as $customer) {
+                if (! $customer?->email) {
+                    continue;
+                }
+
+                $emailKey = strtolower(trim((string) $customer->email));
+                if (isset($notified[$emailKey])) {
+                    continue;
+                }
+                $notified[$emailKey] = true;
+
+                if ($decision === 'approved') {
+                    $customer->notify(new PaymentApprovedNotification($payment));
+                } else {
+                    $customer->notify(new PaymentRejectedNotification($payment));
+                }
             }
         } catch (\Throwable $exception) {
             report($exception);

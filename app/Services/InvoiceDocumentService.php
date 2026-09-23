@@ -69,20 +69,25 @@ class InvoiceDocumentService
      */
     public function sendEmail(Invoice $invoice, array $data): void
     {
-        $invoice->loadMissing(['contract.user', 'contract.room']);
-        $email = $data['email'] ?? $invoice->contract?->user?->email;
+        $invoice->loadMissing(['contract.user', 'contract.secondUser', 'contract.room']);
+        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
+            ? [trim((string) $data['email'])]
+            : ($invoice->contract?->partyEmails() ?? []);
 
-        if (! $email) {
+        if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the invoice document.');
         }
 
         $filename = $this->filename($invoice);
+        $pdf = $this->renderPdfBinary($this->renderHtml($invoice));
 
-        Mail::to($email)->send(new InvoiceDocumentMail(
-            $invoice,
-            $this->renderPdfBinary($this->renderHtml($invoice)),
-            $filename,
-        ));
+        foreach ($emails as $email) {
+            Mail::to($email)->send(new InvoiceDocumentMail(
+                $invoice,
+                $pdf,
+                $filename,
+            ));
+        }
     }
 
     /**
@@ -90,7 +95,9 @@ class InvoiceDocumentService
      */
     public function buildDocumentData(Invoice $invoice): array
     {
+        $invoice->loadMissing(['contract.user.profile', 'contract.secondUser.profile']);
         $user = $invoice->contract?->user;
+        $secondUser = $invoice->contract?->secondUser;
         $room = $invoice->contract?->room;
         $subtotal = (float) $invoice->total_amount;
         $lateFee = (float) ($invoice->late_fee ?? 0);
@@ -98,6 +105,11 @@ class InvoiceDocumentService
         $invoiceNumber = $invoice->invoice_number ?: '—';
         $dueDate = $this->formatDisplayDate($invoice->due_date);
         $issueDate = $this->formatDisplayDate($invoice->issued_date ?? $invoice->created_at);
+
+        $billToName = $user?->name ?: '—';
+        if ($secondUser?->name) {
+            $billToName = trim($billToName.' & '.$secondUser->name);
+        }
 
         $invoice->items->each(function ($item) use ($invoice): void {
             $item->setRelation('invoice', $invoice);
@@ -119,7 +131,7 @@ class InvoiceDocumentService
                 'website' => 'www.rosewoodroyale.com',
             ],
             'billTo' => [
-                'name' => $user?->name ?: '—',
+                'name' => $billToName,
                 'email' => $user?->email ?: '—',
                 'phone' => $user?->profile?->phone ?: '—',
             ],

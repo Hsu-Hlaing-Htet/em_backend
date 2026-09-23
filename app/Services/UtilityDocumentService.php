@@ -64,23 +64,34 @@ class UtilityDocumentService
      */
     public function sendEmail(Utility $utility, array $data): void
     {
-        $utility->loadMissing(['room']);
-        $occupant = $this->resolveOccupant($utility);
+        $utility->loadMissing(['room', 'contract.user', 'contract.secondUser']);
+        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
+            ? [trim((string) $data['email'])]
+            : ($utility->contract?->partyEmails() ?? []);
 
-        $email = $data['email'] ?? $occupant?->email;
+        if ($emails === [] && $utility->contract_id === null) {
+            $occupant = $this->resolveOccupant($utility);
+            if ($occupant?->email) {
+                $emails = [trim((string) $occupant->email)];
+            }
+        }
 
-        if (! $email) {
+        if ($emails === []) {
             throw new InvalidArgumentException('Occupant email is required to send the utility bill document.');
         }
 
         $filename = $this->filename($utility);
+        $pdf = $this->renderPdfBinary($this->renderHtml($utility));
+        $reference = $this->referenceNumber($utility);
 
-        Mail::to($email)->send(new UtilityDocumentMail(
-            $utility,
-            $this->renderPdfBinary($this->renderHtml($utility)),
-            $filename,
-            $this->referenceNumber($utility),
-        ));
+        foreach ($emails as $email) {
+            Mail::to($email)->send(new UtilityDocumentMail(
+                $utility,
+                $pdf,
+                $filename,
+                $reference,
+            ));
+        }
     }
 
     /**
@@ -133,10 +144,25 @@ class UtilityDocumentService
 
     private function resolveOccupant(Utility $utility): ?\App\Models\User
     {
+        if ($utility->relationLoaded('contract') && $utility->contract) {
+            $utility->contract->loadMissing('user.profile');
+
+            return $utility->contract->user;
+        }
+
+        if ($utility->contract_id) {
+            $contract = Contract::query()
+                ->with('user.profile')
+                ->find($utility->contract_id);
+
+            return $contract?->user;
+        }
+
         if (! $utility->room_id) {
             return null;
         }
 
+        // Display compatibility: billing contact remains Customer 1 (user_id).
         $contract = Contract::query()
             ->where('room_id', $utility->room_id)
             ->where('status', Contract::STATUS_ACTIVE)

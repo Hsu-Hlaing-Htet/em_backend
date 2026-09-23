@@ -43,7 +43,14 @@ class TypedContractDocumentService
 
     public function renderHtml(Contract $contract): string
     {
-        $contract->loadMissing(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+        $contract->loadMissing([
+            'user.profile',
+            'secondUser.profile',
+            'room.building',
+            'paymentPlan',
+            'creator',
+            'approver',
+        ]);
 
         return view($this->profile->view, [
             'document' => $this->buildDocumentData($contract),
@@ -71,10 +78,12 @@ class TypedContractDocumentService
      */
     public function sendEmail(Contract $contract, array $data): void
     {
-        $contract->loadMissing(['user.profile', 'room']);
-        $email = $data['email'] ?? $contract->user?->email;
+        $contract->loadMissing(['user.profile', 'secondUser.profile', 'room']);
+        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
+            ? [trim((string) $data['email'])]
+            : $contract->partyEmails();
 
-        if (! $email) {
+        if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
         }
 
@@ -82,7 +91,9 @@ class TypedContractDocumentService
         $pdf = $this->renderPdfBinary($this->renderHtml($contract));
         $mailClass = $this->profile->mailClass;
 
-        Mail::to($email)->send(new $mailClass($contract, $pdf, $filename));
+        foreach ($emails as $email) {
+            Mail::to($email)->send(new $mailClass($contract, $pdf, $filename));
+        }
     }
 
     /**
@@ -90,10 +101,10 @@ class TypedContractDocumentService
      */
     public function sendEmailToContractCustomer(Contract $contract, array $data = []): string
     {
-        $contract->loadMissing(['user.profile', 'room']);
-        $email = $contract->user?->email;
+        $contract->loadMissing(['user.profile', 'secondUser.profile', 'room']);
+        $emails = $contract->partyEmails();
 
-        if (! $email) {
+        if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
         }
 
@@ -102,14 +113,16 @@ class TypedContractDocumentService
             : $this->renderPdfBinary($this->renderHtml($contract));
         $mailClass = $this->profile->mailClass;
 
-        Mail::to($email)->send(new $mailClass(
-            $contract,
-            $pdf,
-            $this->downloadFilename($contract),
-            $this->customerContractUrl($contract),
-        ));
+        foreach ($emails as $email) {
+            Mail::to($email)->send(new $mailClass(
+                $contract,
+                $pdf,
+                $this->downloadFilename($contract),
+                $this->customerContractUrl($contract),
+            ));
+        }
 
-        return $email;
+        return implode(', ', $emails);
     }
 
     /**
@@ -187,6 +200,27 @@ class TypedContractDocumentService
             ],
         ], fn (array $row): bool => $this->hasDocumentValue($row['value'])));
 
+        $partyLabel = $contract->type === 'rent' ? 'Tenant' : 'Owner';
+        $secondUser = $contract->secondUser;
+        $signatures = [
+            [
+                'name' => $contract->user?->name ?? '________________',
+                'label' => $this->profile->tenantSignatureLabel.($secondUser ? ' (1)' : ''),
+            ],
+        ];
+
+        if ($secondUser) {
+            $signatures[] = [
+                'name' => $secondUser->name ?? '________________',
+                'label' => $this->profile->tenantSignatureLabel.' (2)',
+            ];
+        }
+
+        $signatures[] = [
+            'name' => $contract->approver?->name ?? $contract->creator?->name ?? '________________',
+            'label' => 'Company Representative',
+        ];
+
         return [
             'header' => [
                 'contractNo' => $contract->contract_number,
@@ -199,6 +233,14 @@ class TypedContractDocumentService
                 ['label' => 'Address', 'value' => $contract->user?->profile?->address ?? '-'],
                 ['label' => 'Email', 'value' => $contract->user?->email ?? '-'],
             ],
+            'secondCustomer' => $secondUser ? [
+                ['label' => 'Full Name', 'value' => $secondUser->name ?? '-'],
+                ['label' => 'NRC / ID', 'value' => $secondUser->profile?->nrc ?? '-'],
+                ['label' => 'Phone', 'value' => $secondUser->profile?->phone ?? '-'],
+                ['label' => 'Address', 'value' => $secondUser->profile?->address ?? '-'],
+                ['label' => 'Email', 'value' => $secondUser->email ?? '-'],
+            ] : null,
+            'partyLabel' => $partyLabel,
             'company' => [
                 ['label' => 'Company Name', 'value' => 'Rosewood Royale Residences'],
                 ['label' => 'Registration', 'value' => 'Company Reg. No. RR-2020-001'],
@@ -250,16 +292,7 @@ class TypedContractDocumentService
             'authorization' => $authorization,
             'authorizationRows' => $authorizationRows,
             'remarks' => trim((string) $contract->remark) !== '' ? $contract->remark : 'No additional remarks.',
-            'signatures' => [
-                [
-                    'name' => $contract->user?->name ?? '________________',
-                    'label' => $this->profile->tenantSignatureLabel,
-                ],
-                [
-                    'name' => $contract->approver?->name ?? $contract->creator?->name ?? '________________',
-                    'label' => 'Company Representative',
-                ],
-            ],
+            'signatures' => $signatures,
         ];
     }
 

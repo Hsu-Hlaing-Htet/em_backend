@@ -67,6 +67,8 @@ class PaymentResource extends JsonResource
             'building_name' => $building?->building_name,
             'room_number' => $room?->room_number,
             'created_by_name' => $this->relationLoaded('creator') ? $this->creator?->name : null,
+            'submitted_by_user_id' => $this->created_by,
+            'submitted_by_name' => $this->relationLoaded('creator') ? $this->creator?->name : null,
             'approved_by_name' => $this->relationLoaded('approver') ? $this->approver?->name : null,
             'created_by' => $this->created_by,
             'approved_by' => $this->approved_by,

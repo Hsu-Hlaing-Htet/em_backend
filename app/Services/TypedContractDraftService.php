@@ -61,7 +61,7 @@ class TypedContractDraftService
     private function paginateByStatuses(array $params, array $statuses): LengthAwarePaginator
     {
         $query = Contract::query()
-            ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
+            ->with(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
             ->where('type', $this->profile->type)
             ->whereIn('status', $statuses);
 
@@ -148,7 +148,7 @@ class TypedContractDraftService
     public function findForDeletion(int $id): Contract
     {
         return Contract::query()
-            ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
+            ->with(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
             ->where('type', $this->profile->type)
             ->findOrFail($id);
     }
@@ -156,7 +156,7 @@ class TypedContractDraftService
     private function findByStatuses(int $id, array $statuses): Contract
     {
         return Contract::query()
-            ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
+            ->with(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
             ->where('type', $this->profile->type)
             ->whereIn('status', $statuses)
             ->findOrFail($id);
@@ -200,7 +200,7 @@ class TypedContractDraftService
 
             $room->update(['status' => $this->profile->roomStatusOnApprove]);
 
-            return $locked->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+            return $locked->fresh(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
         });
     }
 
@@ -220,7 +220,7 @@ class TypedContractDraftService
             }
 
             return $this->approvalService->reject($locked, null, [Contract::STATUS_PENDING])
-                ->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+                ->fresh(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
         });
     }
 
@@ -239,6 +239,14 @@ class TypedContractDraftService
 
             $this->assertRoomAvailable($room);
             $this->assertCustomerActive((int) $data['user_id']);
+            if (! empty($data['second_user_id'])) {
+                $this->assertCustomerActive((int) $data['second_user_id']);
+                if ((int) $data['second_user_id'] === (int) $data['user_id']) {
+                    throw new InvalidArgumentException('Second customer must be different from the primary customer.');
+                }
+            } else {
+                $data['second_user_id'] = null;
+            }
             $this->assertRoomType($room);
             $this->assertNoActiveContractForRoom($room->id);
 
@@ -255,7 +263,7 @@ class TypedContractDraftService
 
             return Contract::query()
                 ->create($data)
-                ->load(['user.profile', 'room.building', 'paymentPlan', 'creator']);
+                ->load(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator']);
         });
     }
 
@@ -269,6 +277,18 @@ class TypedContractDraftService
 
         if (isset($data['user_id'])) {
             $this->assertCustomerActive((int) $data['user_id']);
+        }
+
+        if (array_key_exists('second_user_id', $data)) {
+            if ($data['second_user_id'] === null || $data['second_user_id'] === '') {
+                $data['second_user_id'] = null;
+            } else {
+                $this->assertCustomerActive((int) $data['second_user_id']);
+                $primaryUserId = (int) ($data['user_id'] ?? $contract->user_id);
+                if ((int) $data['second_user_id'] === $primaryUserId) {
+                    throw new InvalidArgumentException('Second customer must be different from the primary customer.');
+                }
+            }
         }
 
         if (isset($data['room_id'])) {
@@ -303,7 +323,7 @@ class TypedContractDraftService
 
         $contract->update($data);
 
-        return $contract->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator']);
+        return $contract->fresh(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator']);
     }
 
     public function delete(Contract $contract): void
@@ -343,7 +363,7 @@ class TypedContractDraftService
 
             $locked->room?->update(['status' => Room::STATUS_AVAILABLE]);
 
-            return $locked->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+            return $locked->fresh(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
         });
     }
 

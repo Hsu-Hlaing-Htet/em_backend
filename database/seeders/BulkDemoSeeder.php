@@ -37,7 +37,7 @@ use Illuminate\Support\Collection;
  */
 class BulkDemoSeeder extends Seeder
 {
-    private const BULK_IMPORT_READY_THROUGH = '2026-07-01';
+    private const BULK_IMPORT_READY_THROUGH = '2026-09-01';
 
     private const CUSTOMER_TARGET = 100;
 

@@ -22,6 +22,8 @@ class MaintenanceRequestResource extends JsonResource
             'user_name' => $this->relationLoaded('user') ? $this->user?->name : null,
             'customer_name' => $this->relationLoaded('user') ? $this->user?->name : null,
             'title' => $this->title,
+            'maintenance_category_id' => $this->maintenance_category_id,
+            'maintenance_category_name' => $this->maintenanceCategory?->name,
             'category' => $this->category,
             'priority' => $this->priority,
             'description' => $this->description,

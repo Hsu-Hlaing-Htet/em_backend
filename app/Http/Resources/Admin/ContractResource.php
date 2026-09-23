@@ -35,6 +35,7 @@ class ContractResource extends JsonResource
             'id' => $this->id,
             'contract_number' => $this->contract_number,
             'user_id' => $this->user_id,
+            'second_user_id' => $this->second_user_id,
             'user_name' => $this->relationLoaded('user') ? $this->user?->name : null,
             'customer_name' => $this->relationLoaded('user') ? $this->user?->name : null,
             'customer' => $this->whenLoaded('user', fn () => [
@@ -45,6 +46,17 @@ class ContractResource extends JsonResource
                 'nrc' => $this->user?->profile?->nrc,
                 'address' => $this->user?->profile?->address,
             ]),
+            'second_customer' => $this->when(
+                $this->relationLoaded('secondUser') && $this->secondUser,
+                fn () => [
+                    'id' => $this->secondUser?->id,
+                    'name' => $this->secondUser?->name,
+                    'email' => $this->secondUser?->email,
+                    'phone' => $this->secondUser?->profile?->phone,
+                    'nrc' => $this->secondUser?->profile?->nrc,
+                    'address' => $this->secondUser?->profile?->address,
+                ]
+            ),
             'customer_address' => $this->relationLoaded('user') ? $this->user?->profile?->address : null,
             'room_id' => $this->room_id,
             'room_number' => $this->relationLoaded('room') ? $this->room?->room_number : null,

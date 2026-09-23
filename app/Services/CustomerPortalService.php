@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Http\Resources\Admin\MaintenanceCategoryResource;
 use App\Http\Resources\Admin\PaymentResource;
 use App\Models\Contract;
 use App\Models\CustomerNotificationRead;
@@ -30,21 +31,22 @@ class CustomerPortalService
         private readonly SaleContractDocumentService $saleContractDocumentService,
         private readonly RentContractDocumentService $rentContractDocumentService,
         private readonly MaintenanceRequestService $maintenanceRequestService,
+        private readonly MaintenanceCategoryService $maintenanceCategoryService,
     ) {}
 
     public function dashboardSummary(User $user): array
     {
         $activeContracts = Contract::query()
-            ->where('user_id', $user->id)
+            ->accessibleBy($user)
             ->where('status', Contract::STATUS_ACTIVE)
             ->count();
 
         $completedContracts = Contract::query()
-            ->where('user_id', $user->id)
+            ->accessibleBy($user)
             ->where('status', 'completed')
             ->count();
 
-        $invoiceQuery = $this->customerInvoiceQuery($user->id);
+        $invoiceQuery = $this->customerInvoiceQuery($user);
 
         $unpaidInvoices = (clone $invoiceQuery)
             ->whereIn('status', ['issued', 'partial', 'overdue', 'unpaid'])
@@ -55,7 +57,7 @@ class CustomerPortalService
             ->count();
 
         $paymentQuery = Payment::query()
-            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id));
+            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user));
 
         $totalPayments = (clone $paymentQuery)->count();
 
@@ -74,11 +76,13 @@ class CustomerPortalService
         $recentPayments = (clone $paymentQuery)
             ->with([
                 'invoice.contract.user.profile',
+                'invoice.contract.secondUser.profile',
                 'invoice.contract.room.building',
                 'invoice.items.chargeType',
                 'invoice.payments',
                 'paymentMethod',
                 'receipt',
+                'creator',
             ])
             ->latest('payment_date')
             ->limit(5)
@@ -118,8 +122,8 @@ class CustomerPortalService
     public function paginateContracts(User $user, array $params): LengthAwarePaginator
     {
         $query = Contract::query()
-            ->with(['user.profile', 'room.building', 'paymentPlan'])
-            ->where('user_id', $user->id)
+            ->with(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan'])
+            ->accessibleBy($user)
             ->whereIn('status', [
                 Contract::STATUS_ACTIVE,
                 Contract::STATUS_COMPLETED,
@@ -140,8 +144,8 @@ class CustomerPortalService
     public function findContract(User $user, int $contractId): Contract
     {
         return Contract::query()
-            ->with(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
-            ->where('user_id', $user->id)
+            ->with(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver'])
+            ->accessibleBy($user)
             ->whereIn('status', [
                 Contract::STATUS_ACTIVE,
                 Contract::STATUS_COMPLETED,
@@ -155,8 +159,15 @@ class CustomerPortalService
      */
     public function paginateInvoices(User $user, array $params): LengthAwarePaginator
     {
-        $query = $this->customerInvoiceQuery($user->id)
-            ->with(['contract.user.profile', 'contract.room.building', 'items.chargeType', 'payments', 'approver']);
+        $query = $this->customerInvoiceQuery($user)
+            ->with([
+                'contract.user.profile',
+                'contract.secondUser.profile',
+                'contract.room.building',
+                'items.chargeType',
+                'payments',
+                'approver',
+            ]);
 
         if (! empty($params['status'])) {
             $query->where('status', $params['status']);
@@ -175,14 +186,16 @@ class CustomerPortalService
 
     public function findInvoice(User $user, int $invoiceId): Invoice
     {
-        return $this->customerInvoiceQuery($user->id)
+        return $this->customerInvoiceQuery($user)
             ->with([
                 'contract.user.profile',
+                'contract.secondUser.profile',
                 'contract.room.building',
                 'utility.items.utilityType',
                 'items.chargeType',
                 'payments.paymentMethod',
                 'payments.receipt',
+                'payments.creator',
                 'approver',
             ])
             ->findOrFail($invoiceId);
@@ -203,13 +216,15 @@ class CustomerPortalService
         $query = Payment::query()
             ->with([
                 'invoice.contract.user.profile',
+                'invoice.contract.secondUser.profile',
                 'invoice.contract.room.building',
                 'invoice.items.chargeType',
                 'invoice.payments',
                 'paymentMethod',
                 'receipt',
+                'creator',
             ])
-            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id));
+            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user));
 
         if (! empty($params['invoice_id'])) {
             $query->where('invoice_id', $params['invoice_id']);
@@ -236,13 +251,15 @@ class CustomerPortalService
         return Payment::query()
             ->with([
                 'invoice.contract.user.profile',
+                'invoice.contract.secondUser.profile',
                 'invoice.contract.room.building',
                 'invoice.items.chargeType',
                 'invoice.payments',
                 'paymentMethod',
                 'receipt',
+                'creator',
             ])
-            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
+            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user))
             ->findOrFail($paymentId);
     }
 
@@ -297,13 +314,15 @@ class CustomerPortalService
         $query = Receipt::query()
             ->with([
                 'payment.invoice.contract.user.profile',
+                'payment.invoice.contract.secondUser.profile',
                 'payment.invoice.contract.room.building',
                 'payment.invoice.items.chargeType',
                 'payment.invoice.payments',
                 'payment.paymentMethod',
+                'payment.creator',
             ])
             ->deliveredToCustomer()
-            ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id));
+            ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user));
 
         return $query->latest('issued_at')->paginate((int) ($params['per_page'] ?? 10));
     }
@@ -311,9 +330,15 @@ class CustomerPortalService
     public function findReceipt(User $user, int $receiptId): Receipt
     {
         return Receipt::query()
-            ->with(['payment.invoice.contract.user.profile', 'payment.invoice.contract.room.building', 'payment.paymentMethod'])
+            ->with([
+                'payment.invoice.contract.user.profile',
+                'payment.invoice.contract.secondUser.profile',
+                'payment.invoice.contract.room.building',
+                'payment.paymentMethod',
+                'payment.creator',
+            ])
             ->deliveredToCustomer()
-            ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
+            ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user))
             ->findOrFail($receiptId);
     }
 
@@ -324,7 +349,7 @@ class CustomerPortalService
     {
         $items = collect();
 
-        $dueInvoices = $this->customerInvoiceQuery($user->id)
+        $dueInvoices = $this->customerInvoiceQuery($user)
             ->whereIn('status', ['issued', 'partial', 'overdue', 'unpaid'])
             ->orderBy('due_date')
             ->limit(10)
@@ -344,7 +369,7 @@ class CustomerPortalService
 
         $recentPayments = Payment::query()
             ->with(['invoice', 'receipt'])
-            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
+            ->whereHas('invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user))
             ->whereIn('status', ['pending', 'approved', 'rejected'])
             ->latest('updated_at')
             ->limit(10)
@@ -402,7 +427,7 @@ class CustomerPortalService
         $issuedReceipts = Receipt::query()
             ->with(['payment.invoice'])
             ->deliveredToCustomer()
-            ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
+            ->whereHas('payment.invoice.contract', fn (Builder $builder) => $builder->accessibleBy($user))
             ->latest('sent_at')
             ->limit(10)
             ->get();
@@ -421,7 +446,7 @@ class CustomerPortalService
 
         $recentContracts = Contract::query()
             ->with('room')
-            ->where('user_id', $user->id)
+            ->accessibleBy($user)
             ->whereIn('status', ['approved', 'active', 'completed'])
             ->latest('updated_at')
             ->limit(5)
@@ -542,6 +567,18 @@ class CustomerPortalService
     }
 
     /**
+     * Active maintenance categories available for new customer requests.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function maintenanceCategories(): array
+    {
+        return MaintenanceCategoryResource::collection(
+            $this->maintenanceCategoryService->active()
+        )->resolve();
+    }
+
+    /**
      * Rooms linked to the customer's active/approved contracts.
      *
      * @return list<array<string, mixed>>
@@ -564,9 +601,23 @@ class CustomerPortalService
      */
     public function paginateMaintenanceRequests(User $user, array $params): LengthAwarePaginator
     {
+        $accessibleRoomIds = Contract::query()
+            ->accessibleBy($user)
+            ->pluck('room_id')
+            ->unique()
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
         $query = MaintenanceRequest::query()
-            ->with(['room.building', 'user', 'approver'])
-            ->where('user_id', $user->id);
+            ->with(['room.building', 'user', 'approver', 'maintenanceCategory'])
+            ->where(function (Builder $builder) use ($user, $accessibleRoomIds): void {
+                $builder->where('user_id', $user->id);
+
+                if ($accessibleRoomIds !== []) {
+                    $builder->orWhereIn('room_id', $accessibleRoomIds);
+                }
+            });
 
         if (! empty($params['status'])) {
             $query->where('status', $params['status']);
@@ -587,9 +638,23 @@ class CustomerPortalService
 
     public function findMaintenanceRequest(User $user, int $maintenanceRequestId): MaintenanceRequest
     {
+        $accessibleRoomIds = Contract::query()
+            ->accessibleBy($user)
+            ->pluck('room_id')
+            ->unique()
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
         return MaintenanceRequest::query()
-            ->with(['room.building', 'user', 'creator', 'approver'])
-            ->where('user_id', $user->id)
+            ->with(['room.building', 'user', 'creator', 'approver', 'maintenanceCategory'])
+            ->where(function (Builder $builder) use ($user, $accessibleRoomIds): void {
+                $builder->where('user_id', $user->id);
+
+                if ($accessibleRoomIds !== []) {
+                    $builder->orWhereIn('room_id', $accessibleRoomIds);
+                }
+            })
             ->findOrFail($maintenanceRequestId);
     }
 
@@ -611,7 +676,7 @@ class CustomerPortalService
             'category' => $data['category'],
             'priority' => $data['priority'],
             'description' => $data['description'] ?? null,
-        ])->load(['room.building', 'user', 'creator', 'approver']);
+        ])->load(['room.building', 'user', 'creator', 'approver', 'maintenanceCategory']);
     }
 
     /**
@@ -620,7 +685,7 @@ class CustomerPortalService
     public function eligibleMaintenanceRoomIds(User $user): array
     {
         return Contract::query()
-            ->where('user_id', $user->id)
+            ->accessibleBy($user)
             ->where('status', Contract::STATUS_ACTIVE)
             ->pluck('room_id')
             ->unique()
@@ -650,10 +715,10 @@ class CustomerPortalService
     /**
      * @return Builder<Invoice>
      */
-    private function customerInvoiceQuery(int $userId): Builder
+    private function customerInvoiceQuery(User|int $user): Builder
     {
         return Invoice::query()
-            ->whereHas('contract', fn (Builder $builder) => $builder->where('user_id', $userId))
+            ->whereHas('contract', fn (Builder $builder) => $builder->accessibleBy($user))
             ->whereNotIn('status', ['draft']);
     }
 }

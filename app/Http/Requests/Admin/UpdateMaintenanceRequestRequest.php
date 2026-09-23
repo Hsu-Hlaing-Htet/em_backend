@@ -21,7 +21,7 @@ class UpdateMaintenanceRequestRequest extends BaseAdminFormRequest
             'room_id' => ['sometimes', 'integer', Rule::exists('rooms', 'id')],
             'user_id' => ['sometimes', 'integer', Rule::exists('users', 'id')],
             'title' => ['sometimes', 'string', 'max:255'],
-            'category' => ['sometimes', 'string', Rule::in(MaintenanceRequestOptions::CATEGORIES)],
+            'category' => ['sometimes', 'string', 'max:255', MaintenanceRequestOptions::existingCategoryRule()],
             'priority' => ['sometimes', 'string', Rule::in(MaintenanceRequestOptions::PRIORITIES)],
             'description' => ['nullable', 'string'],
             'status' => ['prohibited'],

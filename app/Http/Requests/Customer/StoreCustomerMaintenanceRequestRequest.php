@@ -22,7 +22,7 @@ class StoreCustomerMaintenanceRequestRequest extends FormRequest
     public function rules(): array
     {
         $roomIds = Contract::query()
-            ->where('user_id', $this->user()->id)
+            ->accessibleBy($this->user())
             ->where('status', Contract::STATUS_ACTIVE)
             ->pluck('room_id')
             ->unique()
@@ -32,7 +32,7 @@ class StoreCustomerMaintenanceRequestRequest extends FormRequest
         return [
             'room_id' => ['required', 'integer', Rule::in($roomIds)],
             'title' => ['required', 'string', 'max:255'],
-            'category' => ['required', 'string', Rule::in(MaintenanceRequestOptions::CATEGORIES)],
+            'category' => ['required', 'string', 'max:255', MaintenanceRequestOptions::activeCategoryRule()],
             'priority' => ['required', 'string', Rule::in(MaintenanceRequestOptions::PRIORITIES)],
             'description' => ['required', 'string', 'max:5000'],
             'user_id' => ['prohibited'],

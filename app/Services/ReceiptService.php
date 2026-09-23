@@ -295,24 +295,39 @@ class ReceiptService
                 throw new ConcurrentConflictException('This receipt has already been sent to the customer.');
             }
 
-            $locked->loadMissing(['payment.invoice.contract.user.profile']);
+            $locked->loadMissing([
+                'payment.invoice.contract.user.profile',
+                'payment.invoice.contract.secondUser.profile',
+            ]);
 
-            $customer = $locked->payment?->invoice?->contract?->user;
+            $contract = $locked->payment?->invoice?->contract;
 
-            if (! $customer) {
+            if (! $contract) {
                 throw new InvalidArgumentException('Unable to resolve the receipt customer.');
             }
 
-            $email = isset($data['email']) && $data['email'] !== null && $data['email'] !== ''
-                ? (string) $data['email']
-                : $customer->email;
+            $partyEmails = $contract->partyEmails();
 
-            if (! $email) {
+            if ($partyEmails === []) {
                 throw new InvalidArgumentException('Customer email is required to send the receipt.');
             }
 
-            if (strcasecmp($email, (string) $customer->email) !== 0) {
-                throw new InvalidArgumentException('Receipt can only be sent to the contract customer email.');
+            $explicitEmail = isset($data['email']) && $data['email'] !== null && $data['email'] !== ''
+                ? trim((string) $data['email'])
+                : null;
+
+            if ($explicitEmail !== null) {
+                $allowed = collect($partyEmails)->contains(
+                    fn (string $partyEmail): bool => strcasecmp($partyEmail, $explicitEmail) === 0
+                );
+
+                if (! $allowed) {
+                    throw new InvalidArgumentException('Receipt can only be sent to a linked contract party email.');
+                }
+
+                $emails = [$explicitEmail];
+            } else {
+                $emails = $partyEmails;
             }
 
             if (! $locked->receipt_pdf_path) {
@@ -322,7 +337,10 @@ class ReceiptService
             }
 
             try {
-                $this->receiptDocumentService->sendEmailToRecipient($locked->fresh(), $email);
+                $fresh = $locked->fresh();
+                foreach ($emails as $email) {
+                    $this->receiptDocumentService->sendEmailToRecipient($fresh, $email);
+                }
             } catch (\Throwable $exception) {
                 throw new InvalidArgumentException('Unable to send receipt email: '.$exception->getMessage());
             }

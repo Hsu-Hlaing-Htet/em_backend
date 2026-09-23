@@ -90,7 +90,7 @@ class ContractLifecycleService
             $contract->room?->update(['status' => Room::STATUS_SOLD]);
         }
 
-        return $contract->fresh(['user.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
+        return $contract->fresh(['user.profile', 'secondUser.profile', 'room.building', 'paymentPlan', 'creator', 'approver']);
     }
 
     private function saleOutstandingBalance(Contract $contract): float
