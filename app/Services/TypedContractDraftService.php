@@ -7,6 +7,7 @@ use App\Models\Contract;
 use App\Models\Room;
 use App\Models\User;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use App\Support\ContractDraftProfile;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -70,7 +71,7 @@ class TypedContractDraftService
 
         $this->applyContractDraftSearch($query, $params);
         $this->applyCreatedDateFilter($query, $params);
-        $this->applyListQuery($query, $params);
+        $this->applyListQuery($query, $params, [], AdminListSorts::contracts());
 
         if (! empty($params['user_id'])) {
             $query->where('user_id', $params['user_id']);

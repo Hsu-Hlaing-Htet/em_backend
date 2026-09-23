@@ -27,7 +27,10 @@ class RoomImageService
             $query->where('room_id', (int) $params['room_id']);
         }
 
-        $this->applyListQuery($query, $params, ['image_path', 'description']);
+        $this->applyListQuery($query, $params, ['image_path', 'description'], [
+            'sort_order' => 'sort_order',
+            'created_at' => 'created_at',
+        ]);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

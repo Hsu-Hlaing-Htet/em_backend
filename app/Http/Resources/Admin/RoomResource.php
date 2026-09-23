@@ -43,6 +43,7 @@ class RoomResource extends JsonResource
             'sale_price' => $this->sale_price,
             'rent_price' => $this->rent_price,
             'rent_deposit_price' => $this->rent_deposit_price,
+            'booking_deposit_price' => $this->booking_deposit_price,
             'primary_image_url' => $this->resolvePrimaryImageUrl($roomImageService),
             'room_images' => $this->whenLoaded(
                 'roomImages',

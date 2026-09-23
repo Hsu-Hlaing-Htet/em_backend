@@ -17,6 +17,7 @@ use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Carbon;
 
 uses(RefreshDatabase::class);
@@ -122,12 +123,13 @@ function submitCustomerPayment(mixed $test, User $customer, Invoice $invoice, Pa
 
 test('invoice payment receipt workflow completes end to end', function () {
     Mail::fake();
+    Notification::fake();
 
     $admin = billingAdmin();
     $customer = billingCustomer();
     $contract = seedBillingContract($admin, $customer);
     $invoice = seedDraftInvoice($contract, $admin);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")
@@ -164,13 +166,15 @@ test('invoice payment receipt workflow completes end to end', function () {
     expect(Invoice::query()->find($invoice->id)?->status)->toBe('paid');
     expect(Payment::query()->find($paymentId)?->proof_image_path)->not->toBeNull();
     Mail::assertNotSent(ReceiptDocumentMail::class);
+    Notification::assertSentTo($customer, \App\Notifications\PaymentApprovedNotification::class);
 
     $receipt = Receipt::query()->first();
     expect($receipt)->not->toBeNull();
-    expect($receipt->status)->toBe('draft');
-    expect($receipt->approval_status)->toBe('pending');
-    expect($receipt->issued_at)->toBeNull();
-    expect($receipt->approved_at)->toBeNull();
+    expect($receipt->status)->toBe('issued');
+    expect($receipt->approval_status)->toBe('approved');
+    expect($receipt->issued_at)->not->toBeNull();
+    expect($receipt->approved_at)->not->toBeNull();
+    expect($receipt->sent_at)->toBeNull();
     expect($receipt->payment_id)->toBe($paymentId);
     expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
 
@@ -184,23 +188,33 @@ test('invoice payment receipt workflow completes end to end', function () {
         ->assertOk()
         ->assertJsonPath('data.total', 0);
 
+    // Payment approval finalizes the receipt — no pending receipt approval queue item.
     $this->actingAs($admin, 'sanctum')
         ->getJson('/api/receipts?approval_status=pending')
         ->assertOk()
-        ->assertJsonPath('data.total', 1)
-        ->assertJsonPath('data.data.0.id', $receipt->id);
+        ->assertJsonPath('data.total', 0);
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/issue")
-        ->assertStatus(422);
-
-    Mail::assertNotSent(ReceiptDocumentMail::class);
+        ->assertStatus(409);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/document/email", [
-            'email' => $customer->email,
-        ])
-        ->assertStatus(422);
+        ->postJson("/api/receipts/{$receipt->id}/approve")
+        ->assertStatus(409);
+
+    // Customer can view the receipt immediately after payment approval.
+    $this->actingAs($customer, 'sanctum')
+        ->getJson('/api/customer/receipts')
+        ->assertOk()
+        ->assertJsonPath('data.total', 1);
+
+    $this->actingAs($customer, 'sanctum')
+        ->getJson('/api/customer/notifications')
+        ->assertOk()
+        ->assertJsonFragment([
+            'title' => 'Payment Approved',
+            'message' => 'Your payment has been approved. Your receipt is now available in your Customer Portal.',
+        ]);
 
     // Re-approve must be rejected and must not create a second receipt.
     $this->actingAs($admin, 'sanctum')
@@ -212,27 +226,7 @@ test('invoice payment receipt workflow completes end to end', function () {
     expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
     Mail::assertNotSent(ReceiptDocumentMail::class);
 
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertOk()
-        ->assertJsonPath('data.status', 'draft')
-        ->assertJsonPath('data.approval_status', 'approved')
-        ->assertJsonPath('data.approved_by.id', $admin->id)
-        ->assertJsonPath('data.approved_at', fn ($value) => ! empty($value));
-
-    Mail::assertNotSent(ReceiptDocumentMail::class);
-
-    $approved = Receipt::query()->find($receipt->id);
-    expect($approved?->status)->toBe('draft');
-    expect($approved?->approval_status)->toBe('approved');
-    expect($approved?->issued_at)->toBeNull();
-    expect($approved?->sent_at)->toBeNull();
-
-    $this->actingAs($customer, 'sanctum')
-        ->getJson('/api/customer/receipts')
-        ->assertOk()
-        ->assertJsonPath('data.total', 0);
-
+    // Manual receipt document Send remains available until emailed.
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
             'email' => $customer->email,
@@ -279,7 +273,7 @@ test('rejecting payment keeps invoice payment status synchronized', function () 
     $customer = billingCustomer();
     $contract = seedBillingContract($admin, $customer);
     $invoice = seedDraftInvoice($contract, $admin);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")
@@ -315,7 +309,7 @@ test('payment approval rejects overpayment and customer cannot submit amount', f
     $customer = billingCustomer();
     $contract = seedBillingContract($admin, $customer);
     $invoice = seedDraftInvoice($contract, $admin);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")
@@ -344,12 +338,15 @@ test('payment approval rejects overpayment and customer cannot submit amount', f
     expect(Receipt::query()->count())->toBe(0);
 });
 
-test('customer cannot view draft receipts', function () {
+test('customer can view receipt immediately after payment approval', function () {
+    Mail::fake();
+    Notification::fake();
+
     $admin = billingAdmin();
     $customer = billingCustomer();
     $contract = seedBillingContract($admin, $customer);
     $invoice = seedDraftInvoice($contract, $admin);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")
@@ -367,7 +364,8 @@ test('customer cannot view draft receipts', function () {
 
     $this->actingAs($customer, 'sanctum')
         ->getJson("/api/customer/receipts/{$receiptId}")
-        ->assertNotFound();
+        ->assertOk()
+        ->assertJsonPath('data.id', $receiptId);
 });
 
 test('sale contract completes only after confirmed payment clears contract balance', function () {
@@ -403,7 +401,7 @@ test('sale contract completes only after confirmed payment clears contract balan
         'total_amount' => 500000,
         'created_by' => $admin->id,
     ]);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")
@@ -431,7 +429,7 @@ test('rent contract does not complete after only one paid monthly invoice before
     ]);
     $invoice = seedDraftInvoice($contract, $admin, 100000);
     $invoice->update(['billing_month' => now()->startOfMonth()->toDateString()]);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")
@@ -458,7 +456,7 @@ test('rent contract completes after end date when required invoice balances are 
     ]);
     $invoice = seedDraftInvoice($contract, $admin, 100000);
     $invoice->update(['billing_month' => '2026-09-01', 'due_date' => '2026-09-01']);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/issue")

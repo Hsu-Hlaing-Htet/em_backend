@@ -100,7 +100,7 @@ function tb4IssuedInvoice(User $admin, User $customer, float $total = 100000): a
         'amount' => $total,
     ]);
 
-    $method = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $method = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     return compact('building', 'room', 'contract', 'invoice', 'method');
 }
@@ -184,8 +184,8 @@ test('admin can retrieve pending payments then approve or reject', function () {
 
     $receipt = Receipt::query()->where('payment_id', $approvePaymentId)->first();
     expect($receipt)->not->toBeNull();
-    expect($receipt->status)->toBe('draft');
-    expect($receipt->approval_status)->toBe('pending');
+    expect($receipt->status)->toBe('issued');
+    expect($receipt->approval_status)->toBe('approved');
     expect($receipt->payment_id)->toBe($approvePaymentId);
 
     $this->actingAs($admin, 'sanctum')
@@ -198,7 +198,7 @@ test('admin can retrieve pending payments then approve or reject', function () {
     expect(Invoice::query()->find($rejectInvoice->id)?->status)->toBe('issued');
 });
 
-test('receipt becomes visible to customer only after delivery email', function () {
+test('receipt becomes visible to customer after payment approval', function () {
     Storage::fake('public');
     Mail::fake();
     $admin = tb4Admin();
@@ -224,12 +224,7 @@ test('receipt becomes visible to customer only after delivery email', function (
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/customer/receipts')
         ->assertOk()
-        ->assertJsonPath('data.total', 0);
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertOk()
-        ->assertJsonPath('data.approval_status', 'approved');
+        ->assertJsonPath('data.total', 1);
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [

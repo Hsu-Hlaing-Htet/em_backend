@@ -18,7 +18,10 @@ class RoleService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = Role::query();
-        $this->applyListQuery($query, $params, ['name']);
+        $this->applyListQuery($query, $params, ['name'], [
+            'name' => 'name',
+            'created_at' => 'created_at',
+        ]);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

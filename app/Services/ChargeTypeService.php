@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ChargeType;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
@@ -18,7 +19,7 @@ class ChargeTypeService
     {
         $query = ChargeType::query();
         $this->applyStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, ['name', 'slug', 'status']);
+        $this->applyListQuery($query, $params, ['name', 'slug', 'status'], AdminListSorts::namedSettings());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

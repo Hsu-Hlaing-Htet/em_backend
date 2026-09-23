@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\LateFee;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class LateFeeService
@@ -17,7 +18,12 @@ class LateFeeService
     {
         $query = LateFee::query();
         $this->applyStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, ['name', 'type', 'value', 'per', 'grace_days', 'status']);
+        $this->applyListQuery($query, $params, ['name', 'type', 'value', 'per', 'grace_days', 'status'], AdminListSorts::namedSettings([
+            'type' => 'type',
+            'value' => 'value',
+            'per' => 'per',
+            'grace_days' => 'grace_days',
+        ]));
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

@@ -241,7 +241,7 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
 
     expect($invoiceFilename)->toBe('INV-000164.pdf');
 
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
     $payment = Payment::query()->create([
         'invoice_id' => $invoice->id,
         'payment_method_id' => $paymentMethod->id,
@@ -411,7 +411,7 @@ test('receipt document html uses rosewood receipt template fields', function () 
     ['room' => $room, 'contract' => $contract] = pdfDownloadStack($admin);
     $utilityType = UtilityType::query()->where('slug', 'electricity')->firstOrFail();
     $utilityCharge = ChargeType::query()->where('slug', 'utility-charges')->firstOrFail();
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $utility = Utility::query()->create([
         'room_id' => $room->id,

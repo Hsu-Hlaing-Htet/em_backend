@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\UtilityRate;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -32,7 +33,7 @@ class UtilityRateService
             $query->where('status', $params['status']);
         }
 
-        $this->applyListQuery($query, $params, []);
+        $this->applyListQuery($query, $params, [], AdminListSorts::utilityRates());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

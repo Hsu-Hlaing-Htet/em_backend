@@ -1,14 +1,20 @@
 <?php
 
-use App\Http\Controllers\Public\PropertyController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('api/public')->group(function (): void {
-    Route::get('properties', [PropertyController::class, 'index']);
-    Route::get('properties/featured', [PropertyController::class, 'featured']);
-    Route::get('properties/stats', [PropertyController::class, 'stats']);
-    Route::get('properties/{property}', [PropertyController::class, 'show']);
-});
+/*
+|--------------------------------------------------------------------------
+| Web routes
+|--------------------------------------------------------------------------
+|
+| Laravel serves the API under routes/api.php. This file only exposes a
+| lightweight root health response — the Vue app lives on its own origin.
+|
+*/
 
-Route::view('/{path?}', 'app')
-    ->where('path', '^(?!api|up).*$');
+Route::get('/', function () {
+    return response()->json([
+        'message' => 'Rosewood Royale API',
+        'status' => 'running',
+    ]);
+});

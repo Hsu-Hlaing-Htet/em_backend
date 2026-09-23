@@ -42,6 +42,7 @@ class UpdateRoomRequest extends BaseAdminFormRequest
             'sale_price' => ['required', 'numeric', 'min:0'],
             'rent_price' => ['required', 'numeric', 'min:0'],
             'rent_deposit_price' => ['required', 'numeric', 'min:0'],
+            'booking_deposit_price' => ['nullable', 'numeric', 'min:0'],
         ];
     }
 

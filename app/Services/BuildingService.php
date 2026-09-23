@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Building;
 use App\Models\Room;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -21,7 +22,12 @@ class BuildingService
         $query = Building::query()->withCount([
             'rooms as rooms_count' => fn ($query) => $query->withTrashed(),
         ]);
-        $this->applyListQuery($query, $params, ['building_name', 'location', 'description']);
+        $this->applyListQuery(
+            $query,
+            $params,
+            ['building_name', 'location', 'description'],
+            AdminListSorts::buildings(),
+        );
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

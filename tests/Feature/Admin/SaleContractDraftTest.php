@@ -123,6 +123,22 @@ test('installment sale contract draft requires duration and rejects billing day'
         ->assertJsonValidationErrors(['duration_months', 'billing_day'], 'data');
 });
 
+test('sale contract draft rejects client-supplied deposit amount', function () {
+    $admin = saleDraftAdmin();
+    ['room' => $room, 'customer' => $customer] = seedSaleDraftStack();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/sale-contract-drafts', [
+            'user_id' => $customer->id,
+            'room_id' => $room->id,
+            'payment_type' => 'full',
+            'start_date' => now()->toDateString(),
+            'deposit_amount' => 1,
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['deposit_amount'], 'data');
+});
+
 test('sale contract draft rejects unavailable room and invalid totals', function () {
     $admin = saleDraftAdmin();
     ['room' => $room, 'customer' => $customer] = seedSaleDraftStack();

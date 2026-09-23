@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\PaymentPlan;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class PaymentPlanService
@@ -17,7 +18,11 @@ class PaymentPlanService
     {
         $query = PaymentPlan::query();
         $this->applyStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, ['name', 'payment_type']);
+        $this->applyListQuery($query, $params, ['name', 'payment_type'], AdminListSorts::namedSettings([
+            'payment_type' => 'payment_type',
+            'duration_months' => 'duration_months',
+            'interest_percentage' => 'interest_percentage',
+        ]));
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

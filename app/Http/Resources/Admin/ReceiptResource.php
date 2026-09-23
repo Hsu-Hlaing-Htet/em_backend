@@ -33,7 +33,7 @@ class ReceiptResource extends JsonResource
             'display_status' => $this->resolveDisplayStatus($invoice),
             'delivery_status' => $this->resolveDeliveryStatus(),
             'can_send_email' => $this->canBeEmailed(),
-            'is_sent' => $this->isDeliveredToCustomer(),
+            'is_sent' => $this->isEmailSent(),
             'issued_at' => $this->issued_at?->toDateTimeString(),
             'sent_at' => $this->sent_at?->toDateTimeString(),
             'sent_by' => $this->sent_by,
@@ -125,7 +125,7 @@ class ReceiptResource extends JsonResource
             return 'rejected';
         }
 
-        if ($this->isDeliveredToCustomer()) {
+        if ($this->isEmailSent()) {
             return 'sent';
         }
 
@@ -154,7 +154,7 @@ class ReceiptResource extends JsonResource
 
     private function resolveDeliveryStatus(): string
     {
-        if ($this->isDeliveredToCustomer()) {
+        if ($this->isEmailSent()) {
             return 'sent';
         }
 

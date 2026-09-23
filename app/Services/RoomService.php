@@ -6,6 +6,7 @@ use App\Models\Building;
 use App\Models\Contract;
 use App\Models\Room;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +49,7 @@ class RoomService
             $query->where('status', $params['status']);
         }
 
-        $this->applyListQuery($query, $params, []);
+        $this->applyListQuery($query, $params, [], AdminListSorts::rooms());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

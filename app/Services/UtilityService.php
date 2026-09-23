@@ -9,6 +9,8 @@ use App\Models\Utility;
 use App\Models\UtilityItem;
 use App\Models\UtilityRate;
 use App\Models\UtilityType;
+use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +20,8 @@ use InvalidArgumentException;
 
 class UtilityService
 {
+    use AppliesListQuery;
+
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly InvoiceService $invoiceService,
@@ -27,9 +31,7 @@ class UtilityService
     public function paginate(array $filters = []): LengthAwarePaginator
     {
         $query = Utility::query()
-            ->with(['room.building', 'contract.user.profile', 'items.utilityType', 'creator'])
-            ->latest('billing_month')
-            ->latest('id');
+            ->with(['room.building', 'contract.user.profile', 'items.utilityType', 'creator']);
 
         if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -37,6 +39,11 @@ class UtilityService
 
         if (! empty($filters['room_id'])) {
             $query->where('room_id', (int) $filters['room_id']);
+        }
+
+        if (! empty($filters['building_id'])) {
+            $query->whereHas('room', fn ($roomQuery) => $roomQuery
+                ->where('building_id', (int) $filters['building_id']));
         }
 
         if (! empty($filters['billing_month_from'])) {
@@ -59,6 +66,16 @@ class UtilityService
                         ->orWhere('email', 'like', "%{$search}%"));
             });
         }
+
+        $this->applyListQuery(
+            $query,
+            $filters,
+            [],
+            AdminListSorts::utilities(),
+            function ($builder): void {
+                $builder->latest('utilities.billing_month')->latest('utilities.id');
+            },
+        );
 
         return $query->paginate($filters['per_page'] ?? 15);
     }

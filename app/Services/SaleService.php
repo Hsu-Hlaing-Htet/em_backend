@@ -6,6 +6,7 @@ use App\Models\Contract;
 use App\Models\Room;
 use App\Models\Sale;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use InvalidArgumentException;
@@ -28,7 +29,7 @@ class SaleService
             'approver',
         ]);
 
-        $this->applyListQuery($query, $params, ['sale_number']);
+        $this->applyListQuery($query, $params, ['sale_number'], AdminListSorts::sales());
 
         if (! empty($params['status'])) {
             $status = $this->normalizeStatusFilter((string) $params['status']);

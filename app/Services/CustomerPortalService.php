@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Http\Resources\Admin\PaymentResource;
 use App\Models\Contract;
+use App\Models\CustomerNotificationRead;
 use App\Models\Invoice;
 use App\Models\MaintenanceRequest;
 use App\Models\Payment;
@@ -342,7 +343,7 @@ class CustomerPortalService
         }
 
         $recentPayments = Payment::query()
-            ->with('invoice')
+            ->with(['invoice', 'receipt'])
             ->whereHas('invoice.contract', fn (Builder $builder) => $builder->where('user_id', $user->id))
             ->whereIn('status', ['pending', 'approved', 'rejected'])
             ->latest('updated_at')
@@ -350,21 +351,51 @@ class CustomerPortalService
             ->get();
 
         foreach ($recentPayments as $payment) {
-            $title = match ($payment->status) {
-                'pending' => "Payment submitted for {$payment->invoice?->invoice_number}",
-                'approved' => "Payment approved for {$payment->invoice?->invoice_number}",
-                'rejected' => "Payment rejected for {$payment->invoice?->invoice_number}",
-                default => "Payment update for {$payment->invoice?->invoice_number}",
-            };
+            $receiptId = $payment->relationLoaded('receipt')
+                ? $payment->receipt?->id
+                : $payment->receipt()->value('id');
+
+            if ($payment->status === 'approved') {
+                $items->push([
+                    'id' => "payment-{$payment->id}",
+                    'type' => 'payment',
+                    'title' => 'Payment Approved',
+                    'message' => 'Your payment has been approved. Your receipt is now available in your Customer Portal.',
+                    'status' => $payment->status,
+                    'created_at' => $payment->updated_at?->toDateTimeString(),
+                    'resource_id' => $receiptId ?: $payment->id,
+                    'receipt_id' => $receiptId,
+                    'payment_id' => $payment->id,
+                ]);
+
+                continue;
+            }
+
+            if ($payment->status === 'rejected') {
+                $items->push([
+                    'id' => "payment-{$payment->id}",
+                    'type' => 'payment',
+                    'title' => 'Payment Rejected',
+                    'message' => 'Your payment has been rejected. Please check the details and submit again.',
+                    'status' => $payment->status,
+                    'created_at' => $payment->updated_at?->toDateTimeString(),
+                    'resource_id' => $payment->id,
+                    'payment_id' => $payment->id,
+                ]);
+
+                continue;
+            }
 
             $items->push([
                 'id' => "payment-{$payment->id}",
                 'type' => 'payment',
-                'title' => $title,
+                'title' => "Payment submitted for {$payment->invoice?->invoice_number}",
                 'message' => "Amount {$payment->amount} · Status {$payment->status}",
                 'status' => $payment->status,
                 'created_at' => $payment->updated_at?->toDateTimeString(),
-                'resource_id' => $payment->invoice_id,
+                'resource_id' => $payment->id,
+                'payment_id' => $payment->id,
+                'invoice_id' => $payment->invoice_id,
             ]);
         }
 
@@ -408,11 +439,57 @@ class CustomerPortalService
             ]);
         }
 
-        return $items
+        $sorted = $items
             ->sortByDesc('created_at')
             ->values()
             ->take(20)
+            ->values();
+
+        $keys = $sorted->pluck('id')->filter()->values()->all();
+
+        $reads = empty($keys)
+            ? collect()
+            : CustomerNotificationRead::query()
+                ->where('user_id', $user->id)
+                ->whereIn('notification_key', $keys)
+                ->get(['notification_key', 'read_at'])
+                ->keyBy('notification_key');
+
+        return $sorted
+            ->map(function (array $item) use ($reads): array {
+                $readAt = $reads->get($item['id'])?->read_at;
+                $item['read_at'] = $readAt?->toDateTimeString();
+
+                return $item;
+            })
             ->all();
+    }
+
+    /**
+     * @return array{id: string, read_at: string|null}
+     */
+    public function markNotificationAsRead(User $user, string $notificationKey): array
+    {
+        $notificationKey = trim($notificationKey);
+
+        if (! preg_match('/^(invoice|payment|receipt|contract|utility|maintenance)-\d+$/', $notificationKey)) {
+            throw new InvalidArgumentException('Invalid notification key.');
+        }
+
+        $read = CustomerNotificationRead::query()->updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'notification_key' => $notificationKey,
+            ],
+            [
+                'read_at' => now(),
+            ]
+        );
+
+        return [
+            'id' => $notificationKey,
+            'read_at' => $read->read_at?->toDateTimeString(),
+        ];
     }
 
     public function contractDocumentResponse(User $user, Contract $contract, string $action): Response
@@ -461,14 +538,7 @@ class CustomerPortalService
      */
     public function paymentMethods(): array
     {
-        return PaymentMethod::query()
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn (PaymentMethod $method) => [
-                'id' => $method->id,
-                'name' => $method->name,
-            ])
-            ->all();
+        return app(PaymentMethodService::class)->customerAvailableMethods();
     }
 
     /**

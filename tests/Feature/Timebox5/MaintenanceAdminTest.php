@@ -177,6 +177,22 @@ test('administrator can view start complete and reject maintenance requests', fu
         ->assertJsonPath('data.status', 'completed')
         ->assertJsonPath('data.resolution_note', 'Hinge replaced.');
 
+    $acceptId = $this->actingAs($customer, 'sanctum')
+        ->postJson('/api/customer/maintenance-requests', [
+            'room_id' => $room->id,
+            'title' => 'Accept alias check',
+            'category' => 'general',
+            'priority' => 'medium',
+            'description' => 'Should accept via /accept.',
+        ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/maintenance-requests/{$acceptId}/accept")
+        ->assertOk()
+        ->assertJsonPath('data.status', 'in_progress');
+
     $rejectId = $this->actingAs($customer, 'sanctum')
         ->postJson('/api/customer/maintenance-requests', [
             'room_id' => $room->id,

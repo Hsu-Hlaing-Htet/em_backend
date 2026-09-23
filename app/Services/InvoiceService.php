@@ -12,6 +12,7 @@ use App\Models\Receipt;
 use App\Models\Utility;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use App\Support\BillingEagerLoads;
 use App\Support\ContractInvoiceSchedule;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -43,7 +44,7 @@ class InvoiceService
         $this->applyDateRangeFilter($query, $params, 'issued_date', 'issued_from', 'issued_to');
         $this->applyDateRangeFilter($query, $params, 'due_date', 'due_from', 'due_to');
         $this->applyInvoicePaymentStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, []);
+        $this->applyListQuery($query, $params, [], AdminListSorts::invoices());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
@@ -107,7 +108,7 @@ class InvoiceService
 
     public function issue(Invoice $invoice): Invoice
     {
-        return DB::transaction(function () use ($invoice): Invoice {
+        $issued = DB::transaction(function () use ($invoice): Invoice {
             /** @var Invoice $locked */
             $locked = Invoice::query()
                 ->whereKey($invoice->id)
@@ -125,16 +126,21 @@ class InvoiceService
                 'approved_at' => now(),
             ]);
 
-            $locked = $locked->fresh(BillingEagerLoads::invoice());
+            return $locked->fresh(BillingEagerLoads::invoice());
+        });
 
-            if ($locked->contract?->user?->email) {
-                $this->invoiceDocumentService->sendEmail($locked, [
-                    'email' => $locked->contract->user->email,
+        // Email is best-effort — never roll back a successful issue on mail failure.
+        try {
+            if ($issued->contract?->user?->email) {
+                $this->invoiceDocumentService->sendEmail($issued, [
+                    'email' => $issued->contract->user->email,
                 ]);
             }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
 
-            return $locked;
-        });
+        return $issued;
     }
 
     public function generateFromContract(Contract $contract, ?Carbon $billingMonth = null): Invoice

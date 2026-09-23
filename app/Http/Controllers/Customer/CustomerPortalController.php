@@ -131,6 +131,12 @@ class CustomerPortalController extends Controller
             ->values()
             ->all();
 
+        $pendingPayment = $invoice->payments->firstWhere('status', Payment::STATUS_PENDING)
+            ?? $invoice->payments->firstWhere('status', 'pending');
+
+        $resource['has_pending_payment'] = $pendingPayment !== null;
+        $resource['pending_payment_id'] = $pendingPayment?->id;
+
         return response()->json([
             'data' => $resource,
         ]);
@@ -155,6 +161,25 @@ class CustomerPortalController extends Controller
                 'data' => $items,
                 'total' => $paginator->total(),
             ],
+        ]);
+    }
+
+    public function showPayment(
+        Request $request,
+        Payment $payment,
+        CustomerPortalService $customerPortalService,
+    ): JsonResponse {
+        $payment = $customerPortalService->findPayment($request->user(), $payment->id);
+        $resource = $this->mapPayment($payment);
+
+        if ($payment->relationLoaded('invoice') && $payment->invoice) {
+            $invoiceResource = (new InvoiceResource($payment->invoice))->resolve();
+            $invoiceResource['paid_amount'] = $customerPortalService->invoicePaidAmount($payment->invoice);
+            $resource['invoice_summary'] = $invoiceResource;
+        }
+
+        return response()->json([
+            'data' => $resource,
         ]);
     }
 
@@ -235,6 +260,25 @@ class CustomerPortalController extends Controller
     {
         return response()->json([
             'data' => $customerPortalService->notifications($request->user()),
+        ]);
+    }
+
+    public function markNotificationRead(
+        Request $request,
+        string $notification,
+        CustomerPortalService $customerPortalService,
+    ): JsonResponse {
+        try {
+            $data = $customerPortalService->markNotificationAsRead($request->user(), $notification);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Notification marked as read.',
+            'data' => $data,
         ]);
     }
 

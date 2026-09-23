@@ -28,9 +28,15 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Customer\AiRentAssistantController;
 use App\Http\Controllers\Customer\CustomerPortalController;
 use App\Http\Controllers\Public\AiPropertyAssistantController;
+use App\Http\Controllers\Public\PropertyController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('public')->group(function (): void {
+    Route::get('properties', [PropertyController::class, 'index']);
+    Route::get('properties/featured', [PropertyController::class, 'featured']);
+    Route::get('properties/stats', [PropertyController::class, 'stats']);
+    Route::get('properties/{property}', [PropertyController::class, 'show']);
+
     Route::post('ai/property/ask', [AiPropertyAssistantController::class, 'ask'])
         ->middleware('throttle:ai-public');
 });
@@ -59,11 +65,14 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
     Route::get('invoices/{invoice}/document/download', [CustomerPortalController::class, 'downloadInvoiceDocument']);
     Route::get('payments', [CustomerPortalController::class, 'payments']);
     Route::post('payments', [CustomerPortalController::class, 'storePayment']);
+    Route::get('payments/{payment}', [CustomerPortalController::class, 'showPayment']);
     Route::post('payments/{payment}/proof', [CustomerPortalController::class, 'uploadPaymentProof']);
     Route::get('receipts', [CustomerPortalController::class, 'receipts']);
     Route::get('receipts/{receipt}', [CustomerPortalController::class, 'showReceipt']);
     Route::get('receipts/{receipt}/document/download', [CustomerPortalController::class, 'downloadReceiptDocument']);
     Route::get('notifications', [CustomerPortalController::class, 'notifications']);
+    Route::post('notifications/{notification}/read', [CustomerPortalController::class, 'markNotificationRead'])
+        ->where('notification', '[A-Za-z]+-\d+');
     Route::get('payment-methods', [CustomerPortalController::class, 'paymentMethods']);
     Route::get('maintenance-rooms', [CustomerPortalController::class, 'maintenanceRooms']);
     Route::get('maintenance-requests', [CustomerPortalController::class, 'maintenanceRequests']);
@@ -101,6 +110,8 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('charge-types', ChargeTypeController::class);
     Route::apiResource('late-fees', LateFeeController::class);
     Route::apiResource('payment-methods', PaymentMethodController::class);
+    // Multipart updates (QR upload) — PHP does not reliably parse files on PUT.
+    Route::post('payment-methods/{payment_method}', [PaymentMethodController::class, 'update']);
     Route::apiResource('payment-plans', PaymentPlanController::class);
 
     Route::get('sale-contract-drafts/{sale_contract_draft}/document/download', [SaleContractDraftController::class, 'downloadDocument']);
@@ -164,7 +175,9 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::get('receipts/{receipt}', [ReceiptController::class, 'show']);
 
     Route::post('maintenance-requests/{maintenance_request}/start', [MaintenanceRequestController::class, 'start']);
+    Route::post('maintenance-requests/{maintenance_request}/accept', [MaintenanceRequestController::class, 'start']);
     Route::post('maintenance-requests/{maintenance_request}/complete', [MaintenanceRequestController::class, 'complete']);
     Route::post('maintenance-requests/{maintenance_request}/reject', [MaintenanceRequestController::class, 'reject']);
+    Route::post('maintenance-requests/{maintenance_request}/cancel', [MaintenanceRequestController::class, 'cancel']);
     Route::apiResource('maintenance-requests', MaintenanceRequestController::class);
 });

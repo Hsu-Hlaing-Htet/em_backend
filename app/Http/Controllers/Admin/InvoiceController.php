@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StoreInvoiceRequest;
@@ -64,12 +65,30 @@ class InvoiceController extends Controller
         ]);
     }
 
+    public function issue(Invoice $invoice, InvoiceService $invoiceService): JsonResponse
+    {
+        try {
+            $invoice = $invoiceService->issue($invoice);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
+        }
+
+        return response()->json([
+            'message' => 'Invoice issued and sent to customer successfully.',
+            'data' => new InvoiceResource($invoice),
+        ]);
+    }
+
     public function destroy(Invoice $invoice, InvoiceService $invoiceService): JsonResponse
     {
         try {
             $invoiceService->delete($invoice);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -81,28 +100,16 @@ class InvoiceController extends Controller
     {
         try {
             $invoice = $invoiceService->generateFromContract($contract);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
             'message' => 'Invoice generated successfully.',
             'data' => new InvoiceResource($invoice),
         ], 201);
-    }
-
-    public function issue(Invoice $invoice, InvoiceService $invoiceService): JsonResponse
-    {
-        try {
-            $invoice = $invoiceService->issue($invoice);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
-        }
-
-        return response()->json([
-            'message' => 'Invoice issued and sent to customer successfully.',
-            'data' => new InvoiceResource($invoice),
-        ]);
     }
 
     public function downloadDocument(Invoice $invoice, InvoiceDocumentService $invoiceDocumentService): Response

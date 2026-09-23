@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\ConcurrentConflictException;
 use App\Models\MaintenanceRequest;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
@@ -36,7 +37,7 @@ class MaintenanceRequestService
             });
         }
 
-        $this->applyListQuery($query, $params, []);
+        $this->applyListQuery($query, $params, [], AdminListSorts::maintenanceRequests());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

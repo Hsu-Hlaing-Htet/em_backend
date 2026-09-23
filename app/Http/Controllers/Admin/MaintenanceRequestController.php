@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CompleteMaintenanceRequestRequest;
 use App\Http\Requests\Admin\RejectMaintenanceRequestRequest;
@@ -87,12 +88,14 @@ class MaintenanceRequestController extends Controller
     ): JsonResponse {
         try {
             $maintenanceRequest = $maintenanceRequestService->start($maintenanceRequest);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
-            'message' => 'Maintenance request started successfully.',
+            'message' => 'Maintenance request accepted successfully.',
             'data' => new MaintenanceRequestResource($maintenanceRequest),
         ]);
     }
@@ -107,8 +110,10 @@ class MaintenanceRequestController extends Controller
                 $maintenanceRequest,
                 $request->validated('resolution_note'),
             );
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -127,12 +132,52 @@ class MaintenanceRequestController extends Controller
                 $maintenanceRequest,
                 $request->validated('rejection_reason'),
             );
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
             'message' => 'Maintenance request rejected successfully.',
+            'data' => new MaintenanceRequestResource($maintenanceRequest),
+        ]);
+    }
+
+    /**
+     * Cancel an in-progress request (Admin UI cancel). Uses the same terminal
+     * rejection path with an optional cancellation_reason alias.
+     */
+    public function cancel(
+        Request $request,
+        MaintenanceRequest $maintenanceRequest,
+        MaintenanceRequestService $maintenanceRequestService,
+    ): JsonResponse {
+        $reason = trim((string) (
+            $request->input('cancellation_reason')
+            ?? $request->input('rejection_reason')
+            ?? ''
+        ));
+
+        if ($reason === '') {
+            return response()->json([
+                'message' => 'Cancellation reason is required.',
+                'data' => [
+                    'cancellation_reason' => ['Cancellation reason is required.'],
+                ],
+            ], 422);
+        }
+
+        try {
+            $maintenanceRequest = $maintenanceRequestService->reject($maintenanceRequest, $reason);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
+        }
+
+        return response()->json([
+            'message' => 'Maintenance request cancelled successfully.',
             'data' => new MaintenanceRequestResource($maintenanceRequest),
         ]);
     }

@@ -78,21 +78,16 @@ class Receipt extends Model
         return $this->status === self::STATUS_ISSUED;
     }
 
-    public function canBeIssued(): bool
-    {
-        return $this->isApproved() && $this->status === self::STATUS_DRAFT && $this->sent_at === null;
-    }
-
-    public function canBeEmailed(): bool
-    {
-        return $this->isApproved()
-            && $this->status === self::STATUS_DRAFT
-            && $this->sent_at === null;
-    }
-
     public function isDeliveredToCustomer(): bool
     {
-        return $this->status === self::STATUS_ISSUED && $this->sent_at !== null;
+        // Customer-visible once issued (payment approval finalizes the receipt).
+        // Document email delivery is tracked separately via sent_at.
+        return $this->status === self::STATUS_ISSUED;
+    }
+
+    public function isEmailSent(): bool
+    {
+        return $this->sent_at !== null;
     }
 
     /**
@@ -101,8 +96,18 @@ class Receipt extends Model
      */
     public function scopeDeliveredToCustomer($query)
     {
-        return $query
-            ->where('status', self::STATUS_ISSUED)
-            ->whereNotNull('sent_at');
+        return $query->where('status', self::STATUS_ISSUED);
+    }
+
+    public function canBeIssued(): bool
+    {
+        return $this->isApproved() && $this->status === self::STATUS_DRAFT && $this->sent_at === null;
+    }
+
+    public function canBeEmailed(): bool
+    {
+        return $this->isApproved()
+            && in_array($this->status, [self::STATUS_DRAFT, self::STATUS_ISSUED], true)
+            && $this->sent_at === null;
     }
 }

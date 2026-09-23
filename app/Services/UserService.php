@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Hash;
 
@@ -17,7 +18,7 @@ class UserService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = User::query()->with('role');
-        $this->applyListQuery($query, $params, ['name', 'email']);
+        $this->applyListQuery($query, $params, ['name', 'email'], AdminListSorts::accounts());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

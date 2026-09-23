@@ -234,7 +234,7 @@ it('prevents duplicate payment approval and duplicate receipt creation', functio
     $customer = concurrencyCustomer();
     $room = concurrencyRoom('rent', 'available');
     $contract = concurrencyActiveRentContract($admin, $customer, $room);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $invoice = Invoice::query()->create([
         'contract_id' => $contract->id,
@@ -371,7 +371,7 @@ it('uses lockForUpdate inside payment approval transaction', function (): void {
     $customer = concurrencyCustomer();
     $room = concurrencyRoom('rent', 'available');
     $contract = concurrencyActiveRentContract($admin, $customer, $room);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $invoice = Invoice::query()->create([
         'contract_id' => $contract->id,

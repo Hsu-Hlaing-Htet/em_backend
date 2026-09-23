@@ -314,7 +314,7 @@ test('payment and receipt workflows still work with consolidated invoices', func
     $contract = consolidatedRentContract($admin, $customer, $room);
     $electricity = consolidatedUtilityType('electricity-cb-pay', 'Electricity');
     $utility = consolidatedApprovedUtility($room, $admin, $electricity, 6000);
-    $paymentMethod = PaymentMethod::query()->where('status', 'active')->firstOrFail();
+    $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $invoice = app(InvoiceService::class)->generateFromContract($contract);
     app(InvoiceService::class)->issue($invoice->fresh());

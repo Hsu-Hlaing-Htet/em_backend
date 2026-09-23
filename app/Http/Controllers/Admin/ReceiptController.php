@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Resources\Admin\ReceiptResource;
@@ -38,8 +39,10 @@ class ReceiptController extends Controller
     {
         try {
             $receipt = $receiptService->approve($receipt);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -52,8 +55,10 @@ class ReceiptController extends Controller
     {
         try {
             $receipt = $receiptService->reject($receipt);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -66,8 +71,10 @@ class ReceiptController extends Controller
     {
         try {
             $receipt = $receiptService->issue($receipt);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -96,8 +103,10 @@ class ReceiptController extends Controller
                 $receipt,
                 $request->validated(),
             );
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([

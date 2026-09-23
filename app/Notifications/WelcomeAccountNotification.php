@@ -2,14 +2,11 @@
 
 namespace App\Notifications;
 
-use App\Notifications\Concerns\ProvidesEmailBranding;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class WelcomeAccountNotification extends Notification
 {
-    use ProvidesEmailBranding;
-
     public function __construct(
         private readonly string $temporaryPassword,
     ) {}
@@ -41,7 +38,6 @@ class WelcomeAccountNotification extends Notification
                 'userName' => (string) ($notifiable->name ?? ''),
                 'loginEmail' => (string) ($notifiable->email ?? ''),
                 'temporaryPassword' => $this->temporaryPassword,
-                'logoSrc' => $this->brandLogoSrc(),
             ]);
     }
 }

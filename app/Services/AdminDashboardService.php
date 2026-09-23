@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Building;
 use App\Models\Contract;
 use App\Models\Invoice;
+use App\Models\MaintenanceRequest;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Models\Room;
@@ -30,6 +31,8 @@ class AdminDashboardService
             'pending_approval_breakdown' => $this->pendingApprovalBreakdown(),
             'property_stats' => $this->propertyStats(),
             'invoice_stats' => $this->invoiceStats(),
+            'system_alerts' => $this->systemAlerts(),
+            'activity_timeline' => [],
         ];
     }
 
@@ -269,7 +272,7 @@ class AdminDashboardService
         $windowEnd = now()->addDays(60)->endOfDay();
 
         return Contract::query()
-            ->with(['room.building'])
+            ->with(['room.building', 'user'])
             ->where('status', 'active')
             ->whereNotNull('end_date')
             ->whereDate('end_date', '>=', now()->toDateString())
@@ -288,16 +291,159 @@ class AdminDashboardService
                 return [
                     'id' => $contract->id,
                     'number' => $contract->contract_number,
+                    'customer' => $contract->user?->name,
                     'property' => "{$buildingName} · {$roomNumber}",
                     'end_date' => $endDate?->format('d M Y') ?? '—',
                     'days_left' => $daysLeft,
                     'to' => $contract->type === 'sale'
-                        ? "/admin/sale-contracts/{$contract->id}"
-                        : "/admin/rent-contracts/{$contract->id}",
+                        ? "/admin/sale-contracts/active/{$contract->id}"
+                        : "/admin/rent-contracts/active/{$contract->id}",
                 ];
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * Operational alerts derived only from live database conditions.
+     *
+     * Counts remain for compatibility; `items` drives the Admin Dashboard list
+     * and is capped at 5 rows (overdue invoices first, then high-priority maintenance).
+     *
+     * @return array{
+     *     expired_contracts: int,
+     *     unresolved_maintenance: int,
+     *     overdue_invoices: int,
+     *     items: list<array<string, mixed>>
+     * }
+     */
+    private function systemAlerts(): array
+    {
+        $maxItems = 5;
+
+        $overdueInvoices = Invoice::query()
+            ->with(['contract.user', 'contract.room.building'])
+            ->withSum([
+                'payments as approved_amount' => fn ($query) => $query->where('status', Payment::STATUS_APPROVED),
+            ], 'amount')
+            ->where('status', Invoice::STATUS_OVERDUE)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->limit($maxItems)
+            ->get()
+            ->map(function (Invoice $invoice) {
+                $room = $invoice->contract?->room;
+                $buildingName = $room?->building?->building_name ?? '—';
+                $roomNumber = $room?->room_number ?? '—';
+                $customer = $invoice->contract?->user?->name ?? '—';
+                $totalDue = round((float) $invoice->total_amount + (float) $invoice->late_fee, 2);
+                $paidAmount = round((float) ($invoice->approved_amount ?? 0), 2);
+                $remainingBalance = max(round($totalDue - $paidAmount, 2), 0);
+                $type = strtolower(trim((string) ($invoice->type ?? '')));
+
+                return [
+                    'id' => 'invoice-'.$invoice->id,
+                    'kind' => 'overdue_invoice',
+                    'type' => $type !== '' ? $type : null,
+                    'number' => $invoice->invoice_number,
+                    'title' => $type !== ''
+                        ? $type.' · '.$invoice->invoice_number
+                        : (string) $invoice->invoice_number,
+                    'customer' => $customer,
+                    'building' => $buildingName,
+                    'unit' => $roomNumber,
+                    'detail' => implode(' · ', array_filter([
+                        $customer,
+                        $buildingName !== '—' ? $buildingName : null,
+                        $roomNumber !== '—' ? $roomNumber : null,
+                    ])),
+                    'amount' => $remainingBalance,
+                    'amount_label' => $this->formatMoney($remainingBalance),
+                    'due_date' => $invoice->due_date?->format('d M Y') ?? '—',
+                    'status' => 'overdue',
+                    'to' => '/admin/invoices/'.$invoice->id.'/document',
+                ];
+            })
+            ->values();
+
+        $remainingSlots = max($maxItems - $overdueInvoices->count(), 0);
+
+        $highPriorityMaintenance = $remainingSlots > 0
+            ? MaintenanceRequest::query()
+                ->with(['user', 'room'])
+                ->where('priority', 'high')
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($remainingSlots)
+                ->get()
+                ->map(function (MaintenanceRequest $request) {
+                    $requestNumber = 'MR-'.str_pad((string) $request->id, 6, '0', STR_PAD_LEFT);
+                    $customer = $request->user?->name ?? '—';
+                    $roomNumber = $request->room?->room_number ?? '—';
+                    $statusLabel = match ($request->status) {
+                        'in_progress' => 'In Progress',
+                        'pending' => 'Pending',
+                        default => str_replace('_', ' ', ucfirst((string) $request->status)),
+                    };
+                    $category = $this->formatMaintenanceCategoryLabel($request->category);
+
+                    return [
+                        'id' => 'maintenance-'.$request->id,
+                        'kind' => 'high_priority_maintenance',
+                        'number' => $requestNumber,
+                        'title' => trim($requestNumber.' '.($request->title ?? '')),
+                        'customer' => $customer,
+                        'room' => $roomNumber,
+                        'status' => $request->status,
+                        'status_label' => $statusLabel,
+                        'category' => $category,
+                        'detail' => implode(' · ', array_filter([
+                            $customer,
+                            $roomNumber !== '—' ? 'Room '.$roomNumber : null,
+                            $category !== '—' ? $category : null,
+                        ])),
+                        'created_at' => $request->created_at?->format('d M Y') ?? '—',
+                        'priority' => 'high',
+                        'to' => '/admin/maintenance-requests/'.$request->id,
+                    ];
+                })
+                ->values()
+            : collect();
+
+        return [
+            'expired_contracts' => Contract::query()
+                ->where('status', 'active')
+                ->whereNotNull('end_date')
+                ->whereDate('end_date', '<', now()->toDateString())
+                ->count(),
+            'unresolved_maintenance' => MaintenanceRequest::query()
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->count(),
+            'overdue_invoices' => Invoice::query()
+                ->where('status', Invoice::STATUS_OVERDUE)
+                ->count(),
+            'items' => $overdueInvoices
+                ->concat($highPriorityMaintenance)
+                ->take($maxItems)
+                ->values()
+                ->all(),
+        ];
+    }
+
+    private function formatMaintenanceCategoryLabel(?string $category): string
+    {
+        if ($category === null || $category === '') {
+            return '—';
+        }
+
+        $normalized = strtolower(trim($category));
+
+        if ($normalized === 'hvac') {
+            return 'HVAC';
+        }
+
+        return ucfirst(str_replace('_', ' ', $normalized));
     }
 
     /**
@@ -341,7 +487,197 @@ class AdminDashboardService
         return [
             'total' => array_sum(array_column($items, 'count')),
             'items' => $items,
+            // Latest individual pending records (same definition as KPI count).
+            'latest' => $this->latestPendingApprovals(5),
         ];
+    }
+
+    /**
+     * Latest pending approval records across all queues counted by the KPI.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function latestPendingApprovals(int $limit = 5): array
+    {
+        $candidates = collect();
+
+        $candidates = $candidates->concat(
+            Invoice::query()
+                ->with(['contract.user', 'contract.room.building'])
+                ->where('status', Invoice::STATUS_DRAFT)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(function (Invoice $invoice) {
+                    $room = $invoice->contract?->room;
+                    $building = $room?->building?->building_name;
+                    $unit = $room?->room_number;
+                    $customer = $invoice->contract?->user?->name ?? '—';
+                    $location = collect([$building, $unit])->filter()->implode(' · ');
+
+                    return [
+                        'id' => 'invoice-'.$invoice->id,
+                        'kind' => 'invoice',
+                        'type_label' => 'Invoice',
+                        'reference' => $invoice->invoice_number ?: 'INV-'.str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT),
+                        'detail' => implode(' · ', array_filter([$customer, $location !== '' ? $location : null])),
+                        'created_at' => $this->formatApprovalDateTime($invoice->created_at),
+                        'created_at_sort' => $invoice->created_at?->timestamp ?? 0,
+                        'to' => '/admin/invoices/approval/'.$invoice->id.'/document',
+                    ];
+                })
+        );
+
+        $candidates = $candidates->concat(
+            Payment::query()
+                ->with(['invoice.contract.user'])
+                ->where('status', Payment::STATUS_PENDING)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(function (Payment $payment) {
+                    $customer = $payment->invoice?->contract?->user?->name ?? '—';
+                    $amount = $this->formatMoney((float) $payment->amount);
+
+                    return [
+                        'id' => 'payment-'.$payment->id,
+                        'kind' => 'payment',
+                        'type_label' => 'Payment',
+                        'reference' => 'PAY-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT),
+                        'detail' => implode(' · ', array_filter([$customer, $amount])),
+                        'created_at' => $this->formatApprovalDateTime($payment->created_at),
+                        'created_at_sort' => $payment->created_at?->timestamp ?? 0,
+                        'to' => '/admin/payments/approval/'.$payment->id,
+                    ];
+                })
+        );
+
+        $candidates = $candidates->concat(
+            Contract::query()
+                ->with(['user', 'room.building'])
+                ->where('type', 'rent')
+                ->where('status', 'draft')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(function (Contract $contract) {
+                    return $this->mapPendingContractApproval($contract, 'Rent Contract', '/admin/approvals/rent-contracts/');
+                })
+        );
+
+        $candidates = $candidates->concat(
+            Contract::query()
+                ->with(['user', 'room.building'])
+                ->where('type', 'sale')
+                ->where('status', 'draft')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(function (Contract $contract) {
+                    return $this->mapPendingContractApproval($contract, 'Sale Contract', '/admin/approvals/sale-contracts/');
+                })
+        );
+
+        $candidates = $candidates->concat(
+            Utility::query()
+                ->with(['contract.user', 'room.building'])
+                ->where('status', 'pending')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(function (Utility $utility) {
+                    $customer = $utility->contract?->user?->name ?? '—';
+                    $room = $utility->room;
+                    $building = $room?->building?->building_name;
+                    $unit = $room?->room_number;
+                    $unitLabel = $unit ? 'Unit '.$unit : null;
+                    $location = collect([$building, $unitLabel])->filter()->implode(' · ');
+
+                    return [
+                        'id' => 'utility-'.$utility->id,
+                        'kind' => 'utility',
+                        'type_label' => 'Utility',
+                        'reference' => 'UTL-'.str_pad((string) $utility->id, 6, '0', STR_PAD_LEFT),
+                        'detail' => implode(' · ', array_filter([$customer, $location !== '' ? $location : null])),
+                        'created_at' => $this->formatApprovalDateTime($utility->created_at),
+                        'created_at_sort' => $utility->created_at?->timestamp ?? 0,
+                        'to' => '/admin/utilities/approval/'.$utility->id,
+                    ];
+                })
+        );
+
+        $candidates = $candidates->concat(
+            Receipt::query()
+                ->with(['payment.invoice.contract.user'])
+                ->where('approval_status', Receipt::APPROVAL_PENDING)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(function (Receipt $receipt) {
+                    $customer = $receipt->payment?->invoice?->contract?->user?->name ?? '—';
+
+                    return [
+                        'id' => 'receipt-'.$receipt->id,
+                        'kind' => 'receipt',
+                        'type_label' => 'Receipt',
+                        'reference' => $receipt->receipt_number ?: 'RCP-'.str_pad((string) $receipt->id, 6, '0', STR_PAD_LEFT),
+                        'detail' => $customer,
+                        'created_at' => $this->formatApprovalDateTime($receipt->created_at),
+                        'created_at_sort' => $receipt->created_at?->timestamp ?? 0,
+                        'to' => '/admin/receipts/approval/'.$receipt->id,
+                    ];
+                })
+        );
+
+        return $candidates
+            ->sortByDesc('created_at_sort')
+            ->take($limit)
+            ->values()
+            ->map(function (array $item) {
+                unset($item['created_at_sort']);
+
+                return $item;
+            })
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapPendingContractApproval(Contract $contract, string $typeLabel, string $routePrefix): array
+    {
+        $customer = $contract->user?->name ?? '—';
+        $room = $contract->room;
+        $building = $room?->building?->building_name;
+        $unit = $room?->room_number;
+        $unitLabel = $unit ? 'Unit '.$unit : null;
+        $location = collect([$building, $unitLabel])->filter()->implode(' · ');
+
+        return [
+            'id' => strtolower(str_replace(' ', '-', $typeLabel)).'-'.$contract->id,
+            'kind' => $contract->type === 'sale' ? 'sale_contract' : 'rent_contract',
+            'type_label' => $typeLabel,
+            'reference' => $contract->contract_number ?: strtoupper(substr($contract->type, 0, 1)).'-'.str_pad((string) $contract->id, 6, '0', STR_PAD_LEFT),
+            'detail' => implode(' · ', array_filter([$customer, $location !== '' ? $location : null])),
+            'created_at' => $this->formatApprovalDateTime($contract->created_at),
+            'created_at_sort' => $contract->created_at?->timestamp ?? 0,
+            'to' => $routePrefix.$contract->id,
+        ];
+    }
+
+    private function formatApprovalDateTime(?Carbon $value): string
+    {
+        if (! $value) {
+            return '—';
+        }
+
+        return $value->format('d M Y · g:i A');
     }
 
     /**

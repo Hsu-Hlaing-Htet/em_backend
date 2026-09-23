@@ -43,6 +43,7 @@ class Room extends Model
         'sale_price',
         'rent_price',
         'rent_deposit_price',
+        'booking_deposit_price',
     ];
 
     /**
@@ -58,6 +59,7 @@ class Room extends Model
             'sale_price' => 'decimal:2',
             'rent_price' => 'decimal:2',
             'rent_deposit_price' => 'decimal:2',
+            'booking_deposit_price' => 'decimal:2',
         ];
     }
 

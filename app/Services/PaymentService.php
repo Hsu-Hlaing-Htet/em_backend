@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Exceptions\ConcurrentConflictException;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Notifications\PaymentApprovedNotification;
+use App\Notifications\PaymentRejectedNotification;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use App\Support\BillingEagerLoads;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
@@ -56,7 +59,7 @@ class PaymentService
             $params['order'] = 'payment_date|desc';
         }
 
-        $this->applyListQuery($query, $params, []);
+        $this->applyListQuery($query, $params, [], AdminListSorts::payments());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
@@ -230,7 +233,7 @@ class PaymentService
     {
         $paidAmount = round((float) $amount, 2);
 
-        return DB::transaction(function () use ($payment, $paidAmount): Payment {
+        $approved = DB::transaction(function () use ($payment, $paidAmount): Payment {
             /** @var Payment $lockedPayment */
             $lockedPayment = Payment::query()
                 ->whereKey($payment->id)
@@ -271,7 +274,7 @@ class PaymentService
             ]);
 
             $invoice = $this->syncInvoicePaymentStatus($invoice->fresh(['payments']));
-            $this->ensureReceiptForPayment($lockedPayment->fresh());
+            $this->receiptService->finalizeForApprovedPayment($lockedPayment->fresh());
             $invoice->loadMissing('contract.room');
 
             if ($invoice->contract) {
@@ -280,11 +283,15 @@ class PaymentService
 
             return $this->find($lockedPayment->id);
         });
+
+        $this->notifyCustomerOfPaymentDecision($approved, 'approved');
+
+        return $approved;
     }
 
     public function reject(Payment $payment, ?string $reason = null): Payment
     {
-        return DB::transaction(function () use ($payment, $reason): Payment {
+        $rejected = DB::transaction(function () use ($payment, $reason): Payment {
             /** @var Payment $lockedPayment */
             $lockedPayment = Payment::query()
                 ->whereKey($payment->id)
@@ -306,11 +313,30 @@ class PaymentService
 
             return $this->find($lockedPayment->id);
         });
+
+        $this->notifyCustomerOfPaymentDecision($rejected, 'rejected');
+
+        return $rejected;
     }
 
-    private function ensureReceiptForPayment(Payment $payment): void
+    private function notifyCustomerOfPaymentDecision(Payment $payment, string $decision): void
     {
-        $this->receiptService->createDraftForPayment($payment);
+        try {
+            $payment->loadMissing(['invoice.contract.user', 'receipt']);
+            $customer = $payment->invoice?->contract?->user;
+
+            if (! $customer || ! $customer->email) {
+                return;
+            }
+
+            if ($decision === 'approved') {
+                $customer->notify(new PaymentApprovedNotification($payment));
+            } else {
+                $customer->notify(new PaymentRejectedNotification($payment));
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 
     public function invoiceTotalDue(Invoice $invoice): float

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ApprovePaymentRequest;
 use App\Http\Requests\Admin\RejectPaymentRequest;
@@ -64,8 +65,10 @@ class PaymentController extends Controller
     ): JsonResponse {
         try {
             $payment = $paymentService->update($payment, $request->validated());
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -78,8 +81,10 @@ class PaymentController extends Controller
     {
         try {
             $paymentService->delete($payment);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -94,12 +99,14 @@ class PaymentController extends Controller
     ): JsonResponse {
         try {
             $payment = $paymentService->approve($payment, $request->validated('amount'));
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
-            'message' => 'Payment approved successfully. A draft receipt has been created for review.',
+            'message' => 'Payment approved successfully. Receipt is available in the Customer Portal.',
             'data' => new PaymentResource($payment),
         ]);
     }
@@ -114,8 +121,10 @@ class PaymentController extends Controller
                 $payment,
                 $request->validated('rejection_reason'),
             );
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
@@ -129,7 +138,13 @@ class PaymentController extends Controller
         Payment $payment,
         PaymentService $paymentService,
     ): JsonResponse {
-        $payment = $paymentService->uploadProof($payment, $request->file('proof'));
+        try {
+            $payment = $paymentService->uploadProof($payment, $request->file('proof'));
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
+        }
 
         return response()->json([
             'message' => 'Payment proof uploaded successfully.',

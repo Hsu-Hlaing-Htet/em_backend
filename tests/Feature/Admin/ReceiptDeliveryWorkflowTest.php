@@ -107,7 +107,7 @@ function seedReceiptDeliveryPayment(User $admin, User $customer): array
     return compact('invoice', 'payment', 'method', 'customer');
 }
 
-test('approved payment creates exactly one pending draft receipt', function () {
+test('approved payment creates exactly one issued receipt for the customer', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -124,12 +124,13 @@ test('approved payment creates exactly one pending draft receipt', function () {
     expect(Receipt::query()->where('payment_id', $payment->id)->count())->toBe(1);
 
     $receipt = Receipt::query()->where('payment_id', $payment->id)->first();
-    expect($receipt?->status)->toBe('draft');
-    expect($receipt?->approval_status)->toBe('pending');
+    expect($receipt?->status)->toBe('issued');
+    expect($receipt?->approval_status)->toBe('approved');
     expect($receipt?->sent_at)->toBeNull();
+    expect($receipt?->canBeEmailed())->toBeTrue();
 });
 
-test('draft and approved-but-unsent receipts are hidden from customer portal', function () {
+test('payment approval makes receipt visible before document email is sent', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -145,29 +146,17 @@ test('draft and approved-but-unsent receipts are hidden from customer portal', f
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/customer/receipts')
         ->assertOk()
-        ->assertJsonPath('data.total', 0);
+        ->assertJsonPath('data.total', 1);
 
     $this->actingAs($customer, 'sanctum')
         ->getJson("/api/customer/receipts/{$receipt->id}")
-        ->assertNotFound();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
         ->assertOk()
-        ->assertJsonPath('data.approval_status', 'approved')
-        ->assertJsonPath('data.can_send_email', true);
+        ->assertJsonPath('data.id', $receipt->id);
 
-    $this->actingAs($customer, 'sanctum')
-        ->getJson('/api/customer/receipts')
-        ->assertOk()
-        ->assertJsonPath('data.total', 0);
-
-    $this->actingAs($customer, 'sanctum')
-        ->getJson("/api/customer/receipts/{$receipt->id}")
-        ->assertNotFound();
+    expect($receipt->fresh()->canBeEmailed())->toBeTrue();
 });
 
-test('successful email send makes receipt visible to customer', function () {
+test('successful receipt document email marks receipt as sent', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -179,10 +168,6 @@ test('successful email send makes receipt visible to customer', function () {
         ->assertOk();
 
     $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertOk();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
@@ -206,7 +191,7 @@ test('successful email send makes receipt visible to customer', function () {
         ->assertJsonPath('data.receipt_number', $receipt->receipt_number);
 });
 
-test('failed email send keeps receipt hidden and allows retry', function () {
+test('failed receipt document email keeps sent_at null and allows retry', function () {
     $admin = receiptDeliveryAdmin();
     $customer = receiptDeliveryCustomer();
     ['payment' => $payment] = seedReceiptDeliveryPayment($admin, $customer);
@@ -216,10 +201,6 @@ test('failed email send keeps receipt hidden and allows retry', function () {
         ->assertOk();
 
     $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertOk();
 
     $this->mock(\App\Services\ReceiptDocumentService::class, function ($mock): void {
         $mock->makePartial();
@@ -239,12 +220,13 @@ test('failed email send keeps receipt hidden and allows retry', function () {
 
     $fresh = Receipt::query()->find($receipt->id);
     expect($fresh?->sent_at)->toBeNull();
-    expect($fresh?->status)->toBe('draft');
+    expect($fresh?->status)->toBe('issued');
 
+    // Receipt remains customer-visible after payment approval even if document email fails.
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/customer/receipts')
         ->assertOk()
-        ->assertJsonPath('data.total', 0);
+        ->assertJsonPath('data.total', 1);
 
     Mail::fake();
     Mockery::close();
@@ -258,36 +240,9 @@ test('failed email send keeps receipt hidden and allows retry', function () {
         ->assertOk();
 
     Mail::assertSent(ReceiptDocumentMail::class);
-
-    $this->actingAs($customer, 'sanctum')
-        ->getJson('/api/customer/receipts')
-        ->assertOk()
-        ->assertJsonPath('data.total', 1);
 });
 
-test('unapproved receipt cannot be sent by email', function () {
-    Mail::fake();
-
-    $admin = receiptDeliveryAdmin();
-    $customer = receiptDeliveryCustomer();
-    ['payment' => $payment] = seedReceiptDeliveryPayment($admin, $customer);
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/payments/{$payment->id}/approve", ['amount' => 450000])
-        ->assertOk();
-
-    $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/document/email", [
-            'email' => $customer->email,
-        ])
-        ->assertStatus(422);
-
-    Mail::assertNothingSent();
-});
-
-test('repeated send returns conflict without duplicate receipts', function () {
+test('already finalized payment receipt skips separate receipt approval', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -302,7 +257,29 @@ test('repeated send returns conflict without duplicate receipts', function () {
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/approve")
+        ->assertStatus(409);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/document/email", [
+            'email' => $customer->email,
+        ])
         ->assertOk();
+
+    Mail::assertSent(ReceiptDocumentMail::class);
+});
+
+test('repeated send returns conflict without duplicate receipts', function () {
+    Mail::fake();
+
+    $admin = receiptDeliveryAdmin();
+    $customer = receiptDeliveryCustomer();
+    ['payment' => $payment] = seedReceiptDeliveryPayment($admin, $customer);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$payment->id}/approve", ['amount' => 450000])
+        ->assertOk();
+
+    $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
@@ -320,7 +297,7 @@ test('repeated send returns conflict without duplicate receipts', function () {
     expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(1);
 });
 
-test('another customer cannot access a sent receipt', function () {
+test('another customer cannot access an issued receipt', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -333,16 +310,6 @@ test('another customer cannot access a sent receipt', function () {
         ->assertOk();
 
     $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertOk();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/document/email", [
-            'email' => $customer->email,
-        ])
-        ->assertOk();
 
     $this->actingAs($otherCustomer, 'sanctum')
         ->getJson("/api/customer/receipts/{$receipt->id}")
@@ -366,10 +333,6 @@ test('receipt cannot be sent to a non-customer email address', function () {
         ->assertOk();
 
     $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertOk();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [

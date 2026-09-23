@@ -16,7 +16,12 @@ class ProfileService
     public function paginate(array $params): LengthAwarePaginator
     {
         $query = Profile::query()->with('user');
-        $this->applyListQuery($query, $params, ['phone', 'nrc', 'gender', 'address']);
+        $this->applyListQuery($query, $params, ['phone', 'nrc', 'gender', 'address'], [
+            'phone' => 'phone',
+            'nrc' => 'nrc',
+            'gender' => 'gender',
+            'created_at' => 'created_at',
+        ]);
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Notifications\WelcomeAccountNotification;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use App\Support\TemporaryPassword;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -163,45 +164,8 @@ class AccountService
      */
     private function applyAccountOrdering(Builder $query, array $params): void
     {
-        if (empty($params['order'])) {
-            $query->latest('users.id');
-
-            return;
-        }
-
-        $profileFields = ['phone', 'nrc', 'gender'];
-        $joinedProfiles = false;
-        $joinedRoles = false;
-
-        foreach (explode(',', (string) $params['order']) as $sort) {
-            [$field, $direction] = array_pad(explode('|', $sort), 2, 'asc');
-            $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
-
-            if (in_array($field, $profileFields, true)) {
-                if (! $joinedProfiles) {
-                    $query->leftJoin('profiles', 'profiles.user_id', '=', 'users.id')
-                        ->select('users.*');
-                    $joinedProfiles = true;
-                }
-
-                $query->orderBy('profiles.'.$field, $direction);
-
-                continue;
-            }
-
-            if ($field === 'role_name') {
-                if (! $joinedRoles) {
-                    $query->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-                        ->select('users.*');
-                    $joinedRoles = true;
-                }
-
-                $query->orderBy('roles.name', $direction);
-
-                continue;
-            }
-
-            $query->orderBy('users.'.$field, $direction);
-        }
+        $this->applyListQuery($query, $params, [], AdminListSorts::accounts(), function (Builder $builder): void {
+            $builder->latest('users.id');
+        });
     }
 }

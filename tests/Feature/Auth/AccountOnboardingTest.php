@@ -66,10 +66,16 @@ test('creating a resident uses the fixed temporary password and requires first-l
             $property->setAccessible(true);
             $plain = $property->getValue($notification);
             $mail = $notification->toMail($user);
+            $html = $mail->render();
 
             return is_string($plain)
                 && $plain === TemporaryPassword::VALUE
-                && str_ends_with((string) $mail->actionUrl, '/login');
+                && str_ends_with((string) $mail->actionUrl, '/login')
+                && ! str_contains($html, '<img')
+                && ! str_contains($html, 'Login to Rosewood Royale')
+                && str_contains($html, 'Customer Portal Login')
+                && str_contains($html, e((string) $user->email))
+                && str_contains($html, e(TemporaryPassword::VALUE));
         },
     );
 

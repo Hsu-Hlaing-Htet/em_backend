@@ -8,6 +8,7 @@ use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -235,4 +236,158 @@ it('forbids non-customer access to customer portal routes', function (): void {
     $this->actingAs($admin, 'sanctum')
         ->getJson('/api/customer/dashboard')
         ->assertForbidden();
+});
+
+it('shows an owned payment and denies another customer payment', function (): void {
+    Storage::fake('public');
+
+    $customer = customerPortalUser();
+    $otherCustomer = User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
+    $admin = customerPortalAdmin();
+    $contract = customerPortalContract('rent', 'R-PAY-SHOW-1', $customer, $admin);
+    $otherContract = customerPortalContract('rent', 'R-PAY-SHOW-2', $otherCustomer, $admin);
+
+    $paymentMethod = \App\Models\PaymentMethod::query()->create([
+        'name' => 'Bank Transfer',
+        'slug' => 'bank-transfer-show',
+        'type' => 'bank_transfer',
+        'status' => 'active',
+        'is_customer_visible' => false,
+    ]);
+
+    $ownInvoice = \App\Models\Invoice::query()->create([
+        'contract_id' => $contract->id,
+        'invoice_number' => 'INV-PAY-OWN-1',
+        'type' => 'rent',
+        'status' => 'issued',
+        'issued_date' => now()->toDateString(),
+        'due_date' => now()->addDays(7)->toDateString(),
+        'total_amount' => 100000,
+        'late_fee' => 0,
+        'created_by' => $admin->id,
+    ]);
+
+    $otherInvoice = \App\Models\Invoice::query()->create([
+        'contract_id' => $otherContract->id,
+        'invoice_number' => 'INV-PAY-OTHER-1',
+        'type' => 'rent',
+        'status' => 'issued',
+        'issued_date' => now()->toDateString(),
+        'due_date' => now()->addDays(7)->toDateString(),
+        'total_amount' => 100000,
+        'late_fee' => 0,
+        'created_by' => $admin->id,
+    ]);
+
+    $ownPayment = \App\Models\Payment::query()->create([
+        'invoice_id' => $ownInvoice->id,
+        'payment_method_id' => $paymentMethod->id,
+        'created_by' => $customer->id,
+        'payment_date' => now()->toDateString(),
+        'status' => 'pending',
+        'proof_image_path' => 'payments/own-proof.jpg',
+    ]);
+
+    $otherPayment = \App\Models\Payment::query()->create([
+        'invoice_id' => $otherInvoice->id,
+        'payment_method_id' => $paymentMethod->id,
+        'created_by' => $otherCustomer->id,
+        'payment_date' => now()->toDateString(),
+        'status' => 'pending',
+        'proof_image_path' => 'payments/other-proof.jpg',
+    ]);
+
+    $this->actingAs($customer, 'sanctum')
+        ->getJson("/api/customer/payments/{$ownPayment->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', $ownPayment->id)
+        ->assertJsonPath('data.invoice_id', $ownInvoice->id)
+        ->assertJsonPath('data.invoice_summary.invoice_number', 'INV-PAY-OWN-1');
+
+    $this->actingAs($customer, 'sanctum')
+        ->getJson("/api/customer/payments/{$otherPayment->id}")
+        ->assertNotFound();
+});
+
+it('rejects customer payment payloads that include amount', function (): void {
+    Storage::fake('public');
+
+    $customer = customerPortalUser();
+    $admin = customerPortalAdmin();
+    $contract = customerPortalContract('rent', 'R-PAY-AMT-1', $customer, $admin);
+
+    $paymentMethod = \App\Models\PaymentMethod::query()->create([
+        'name' => 'KBZ Pay',
+        'slug' => 'kbz-pay-amount',
+        'type' => 'wallet',
+        'status' => 'active',
+        'is_customer_visible' => true,
+        'phone_number' => '09779959901',
+    ]);
+
+    $invoice = \App\Models\Invoice::query()->create([
+        'contract_id' => $contract->id,
+        'invoice_number' => 'INV-PAY-AMT-1',
+        'type' => 'rent',
+        'status' => 'issued',
+        'issued_date' => now()->toDateString(),
+        'due_date' => now()->addDays(7)->toDateString(),
+        'total_amount' => 150000,
+        'late_fee' => 0,
+        'created_by' => $admin->id,
+    ]);
+
+    $this->actingAs($customer, 'sanctum')
+        ->postJson('/api/customer/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $paymentMethod->id,
+            'payment_date' => now()->toDateString(),
+            'amount' => 150000,
+            'proof' => \Illuminate\Http\UploadedFile::fake()->image('proof.jpg'),
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['amount']);
+});
+
+it('exposes pending payment flags on customer invoice detail', function (): void {
+    Storage::fake('public');
+
+    $customer = customerPortalUser();
+    $admin = customerPortalAdmin();
+    $contract = customerPortalContract('rent', 'R-INV-PEND-1', $customer, $admin);
+
+    $paymentMethod = \App\Models\PaymentMethod::query()->create([
+        'name' => 'Cash',
+        'slug' => 'cash-pending-flag',
+        'type' => 'cash',
+        'status' => 'active',
+        'is_customer_visible' => false,
+    ]);
+
+    $invoice = \App\Models\Invoice::query()->create([
+        'contract_id' => $contract->id,
+        'invoice_number' => 'INV-PEND-1',
+        'type' => 'rent',
+        'status' => 'issued',
+        'issued_date' => now()->toDateString(),
+        'due_date' => now()->addDays(7)->toDateString(),
+        'total_amount' => 200000,
+        'late_fee' => 0,
+        'created_by' => $admin->id,
+    ]);
+
+    $payment = \App\Models\Payment::query()->create([
+        'invoice_id' => $invoice->id,
+        'payment_method_id' => $paymentMethod->id,
+        'created_by' => $customer->id,
+        'payment_date' => now()->toDateString(),
+        'status' => 'pending',
+        'proof_image_path' => 'payments/pending-proof.jpg',
+    ]);
+
+    $this->actingAs($customer, 'sanctum')
+        ->getJson("/api/customer/invoices/{$invoice->id}")
+        ->assertOk()
+        ->assertJsonPath('data.has_pending_payment', true)
+        ->assertJsonPath('data.pending_payment_id', $payment->id);
 });

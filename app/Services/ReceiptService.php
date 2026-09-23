@@ -8,6 +8,7 @@ use App\Models\Receipt;
 use App\Support\BillingEagerLoads;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
@@ -37,7 +38,12 @@ class ReceiptService
         $this->applyApprovalStatusFilter($query, $params);
         $this->applyDeliveryStatusFilter($query, $params);
         $this->applyStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, []);
+
+        if (empty($params['order'])) {
+            $params['order'] = 'payment_date|desc';
+        }
+
+        $this->applyListQuery($query, $params, [], AdminListSorts::receipts());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
@@ -148,6 +154,46 @@ class ReceiptService
         });
     }
 
+    /**
+     * After payment approval: ensure one receipt exists, auto-approve it, and issue it
+     * so the Customer Portal can show it. Document email remains a separate Admin Send.
+     */
+    public function finalizeForApprovedPayment(Payment $payment): Receipt
+    {
+        $receipt = $this->createDraftForPayment($payment);
+
+        /** @var Receipt $locked */
+        $locked = Receipt::query()
+            ->whereKey($receipt->id)
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        if ($locked->approval_status === Receipt::APPROVAL_REJECTED) {
+            throw new InvalidArgumentException('A rejected receipt cannot be finalized for this payment.');
+        }
+
+        $updates = [];
+
+        if ($locked->approval_status !== Receipt::APPROVAL_APPROVED) {
+            $updates['approval_status'] = Receipt::APPROVAL_APPROVED;
+            $updates['approved_by'] = Auth::id();
+            $updates['approved_at'] = now();
+        }
+
+        if ($locked->status !== Receipt::STATUS_ISSUED) {
+            $pdfPath = $locked->receipt_pdf_path ?: $this->generatePdf($locked);
+            $updates['receipt_pdf_path'] = $pdfPath;
+            $updates['status'] = Receipt::STATUS_ISSUED;
+            $updates['issued_at'] = $locked->issued_at ?? now();
+        }
+
+        if ($updates !== []) {
+            $locked->update($updates);
+        }
+
+        return $this->find($locked->id);
+    }
+
     public function approve(Receipt $receipt): Receipt
     {
         return DB::transaction(function () use ($receipt): Receipt {
@@ -204,7 +250,7 @@ class ReceiptService
                 ->firstOrFail();
 
             if (! $locked->canBeIssued()) {
-                if ($locked->isDeliveredToCustomer()) {
+                if ($locked->isEmailSent()) {
                     throw new ConcurrentConflictException('This receipt has already been sent to the customer.');
                 }
 

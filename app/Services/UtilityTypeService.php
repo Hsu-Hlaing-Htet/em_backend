@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\UtilityType;
 use App\Services\Concerns\AppliesListQuery;
 use App\Services\Concerns\GuardsDeletion;
+use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Str;
 
@@ -19,7 +20,7 @@ class UtilityTypeService
     {
         $query = UtilityType::query();
         $this->applyStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, ['name', 'slug', 'status']);
+        $this->applyListQuery($query, $params, ['name', 'slug', 'status'], AdminListSorts::namedSettings());
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
