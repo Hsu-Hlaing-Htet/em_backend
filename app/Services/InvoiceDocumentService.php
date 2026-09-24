@@ -7,6 +7,7 @@ use App\Mail\InvoiceDocumentMail;
 use App\Models\Invoice;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
+use App\Support\CustomerPortalUrl;
 use App\Support\DocumentFilename;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
@@ -65,11 +66,20 @@ class InvoiceDocumentService
     }
 
     /**
+     * Browser Preview uses the same canonical HTML as PDF / print / email.
+     */
+    public function previewResponse(Invoice $invoice): Response
+    {
+        return $this->exportResponse($invoice);
+    }
+
+    /**
      * @param  array{email?: string|null}  $data
      */
     public function sendEmail(Invoice $invoice, array $data): void
     {
         $invoice->loadMissing(['contract.user', 'contract.secondUser', 'contract.room']);
+        $partyUsers = $invoice->contract?->partyUsers() ?? collect();
         $emails = isset($data['email']) && trim((string) $data['email']) !== ''
             ? [trim((string) $data['email'])]
             : ($invoice->contract?->partyEmails() ?? []);
@@ -78,14 +88,16 @@ class InvoiceDocumentService
             throw new InvalidArgumentException('Customer email is required to send the invoice document.');
         }
 
-        $filename = $this->filename($invoice);
-        $pdf = $this->renderPdfBinary($this->renderHtml($invoice));
-
         foreach ($emails as $email) {
+            $name = CustomerPortalUrl::customerNameForEmail(
+                $partyUsers,
+                $email,
+                $invoice->contract?->user?->name,
+            );
+
             Mail::to($email)->send(new InvoiceDocumentMail(
                 $invoice,
-                $pdf,
-                $filename,
+                $name,
             ));
         }
     }
@@ -144,17 +156,55 @@ class InvoiceDocumentService
                 'issue_date' => $issueDate,
                 'due_date' => $dueDate,
                 'billing_period' => $this->billingPeriod($invoice),
+                'status' => $this->statusLabel($invoice),
                 'amount_due' => $this->formatInvoiceCurrency($amountDue),
             ],
             'items' => $itemRows,
             'totals' => [
                 'subtotal' => $this->formatInvoiceCurrency($subtotal),
+                'overdue_days' => $this->overdueDays($invoice),
                 'late_fee' => $this->formatInvoiceCurrency($lateFee),
                 'amount_due' => $this->formatInvoiceCurrency($amountDue),
             ],
             'notes' => $this->buildNotes($invoiceNumber, $dueDate),
             'confidentialNotice' => 'This invoice is intended solely for the named recipient and may contain confidential information.',
         ];
+    }
+
+    private function statusLabel(Invoice $invoice): string
+    {
+        return match ($invoice->status) {
+            Invoice::STATUS_DRAFT => 'Draft',
+            Invoice::STATUS_ISSUED, Invoice::STATUS_PARTIAL => 'Issued',
+            Invoice::STATUS_PAID => 'Paid',
+            Invoice::STATUS_OVERDUE => 'Overdue',
+            Invoice::STATUS_CANCELLED => 'Cancelled',
+            default => $invoice->status ? ucfirst((string) $invoice->status) : '—',
+        };
+    }
+
+    private function overdueDays(Invoice $invoice): int
+    {
+        if (! $invoice->due_date) {
+            return 0;
+        }
+
+        if (in_array($invoice->status, [
+            Invoice::STATUS_PAID,
+            Invoice::STATUS_CANCELLED,
+            Invoice::STATUS_DRAFT,
+        ], true)) {
+            return 0;
+        }
+
+        $due = $invoice->due_date->copy()->startOfDay();
+        $today = now()->startOfDay();
+
+        if ($today->lessThanOrEqualTo($due)) {
+            return 0;
+        }
+
+        return (int) $due->diffInDays($today);
     }
 
     /**

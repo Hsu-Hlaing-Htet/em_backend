@@ -137,6 +137,20 @@ class Contract extends Model
     }
 
     /**
+     * Compact display label for Admin lists: "Name" or "Name 1 + Name 2".
+     */
+    public function partyDisplayName(string $separator = ' + '): string
+    {
+        $names = $this->partyUsers()
+            ->pluck('name')
+            ->filter(fn ($name) => is_string($name) && trim($name) !== '')
+            ->map(fn (string $name): string => trim($name))
+            ->values();
+
+        return $names->implode($separator);
+    }
+
+    /**
      * Unique non-empty party emails (case-insensitive dedupe).
      *
      * @return list<string>

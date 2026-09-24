@@ -40,11 +40,23 @@ class InvoiceService
         $query = Invoice::query()->with(BillingEagerLoads::invoiceList());
 
         $this->applyInvoiceSearch($query, $params);
-        $this->applyBuildingRoomFilters($query, $params, 'contract.room');
+        $this->applyInvoiceBuildingRoomFilters($query, $params);
         $this->applyDateRangeFilter($query, $params, 'issued_date', 'issued_from', 'issued_to');
         $this->applyDateRangeFilter($query, $params, 'due_date', 'due_from', 'due_to');
         $this->applyInvoicePaymentStatusFilter($query, $params);
-        $this->applyListQuery($query, $params, [], AdminListSorts::invoices());
+        $this->applyListQuery(
+            $query,
+            $params,
+            [],
+            AdminListSorts::invoices(),
+            static function ($builder): void {
+                // Prefer issue chronology so reseeded Sale rows and same-day
+                // settlements do not monopolize page 1 over Rent/Utility history.
+                $builder->orderByDesc('invoices.issued_date')
+                    ->orderByDesc('invoices.due_date')
+                    ->orderByDesc('invoices.id');
+            },
+        );
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
     }
@@ -66,8 +78,57 @@ class InvoiceService
                 ->orWhereHas('contract.user', function ($userQuery) use ($search): void {
                     $userQuery->where('name', 'like', '%'.$search.'%')
                         ->orWhere('email', 'like', '%'.$search.'%');
+                })
+                ->orWhereHas('contract.secondUser', function ($userQuery) use ($search): void {
+                    $userQuery->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('email', 'like', '%'.$search.'%');
+                })
+                ->orWhereHas('contract.room', function ($roomQuery) use ($search): void {
+                    $roomQuery->where('room_number', 'like', '%'.$search.'%');
+                })
+                ->orWhereHas('utility.room', function ($roomQuery) use ($search): void {
+                    $roomQuery->where('room_number', 'like', '%'.$search.'%');
+                })
+                ->orWhereHas('utilities.room', function ($roomQuery) use ($search): void {
+                    $roomQuery->where('room_number', 'like', '%'.$search.'%');
                 });
         });
+    }
+
+    /**
+     * Building/room filters must include Utility-sourced invoices that resolve
+     * property through utility.room when contract.room is absent.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Invoice>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyInvoiceBuildingRoomFilters($query, array $params): void
+    {
+        if (! empty($params['building_id'])) {
+            $buildingId = $params['building_id'];
+            $query->where(function ($builder) use ($buildingId): void {
+                $builder->whereHas('contract.room', function ($roomQuery) use ($buildingId): void {
+                    $roomQuery->where('building_id', $buildingId);
+                })->orWhereHas('utility.room', function ($roomQuery) use ($buildingId): void {
+                    $roomQuery->where('building_id', $buildingId);
+                })->orWhereHas('utilities.room', function ($roomQuery) use ($buildingId): void {
+                    $roomQuery->where('building_id', $buildingId);
+                });
+            });
+        }
+
+        if (! empty($params['room_id'])) {
+            $roomId = $params['room_id'];
+            $query->where(function ($builder) use ($roomId): void {
+                $builder->whereHas('contract', function ($contractQuery) use ($roomId): void {
+                    $contractQuery->where('room_id', $roomId);
+                })->orWhereHas('utility', function ($utilityQuery) use ($roomId): void {
+                    $utilityQuery->where('room_id', $roomId);
+                })->orWhereHas('utilities', function ($utilityQuery) use ($roomId): void {
+                    $utilityQuery->where('room_id', $roomId);
+                });
+            });
+        }
     }
 
     /**
@@ -248,7 +309,13 @@ class InvoiceService
         $lastSequence = Invoice::query()
             ->where('invoice_number', 'like', 'INV-%')
             ->pluck('invoice_number')
-            ->map(fn (string $number): int => (int) substr($number, 4))
+            ->map(function (string $number): int {
+                if (! preg_match('/^INV-(\d+)$/', $number, $matches)) {
+                    return 0;
+                }
+
+                return (int) $matches[1];
+            })
             ->max() ?? 0;
 
         return 'INV-'.str_pad((string) ($lastSequence + 1), 6, '0', STR_PAD_LEFT);
@@ -280,8 +347,20 @@ class InvoiceService
                 throw new InvalidArgumentException('Only approved utility bills can be invoiced.');
             }
 
-            if ($this->isUtilityInvoiced($lockedUtility)) {
-                throw new ConcurrentConflictException('This utility bill has already been invoiced.');
+            // Idempotent: already linked to an invoice for this utility bill.
+            if ($lockedUtility->invoice_id) {
+                return $this->find((int) $lockedUtility->invoice_id);
+            }
+
+            $existingByUtilityColumn = Invoice::query()
+                ->where('utility_id', $lockedUtility->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existingByUtilityColumn) {
+                $lockedUtility->update(['invoice_id' => $existingByUtilityColumn->id]);
+
+                return $this->find($existingByUtilityColumn->id);
             }
 
             $lockedUtility->load(['room', 'items.utilityType']);
@@ -541,6 +620,10 @@ class InvoiceService
         }
 
         $utility->update(['invoice_id' => $invoice->id]);
+
+        if (! $invoice->utility_id) {
+            $invoice->update(['utility_id' => $utility->id]);
+        }
     }
 
     private function recalculateInvoiceTotal(Invoice $invoice): void

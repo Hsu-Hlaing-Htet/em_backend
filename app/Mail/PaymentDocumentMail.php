@@ -4,17 +4,19 @@ namespace App\Mail;
 
 use App\Models\Payment;
 
-class PaymentDocumentMail extends HtmlDocumentMail
+/**
+ * Unused via HTTP (payment has no customer document send route).
+ * Kept as notification-only if ever invoked — never attaches a PDF or portal link.
+ */
+class PaymentDocumentMail extends CustomerDocumentAvailableMail
 {
-    public function __construct(Payment $payment, string $documentPdf, string $filename)
+    public function __construct(Payment $payment, string $customerName)
     {
-        $reference = sprintf('PAY-%05d', $payment->id);
-
         parent::__construct(
-            referenceNumber: $reference,
-            documentPdf: $documentPdf,
-            subjectPrefix: 'Payment Confirmation',
-            filename: $filename,
+            emailSubject: 'Payment Update',
+            customerName: $customerName,
+            introLine: 'Your payment status has been updated in your Customer Portal.',
+            detailLine: 'Please log in to your Customer Portal to view the details.',
         );
     }
 }

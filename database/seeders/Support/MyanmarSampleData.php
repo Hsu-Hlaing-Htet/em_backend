@@ -163,12 +163,13 @@ final class MyanmarSampleData
         $email = $base.'@gmail.com';
         $suffix = 2;
 
-        while (isset($usedEmails[$email])) {
+        while (isset($usedEmails[$email]) || isset($usedEmails[strtolower($email)])) {
             $email = $base.$suffix.'@gmail.com';
             $suffix++;
         }
 
         $usedEmails[$email] = true;
+        $usedEmails[strtolower($email)] = true;
 
         return $email;
     }
@@ -247,6 +248,19 @@ final class MyanmarSampleData
             $usedEmails[$customer['email']] = true;
         }
 
+        // Avoid colliding with already-seeded users when expanding the bulk set.
+        if (class_exists(\App\Models\User::class)) {
+            try {
+                foreach (\App\Models\User::query()->pluck('email') as $email) {
+                    if (is_string($email) && $email !== '') {
+                        $usedEmails[strtolower($email)] = true;
+                    }
+                }
+            } catch (\Throwable) {
+                // Seeder may run before DB is available in some tooling contexts.
+            }
+        }
+
         for ($i = 0; $i < $count; $i++) {
             $index = $startIndex + $i;
             $isFemale = $index % 2 === 0;
@@ -289,6 +303,6 @@ final class MyanmarSampleData
      */
     public static function bulkBuildings(): array
     {
-        return array_slice(self::buildings(), 4, 8);
+        return array_slice(self::buildings(), 2, 20);
     }
 }

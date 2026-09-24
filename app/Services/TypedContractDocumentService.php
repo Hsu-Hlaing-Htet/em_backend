@@ -6,6 +6,7 @@ use App\Models\Contract;
 use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\ContractDocumentProfile;
 use App\Support\ContractDraftProfile;
+use App\Support\CustomerPortalUrl;
 use App\Support\DocumentFilename;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
@@ -79,6 +80,7 @@ class TypedContractDocumentService
     public function sendEmail(Contract $contract, array $data): void
     {
         $contract->loadMissing(['user.profile', 'secondUser.profile', 'room']);
+        $partyUsers = $contract->partyUsers();
         $emails = isset($data['email']) && trim((string) $data['email']) !== ''
             ? [trim((string) $data['email'])]
             : $contract->partyEmails();
@@ -87,12 +89,16 @@ class TypedContractDocumentService
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
         }
 
-        $filename = $this->filename($contract);
-        $pdf = $this->renderPdfBinary($this->renderHtml($contract));
         $mailClass = $this->profile->mailClass;
 
         foreach ($emails as $email) {
-            Mail::to($email)->send(new $mailClass($contract, $pdf, $filename));
+            $name = CustomerPortalUrl::customerNameForEmail(
+                $partyUsers,
+                $email,
+                $contract->user?->name,
+            );
+
+            Mail::to($email)->send(new $mailClass($contract, $name));
         }
     }
 
@@ -108,19 +114,10 @@ class TypedContractDocumentService
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
         }
 
-        $pdf = isset($data['html']) && trim((string) $data['html']) !== ''
-            ? $this->documentPdfService()->renderPreviewPdf((string) $data['html'])
-            : $this->renderPdfBinary($this->renderHtml($contract));
-        $mailClass = $this->profile->mailClass;
+        // Preview HTML overrides are ignored for email — notification only, no PDF.
+        unset($data['html']);
 
-        foreach ($emails as $email) {
-            Mail::to($email)->send(new $mailClass(
-                $contract,
-                $pdf,
-                $this->downloadFilename($contract),
-                $this->customerContractUrl($contract),
-            ));
-        }
+        $this->sendEmail($contract, []);
 
         return implode(', ', $emails);
     }
@@ -201,25 +198,28 @@ class TypedContractDocumentService
         ], fn (array $row): bool => $this->hasDocumentValue($row['value'])));
 
         $partyLabel = $contract->type === 'rent' ? 'Tenant' : 'Owner';
+        $companyRole = $contract->type === 'rent' ? 'Landlord' : 'Seller';
         $secondUser = $contract->secondUser;
         $signatures = [
             [
+                'role' => $companyRole,
+                'name' => $contract->approver?->name ?? $contract->creator?->name ?? '________________',
+                'label' => $companyRole,
+            ],
+            [
+                'role' => $partyLabel,
                 'name' => $contract->user?->name ?? '________________',
-                'label' => $this->profile->tenantSignatureLabel.($secondUser ? ' (1)' : ''),
+                'label' => $partyLabel,
             ],
         ];
 
         if ($secondUser) {
             $signatures[] = [
+                'role' => $partyLabel,
                 'name' => $secondUser->name ?? '________________',
-                'label' => $this->profile->tenantSignatureLabel.' (2)',
+                'label' => $partyLabel,
             ];
         }
-
-        $signatures[] = [
-            'name' => $contract->approver?->name ?? $contract->creator?->name ?? '________________',
-            'label' => 'Company Representative',
-        ];
 
         return [
             'header' => [
@@ -327,11 +327,6 @@ class TypedContractDocumentService
         $contractNumber = $contract->contract_number ?: sprintf('%s-%06d', $prefix, $contract->id);
 
         return "Rosewood_Royale_{$type}_Contract_{$contractNumber}.pdf";
-    }
-
-    private function customerContractUrl(Contract $contract): string
-    {
-        return rtrim((string) config('app.frontend_url'), '/').'/customer/contracts/'.$contract->id;
     }
 
     private function contractEndDate(Contract $contract): string

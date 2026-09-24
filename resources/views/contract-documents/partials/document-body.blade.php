@@ -15,6 +15,24 @@
         return array_values(array_filter($items, static fn ($item): bool => $hasDocumentValue($item['value'] ?? null)));
     };
 
+    $partyColumnValues = static function (array $fields) use ($hasDocumentValue): array {
+        $byLabel = collect($fields)->mapWithKeys(
+            static fn ($item) => [($item['label'] ?? '') => ($item['value'] ?? null)]
+        );
+
+        $name = $byLabel->get('Full Name');
+        $lines = collect(['NRC / ID', 'Phone', 'Email'])
+            ->map(static fn ($label) => $byLabel->get($label))
+            ->filter(static fn ($value) => $hasDocumentValue($value))
+            ->values()
+            ->all();
+
+        return [
+            'name' => $hasDocumentValue($name) ? $name : '—',
+            'lines' => $lines,
+        ];
+    };
+
     $companyFields = collect($document['company'] ?? []);
     $companyName = $companyFields->firstWhere('label', 'Company Name')['value'] ?? 'Rosewood Royale Residences';
     $companyLines = $documentRows([
@@ -32,13 +50,41 @@
         $contractVariant['companyObligation'] ?? null,
         ! empty($document['remarks']) ? 'Remarks: '.$document['remarks'] : null,
     ], static fn ($item): bool => $hasDocumentValue($item)));
-    $hasSecondCustomer = count($secondCustomerFields) > 0;
+    $hasSecondCustomer = count($documentRows($secondCustomerFields)) > 0;
     $customerRole = $contractVariant['customerRole'] ?? 'Customer';
+    $primaryParty = $partyColumnValues($customerFields);
+    $secondParty = $hasSecondCustomer ? $partyColumnValues($secondCustomerFields) : null;
+
+    $signatureGroups = [];
+    foreach (($document['signatures'] ?? []) as $signature) {
+        $role = (string) ($signature['role'] ?? '');
+        $label = (string) ($signature['label'] ?? '');
+        $isCompany = (bool) preg_match('/authorized officer|company representative|company|seller|landlord/i', trim($role.' '.$label));
+        $roleKey = $isCompany ? 'company' : ($role !== '' ? $role : ($label !== '' ? $label : 'Signature'));
+        $lastIndex = count($signatureGroups) - 1;
+
+        if ($lastIndex >= 0 && ! $isCompany && ($signatureGroups[$lastIndex]['roleKey'] ?? null) === $roleKey) {
+            $signatureGroups[$lastIndex]['parties'][] = $signature;
+            continue;
+        }
+
+        $signatureGroups[] = [
+            'roleKey' => $roleKey,
+            'heading' => $isCompany
+                ? ($label !== '' ? $label : 'Company Representative')
+                : ($role !== '' ? $role : ($label !== '' ? $label : 'Signature')),
+            'parties' => [$signature],
+        ];
+    }
+
+    $hasJointSignatures = collect($signatureGroups)->contains(
+        static fn (array $group): bool => count($group['parties']) > 1
+    );
 @endphp
 
 <section class="contract-doc-section">
     <h2 class="contract-doc-section-title">I. Parties to the Agreement</h2>
-    <div class="contract-doc-parties">
+    <div class="contract-doc-parties{{ $hasSecondCustomer ? ' contract-doc-parties--joint' : '' }}">
         <div class="contract-doc-party">
             <p class="contract-doc-party-role">{{ $contractVariant['companyRole'] }}</p>
             <p class="contract-doc-party-name">{{ $companyName }}</p>
@@ -48,30 +94,29 @@
         </div>
         <div class="contract-doc-party-divider" aria-hidden="true"></div>
         <div class="contract-doc-party">
-            <p class="contract-doc-party-role">{{ $hasSecondCustomer ? $customerRole.' 1' : $customerRole }}</p>
-            <div class="contract-doc-fields">
-                @foreach ($documentRows($customerFields) as $item)
-                    <div class="contract-doc-field">
-                        <span class="contract-doc-field-label">{{ $item['label'] }}</span>
-                        <span class="contract-doc-field-value">{{ $item['value'] }}</span>
+            <p class="contract-doc-party-role">{{ $customerRole }}</p>
+            @if ($hasSecondCustomer)
+                <div class="contract-doc-party-columns">
+                    <div class="contract-doc-party-column">
+                        <p class="contract-doc-party-name">{{ $primaryParty['name'] }}</p>
+                        @foreach ($primaryParty['lines'] as $line)
+                            <p class="contract-doc-party-line">{{ $line }}</p>
+                        @endforeach
                     </div>
-                @endforeach
-            </div>
-        </div>
-        @if ($hasSecondCustomer)
-            <div class="contract-doc-party-divider" aria-hidden="true"></div>
-            <div class="contract-doc-party">
-                <p class="contract-doc-party-role">{{ $customerRole }} 2</p>
-                <div class="contract-doc-fields">
-                    @foreach ($documentRows($secondCustomerFields) as $item)
-                        <div class="contract-doc-field">
-                            <span class="contract-doc-field-label">{{ $item['label'] }}</span>
-                            <span class="contract-doc-field-value">{{ $item['value'] }}</span>
-                        </div>
-                    @endforeach
+                    <div class="contract-doc-party-column">
+                        <p class="contract-doc-party-name">{{ $secondParty['name'] }}</p>
+                        @foreach ($secondParty['lines'] as $line)
+                            <p class="contract-doc-party-line">{{ $line }}</p>
+                        @endforeach
+                    </div>
                 </div>
-            </div>
-        @endif
+            @else
+                <p class="contract-doc-party-name">{{ $primaryParty['name'] }}</p>
+                @foreach ($primaryParty['lines'] as $line)
+                    <p class="contract-doc-party-line">{{ $line }}</p>
+                @endforeach
+            @endif
+        </div>
     </div>
 </section>
 
@@ -128,12 +173,19 @@
         IN WITNESS WHEREOF, the parties hereto have executed this {{ $contractVariant['agreementName'] }}
         as of the date first written above.
     </p>
-    <div class="contract-doc-signatures">
-        @foreach ($document['signatures'] as $signature)
-            <p class="contract-doc-signature-line">
-                <span class="contract-doc-signature-label">{{ $signature['label'] }}:</span>
-                <span class="contract-doc-signature-blank">________</span>
-            </p>
+    <div class="contract-doc-signatures{{ $hasJointSignatures ? ' contract-doc-signatures--joint' : '' }}">
+        @foreach ($signatureGroups as $group)
+            <div class="contract-doc-signature-block{{ count($group['parties']) > 1 ? ' contract-doc-signature-block--multi' : '' }}">
+                <p class="contract-doc-signature-role">{{ $group['heading'] }}</p>
+                <div class="contract-doc-signature-parties">
+                    @foreach ($group['parties'] as $signature)
+                        <div class="contract-doc-signature-party">
+                            <p class="contract-doc-signature-blank-line">________________</p>
+                            <p class="contract-doc-signature-name">{{ $signature['name'] ?? '________________' }}</p>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
         @endforeach
     </div>
 </section>

@@ -150,6 +150,14 @@ class CustomerPortalController extends Controller
         return $customerPortalService->invoiceDocumentResponse($request->user(), $invoice, 'download');
     }
 
+    public function previewInvoiceDocument(
+        Request $request,
+        Invoice $invoice,
+        CustomerPortalService $customerPortalService,
+    ) {
+        return $customerPortalService->invoiceDocumentResponse($request->user(), $invoice, 'preview');
+    }
+
     public function payments(Request $request, CustomerPortalService $customerPortalService): JsonResponse
     {
         $paginator = $customerPortalService->paginatePayments($request->user(), $request->all());

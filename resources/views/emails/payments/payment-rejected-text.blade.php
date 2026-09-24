@@ -2,14 +2,10 @@ ROSEWOOD ROYALE
 
 PAYMENT REJECTED
 
-Hello{{ $userName !== '' ? ' '.$userName : '' }},
+Dear{{ $userName !== '' ? ' '.$userName : ' Customer' }},
 
-Your payment has been rejected. Please check the details and submit again.
+Your payment has been rejected.
 
-{{ $actionLabel }}
-{{ $actionUrl }}
+Please check the details in your Customer Portal and submit again if needed.
 
-If the link above does not work, copy and paste this URL into your browser:
-{{ $displayableActionUrl }}
-
-© {{ date('Y') }} {{ $appName }}. All rights reserved.
+Rosewood Royale

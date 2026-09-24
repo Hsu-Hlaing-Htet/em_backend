@@ -22,13 +22,6 @@ class PaymentApprovedNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $this->payment->loadMissing(['receipt', 'invoice.contract.user']);
-
-        $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
-        $receiptId = $this->payment->receipt?->id;
-        $actionUrl = $receiptId
-            ? $frontendUrl.'/customer/receipts/'.$receiptId
-            : $frontendUrl.'/customer/receipts';
         $appName = (string) config('app.name');
 
         return (new MailMessage)
@@ -41,9 +34,6 @@ class PaymentApprovedNotification extends Notification
             ], [
                 'appName' => $appName,
                 'userName' => (string) ($notifiable->name ?? ''),
-                'actionUrl' => $actionUrl,
-                'displayableActionUrl' => $actionUrl,
-                'actionLabel' => 'View Receipt →',
             ]);
     }
 }

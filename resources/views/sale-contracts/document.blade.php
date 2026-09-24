@@ -43,7 +43,7 @@
 
             <p class="contract-doc-preamble">
                 This Property Sale Agreement ("Agreement") is made between the Seller and the
-                Purchaser identified below, concerning the residential unit described herein, upon
+                Owner identified below, concerning the residential unit described herein, upon
                 the terms and conditions set forth in this document.
             </p>
         </div>

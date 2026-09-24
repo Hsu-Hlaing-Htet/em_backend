@@ -7,6 +7,7 @@ use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\MaintenanceCategory;
 use App\Models\MaintenanceRequest;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
@@ -23,6 +24,7 @@ use App\Models\UtilityType;
 use Carbon\Carbon;
 use Database\Seeders\Support\BillingSeederSupport;
 use Database\Seeders\Support\ConsolidatedBillingSeederSupport;
+use Database\Seeders\Support\ContractFinancialHistorySeederSupport;
 use Database\Seeders\Support\MyanmarSampleData;
 use Database\Seeders\Support\SeedNumberGenerator;
 use Illuminate\Database\Seeder;
@@ -39,19 +41,25 @@ class BulkDemoSeeder extends Seeder
 {
     private const BULK_IMPORT_READY_THROUGH = '2026-09-01';
 
-    private const CUSTOMER_TARGET = 100;
+    /** Target ~180 customers for pagination and portal variety. */
+    private const CUSTOMER_TARGET = 180;
 
-    private const ROOM_TARGET = 160;
+    /** Enough rooms for ~230 contracts without active-room conflicts. */
+    private const ROOM_TARGET = 320;
 
-    private const CONTRACT_TARGET = 110;
+    private const CONTRACT_TARGET = 230;
 
-    private const INVOICE_TARGET = 140;
+    /** Legacy volume knobs (financial history now drives invoice/payment counts). */
+    private const INVOICE_TARGET = 1000;
 
-    private const PAYMENT_TARGET = 90;
+    private const PAYMENT_TARGET = 700;
 
-    private const UTILITY_TARGET = 55;
+    private const UTILITY_TARGET = 420;
 
-    private const MAINTENANCE_TARGET = 55;
+    private const MAINTENANCE_TARGET = 200;
+
+    /** Bulk BL-### demo tickets (workflow WF-* rows are seeded separately). */
+    private const BULK_MAINTENANCE_COUNT = 200;
 
     private User $admin;
 
@@ -88,7 +96,7 @@ class BulkDemoSeeder extends Seeder
         $this->installmentPlan = PaymentPlan::query()
             ->where('payment_type', 'installment')
             ->where('status', 'active')
-            ->orderBy('duration_months')
+            ->orderByDesc('duration_months')
             ->first();
         $this->chargeTypes = ChargeType::query()->where('status', 'active')->get()->keyBy('slug');
         $this->paymentMethods = PaymentMethod::query()->where('status', 'active')->orderBy('id')->get();
@@ -109,6 +117,7 @@ class BulkDemoSeeder extends Seeder
         $this->normalizeUtilityHistories();
         $this->seedInvoicesPaymentsReceipts($contracts);
         $this->normalizeUtilityHistories();
+        (new UtilityInvoiceConsistencySeeder)->run();
         $this->seedMaintenance($contracts);
         $this->syncBulkRoomStatuses();
 
@@ -139,7 +148,9 @@ class BulkDemoSeeder extends Seeder
             ->count();
 
         $needed = max(0, self::CUSTOMER_TARGET - $existing);
-        $startIndex = 21;
+        // Continue after previously seeded bulk customers (persona accounts occupy lower indices).
+        $personaBaseline = 20;
+        $startIndex = 21 + max(0, $existing - $personaBaseline);
         $bulk = MyanmarSampleData::bulkCustomers($needed, $startIndex);
 
         foreach (array_chunk($bulk, 25) as $chunk) {
@@ -362,15 +373,16 @@ class BulkDemoSeeder extends Seeder
                 continue;
             }
 
-            // Spread start dates across 14 months; some end within next 60 days.
-            $monthsAgo = 1 + ($i % 14);
-            $start = now()->subMonths($monthsAgo)->startOfMonth()->addDays($i % 20);
+            // Spread start dates across 18 months relative to stable demo as-of date.
+            $asOf = Carbon::parse(ContractFinancialHistorySeederSupport::DEMO_AS_OF)->startOfDay();
+            $monthsAgo = 2 + ($i % 16);
+            $start = $asOf->copy()->subMonths($monthsAgo)->startOfMonth()->addDays($i % 28);
             $isExpiringSoon = $spec['status'] === 'active' && $i % 5 === 0;
             $duration = $spec['type'] === 'rent' ? 12 : null;
             $end = match (true) {
-                $spec['status'] === 'completed' && $spec['type'] === 'rent' => $start->copy()->addMonths(12),
-                $spec['status'] === 'completed' && $spec['type'] === 'sale' => $start->copy()->addMonths(6),
-                $isExpiringSoon => now()->addDays(15 + ($i % 45)),
+                $spec['status'] === 'completed' && $spec['type'] === 'rent' => $start->copy()->addMonths(12)->min($asOf),
+                $spec['status'] === 'completed' && $spec['type'] === 'sale' => $start->copy()->addMonths(6)->min($asOf),
+                $isExpiringSoon => $asOf->copy()->addDays(15 + ($i % 45)),
                 $spec['type'] === 'rent' => $start->copy()->addMonths(12),
                 $spec['type'] === 'sale' && $spec['status'] === 'approved' => $start->copy()->addMonths(18),
                 default => null,
@@ -385,12 +397,30 @@ class BulkDemoSeeder extends Seeder
                 ? (float) ($room->rent_deposit_price ?: $rent * 2)
                 : (float) ($room->booking_deposit_price ?: $sale * 0.1);
 
-            $useInstallment = $spec['type'] === 'sale' && in_array($spec['status'], ['approved', 'pending'], true) && $this->installmentPlan;
+            $useInstallment = $spec['type'] === 'sale'
+                && $this->installmentPlan
+                && (
+                    in_array($spec['status'], ['approved', 'pending'], true)
+                    || (in_array($spec['status'], ['active', 'completed'], true) && ($i % 2 === 0))
+                );
             $approvedStatuses = ['active', 'approved', 'completed', 'rejected'];
+
+            $secondCustomer = null;
+            if (
+                in_array($spec['status'], ['active', 'completed', 'pending'], true)
+                && ($i % 6 === 0)
+                && $customers->count() > 1
+            ) {
+                $candidate = $customers[($i + 19) % $customers->count()];
+                if ((int) $candidate->id !== (int) $customer->id) {
+                    $secondCustomer = $candidate;
+                }
+            }
 
             $contract = Contract::query()->create([
                 'contract_number' => $number,
                 'user_id' => $customer->id,
+                'second_user_id' => $secondCustomer?->id,
                 'room_id' => $room->id,
                 'payment_plan_id' => $useInstallment ? $this->installmentPlan?->id : $this->fullPlan?->id,
                 'created_by' => $this->admin->id,
@@ -406,6 +436,8 @@ class BulkDemoSeeder extends Seeder
                 'billing_day' => $spec['type'] === 'rent' || $useInstallment ? 5 : null,
                 'status' => $spec['status'],
                 'remark' => sprintf('Bulk demo %s contract (%s).', $spec['type'], $spec['status']),
+                'created_at' => $start->copy()->subDays(3 + ($i % 5)),
+                'updated_at' => $start->copy()->addDay(),
             ]);
 
             $roomStatus = match ($spec['status']) {
@@ -425,7 +457,7 @@ class BulkDemoSeeder extends Seeder
 
         $this->command?->info("Bulk contracts created: {$created}");
 
-        return Contract::query()->with(['room', 'user'])->orderBy('id')->get();
+        return Contract::query()->with(['room', 'user', 'secondUser'])->orderBy('id')->get();
     }
 
     /**
@@ -560,8 +592,9 @@ class BulkDemoSeeder extends Seeder
 
     private function latestSeedableUtilityMonth(): Carbon
     {
-        return now()
-            ->subMonth()
+        // Include the demo as-of month so current-cycle Rent invoices can carry
+        // Utility charges (previously capped at now()-1 month → always August).
+        return Carbon::parse(ContractFinancialHistorySeederSupport::DEMO_AS_OF)
             ->startOfMonth()
             ->min(Carbon::parse(self::BULK_IMPORT_READY_THROUGH)->startOfMonth());
     }
@@ -569,265 +602,39 @@ class BulkDemoSeeder extends Seeder
     /**
      * @param  Collection<int, Contract>  $contracts
      */
+    /**
+     * Rebuild coherent Invoice → Payment → Receipt histories for bulk contracts
+     * using ContractLifecycleService-compatible amounts and DEMO_AS_OF timelines.
+     *
+     * @param  Collection<int, Contract>  $contracts
+     */
     private function seedInvoicesPaymentsReceipts(Collection $contracts): void
     {
-        $billable = $contracts->whereIn('status', [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED])->values();
-        if ($billable->isEmpty()) {
+        $billable = $contracts
+            ->whereIn('status', [Contract::STATUS_ACTIVE, Contract::STATUS_COMPLETED])
+            ->filter(fn (Contract $contract) => str_starts_with((string) $contract->remark, 'Bulk demo'))
+            ->values();
+
+        if ($billable->isEmpty() || ! $this->admin) {
             return;
         }
 
-        $existingInvoices = Invoice::query()->count();
-        $neededInvoices = max(0, self::INVOICE_TARGET - $existingInvoices);
-        $existingPayments = Payment::query()->count();
-        $neededPayments = max(0, self::PAYMENT_TARGET - $existingPayments);
+        $support = new ContractFinancialHistorySeederSupport(
+            $this->admin,
+            $this->chargeTypes,
+            $this->paymentMethods,
+            \Illuminate\Support\Carbon::parse(ContractFinancialHistorySeederSupport::DEMO_AS_OF),
+        );
 
-        $invoiceStatuses = ['paid', 'paid', 'paid', 'issued', 'partial', 'overdue', 'draft'];
+        $stats = $support->reconcileContracts($billable);
 
-        $cash = $this->paymentMethods->firstWhere('slug', 'cash') ?? $this->paymentMethods->first();
-        $kbz = $this->paymentMethods->firstWhere('slug', 'kbz-pay') ?? $this->paymentMethods->first();
-
-        $invoicesCreated = 0;
-        $paymentsCreated = 0;
-
-        for ($i = 0; $i < $neededInvoices; $i++) {
-            $contract = $billable[$i % $billable->count()];
-            $status = $invoiceStatuses[$i % count($invoiceStatuses)];
-            $number = BillingSeederSupport::nextInvoiceNumber();
-
-            if (Invoice::query()->where('invoice_number', $number)->exists()) {
-                continue;
-            }
-
-            $monthsAgo = $i % 14;
-            $billingMonth = now()->subMonths($monthsAgo)->startOfMonth();
-
-            if (Invoice::query()
-                ->where('contract_id', $contract->id)
-                ->whereDate('billing_month', $billingMonth->toDateString())
-                ->exists()) {
-                continue;
-            }
-
-            $issued = $billingMonth->copy()->day(5);
-            $due = match ($status) {
-                'overdue' => now()->subDays(10 + ($i % 40)),
-                'draft' => now()->addDays(7),
-                default => $issued->copy()->addDays(10),
-            };
-
-            $isRent = $contract->type === 'rent';
-            $lateFee = $status === 'overdue' ? 25000.0 : 0.0;
-            $type = $isRent ? 'rent' : 'sale';
-            $isIssued = in_array($status, ['issued', 'partial', 'paid', 'overdue'], true);
-
-            $utility = $this->findOrCreateBulkUtility($contract, $billingMonth, $i);
-            $items = $this->buildBulkConsolidatedItems($contract, $utility, $billingMonth, $isRent);
-            $amount = round(collect($items)->sum('amount'), 2);
-
-            $invoice = Invoice::query()->create([
-                'contract_id' => $contract->id,
-                'utility_id' => null,
-                'billing_month' => $billingMonth->toDateString(),
-                'created_by' => $this->admin->id,
-                'approved_by' => $isIssued ? $this->admin->id : null,
-                'approved_at' => $isIssued ? $issued->copy()->subDay() : null,
-                'invoice_number' => $number,
-                'type' => $type,
-                'issued_date' => $isIssued ? $issued->toDateString() : null,
-                'due_date' => $due->toDateString(),
-                'late_fee' => $lateFee,
-                'total_amount' => $amount,
-                'status' => $status,
-            ]);
-
-            foreach ($items as $item) {
-                InvoiceItem::query()->create([
-                    'invoice_id' => $invoice->id,
-                    ...$item,
-                ]);
-            }
-
-            if ($utility && $utility->status === 'approved') {
-                $utility->update(['invoice_id' => $invoice->id]);
-            }
-
-            $invoicesCreated++;
-
-            // Attach payments for non-draft invoices while under payment target.
-            if ($status === 'draft' || $paymentsCreated >= $neededPayments) {
-                continue;
-            }
-
-            $method = $i % 2 === 0 ? $cash : $kbz;
-            $noteKey = '[BL:'.$number.':';
-
-            if ($status === 'paid') {
-                $payment = $this->createPaymentOnce($invoice, $noteKey.'paid]', [
-                    'payment_method_id' => $method->id,
-                    'created_by' => $contract->user_id,
-                    'approved_by' => $this->admin->id,
-                    'approved_at' => $issued->copy()->addDays(3),
-                    'amount' => round($amount + $lateFee, 2),
-                    'proof_image_path' => 'payments/bl-'.$number.'-paid.jpg',
-                    'rejection_reason' => null,
-                    'payment_date' => $issued->copy()->addDays(2)->toDateString(),
-                    'status' => 'approved',
-                    'note' => $noteKey.'paid] Full MMK settlement.',
-                ]);
-                if ($payment) {
-                    $paymentsCreated++;
-                    $this->createReceiptOnce($payment, Receipt::STATUS_ISSUED, Receipt::APPROVAL_APPROVED, $issued->copy()->addDays(4));
-                }
-            } elseif ($status === 'partial') {
-                $partial = round($amount * 0.4, 2);
-                $payment = $this->createPaymentOnce($invoice, $noteKey.'partial]', [
-                    'payment_method_id' => $method->id,
-                    'created_by' => $contract->user_id,
-                    'approved_by' => $this->admin->id,
-                    'approved_at' => $issued->copy()->addDays(3),
-                    'amount' => $partial,
-                    'proof_image_path' => 'payments/bl-'.$number.'-partial.jpg',
-                    'rejection_reason' => null,
-                    'payment_date' => $issued->copy()->addDays(2)->toDateString(),
-                    'status' => 'approved',
-                    'note' => $noteKey.'partial] Partial MMK payment.',
-                ]);
-                if ($payment) {
-                    $paymentsCreated++;
-                    // Draft receipt awaiting approval for some partials.
-                    $this->createReceiptOnce(
-                        $payment,
-                        Receipt::STATUS_DRAFT,
-                        $i % 2 === 0 ? Receipt::APPROVAL_PENDING : Receipt::APPROVAL_APPROVED,
-                    );
-                }
-            } elseif ($status === 'overdue') {
-                // Pending payment awaiting admin review (no receipt).
-                $payment = $this->createPaymentOnce($invoice, $noteKey.'pending]', [
-                    'payment_method_id' => $method->id,
-                    'created_by' => $contract->user_id,
-                    'approved_by' => null,
-                    'approved_at' => null,
-                    'amount' => null,
-                    'proof_image_path' => 'payments/bl-'.$number.'-pending.jpg',
-                    'rejection_reason' => null,
-                    'payment_date' => now()->subDays(2)->toDateString(),
-                    'status' => 'pending',
-                    'note' => $noteKey.'pending] Awaiting admin review.',
-                ]);
-                if ($payment) {
-                    $paymentsCreated++;
-                }
-            } elseif ($status === 'issued' && $i % 3 === 0) {
-                // Rejected payment, invoice remains unpaid, no receipt.
-                $payment = $this->createPaymentOnce($invoice, $noteKey.'rejected]', [
-                    'payment_method_id' => $method->id,
-                    'created_by' => $contract->user_id,
-                    'approved_by' => $this->admin->id,
-                    'approved_at' => now()->subDays(1),
-                    'amount' => null,
-                    'proof_image_path' => 'payments/bl-'.$number.'-rejected.jpg',
-                    'rejection_reason' => 'Transfer proof does not show the full MMK amount clearly.',
-                    'payment_date' => now()->subDays(3)->toDateString(),
-                    'status' => 'rejected',
-                    'note' => $noteKey.'rejected] Rejected payment attempt.',
-                ]);
-                if ($payment) {
-                    $paymentsCreated++;
-                }
-            }
-            // Remaining issued invoices stay unpaid with no payment (receivable aging).
-        }
-
-        // Extra pending payments on unpaid issued invoices for approval queues.
-        if ($paymentsCreated < $neededPayments) {
-            $openInvoices = Invoice::query()
-                ->where('status', 'issued')
-                ->whereHas('contract', fn ($query) => $query->where('remark', 'like', 'Bulk demo%'))
-                ->whereDoesntHave('payments')
-                ->limit($neededPayments - $paymentsCreated)
-                ->get();
-
-            foreach ($openInvoices as $index => $invoice) {
-                $invoice->loadMissing('contract');
-                $noteKey = '[BL:'.$invoice->invoice_number.':extra-pending]';
-                $payment = $this->createPaymentOnce($invoice, $noteKey, [
-                    'payment_method_id' => ($kbz ?? $cash)->id,
-                    'created_by' => $invoice->contract?->user_id ?? $this->admin->id,
-                    'approved_by' => null,
-                    'approved_at' => null,
-                    'amount' => null,
-                    'proof_image_path' => 'payments/bl-extra-'.$invoice->invoice_number.'.jpg',
-                    'rejection_reason' => null,
-                    'payment_date' => now()->subDays(1 + $index)->toDateString(),
-                    'status' => 'pending',
-                    'note' => $noteKey.' Extra pending approval.',
-                ]);
-                if ($payment) {
-                    $paymentsCreated++;
-                }
-            }
-        }
-
-        // Approved payments intentionally without receipt (pending receipt processing).
-        $approvedWithoutReceipt = Payment::query()
-            ->where('status', 'approved')
-            ->whereDoesntHave('receipt')
-            ->count();
-
-        for ($j = 0; $j < max(0, 5 - $approvedWithoutReceipt); $j++) {
-            $contract = $billable[$j % $billable->count()];
-            $number = BillingSeederSupport::nextInvoiceNumber();
-            if (Invoice::query()->where('invoice_number', $number)->exists()) {
-                continue;
-            }
-            $billingMonth = now()->subDays(20 + $j)->startOfMonth();
-            if (Invoice::query()
-                ->where('contract_id', $contract->id)
-                ->whereDate('billing_month', $billingMonth->toDateString())
-                ->exists()) {
-                continue;
-            }
-            $issued = now()->subDays(20 + $j);
-            $utility = $this->findOrCreateBulkUtility($contract, $billingMonth, 1000 + $j);
-            $items = $this->buildBulkConsolidatedItems($contract, $utility, $billingMonth, $contract->type === 'rent');
-            $amount = round(collect($items)->sum('amount'), 2);
-            $invoice = Invoice::query()->create([
-                'contract_id' => $contract->id,
-                'utility_id' => null,
-                'billing_month' => $billingMonth->toDateString(),
-                'created_by' => $this->admin->id,
-                'approved_by' => $this->admin->id,
-                'approved_at' => $issued->copy()->subDay(),
-                'invoice_number' => $number,
-                'type' => $contract->type === 'rent' ? 'rent' : 'sale',
-                'issued_date' => $issued->toDateString(),
-                'due_date' => $issued->copy()->addDays(7)->toDateString(),
-                'late_fee' => 0,
-                'total_amount' => $amount,
-                'status' => 'paid',
-            ]);
-            foreach ($items as $item) {
-                InvoiceItem::query()->create(['invoice_id' => $invoice->id, ...$item]);
-            }
-            if ($utility) {
-                $utility->update(['invoice_id' => $invoice->id]);
-            }
-            $this->createPaymentOnce($invoice, '[BL:'.$number.':paid-no-receipt]', [
-                'payment_method_id' => $cash->id,
-                'created_by' => $contract->user_id,
-                'approved_by' => $this->admin->id,
-                'approved_at' => $issued->copy()->addDay(),
-                'amount' => $amount,
-                'proof_image_path' => 'payments/bl-'.$number.'.jpg',
-                'rejection_reason' => null,
-                'payment_date' => $issued->toDateString(),
-                'status' => 'approved',
-                'note' => '[BL:'.$number.':paid-no-receipt] Approved; receipt not generated yet.',
-            ]);
-        }
-
-        $this->command?->info("Bulk invoices created: {$invoicesCreated}; payments created: {$paymentsCreated}");
+        $this->command?->info(sprintf(
+            'Bulk financial history: contracts=%d invoices=%d payments=%d receipts=%d',
+            $stats['contracts'],
+            $stats['invoices'],
+            $stats['payments'],
+            $stats['receipts'],
+        ));
     }
 
     /**
@@ -835,59 +642,250 @@ class BulkDemoSeeder extends Seeder
      */
     private function seedMaintenance(Collection $contracts): void
     {
-        $existing = MaintenanceRequest::query()->count();
-        $needed = max(0, self::MAINTENANCE_TARGET - $existing);
-        if ($needed === 0) {
+        $categoriesBySlug = MaintenanceCategory::query()
+            ->where('status', MaintenanceCategory::STATUS_ACTIVE)
+            ->get()
+            ->keyBy('slug');
+
+        if ($categoriesBySlug->isEmpty()) {
+            $this->command?->warn('Bulk maintenance skipped: active maintenance categories missing.');
+
             return;
         }
 
-        $eligible = $contracts->where('status', Contract::STATUS_ACTIVE)->values();
+        $eligible = $contracts
+            ->where('status', Contract::STATUS_ACTIVE)
+            ->filter(fn (Contract $contract) => $contract->room_id && $contract->user_id)
+            ->values();
+
         if ($eligible->isEmpty()) {
+            $this->command?->warn('Bulk maintenance skipped: no active contracts with rooms.');
+
             return;
         }
 
-        $statuses = ['pending', 'pending', 'in_progress', 'completed', 'rejected'];
-        $categories = ['plumbing', 'electrical', 'hvac', 'general', 'appliance'];
-        $priorities = ['low', 'medium', 'high'];
-        $titles = [
-            'Leaking kitchen faucet',
-            'AC not cooling properly',
-            'Corridor light flickering',
-            'Balcony door lock stuck',
-            'Water heater intermittent',
-            'Bathroom drain clogged',
-            'Socket sparking near TV',
-            'Ceiling paint peeling',
-        ];
+        $catalog = $this->bulkMaintenanceCatalog();
+        $jointContract = $eligible->first(fn (Contract $contract) => filled($contract->second_user_id))
+            ?? Contract::query()
+                ->with(['room', 'user', 'secondUser'])
+                ->where('status', Contract::STATUS_ACTIVE)
+                ->whereNotNull('second_user_id')
+                ->whereHas('room')
+                ->whereHas('user')
+                ->orderBy('id')
+                ->first();
 
-        $created = 0;
-        for ($i = 0; $i < $needed; $i++) {
-            $contract = $eligible[$i % $eligible->count()];
-            $status = $statuses[$i % count($statuses)];
-            $title = sprintf('BL-%03d %s', $i + 1, $titles[$i % count($titles)]);
+        $expectedTitles = [];
+        $synced = 0;
 
-            MaintenanceRequest::query()->firstOrCreate(
+        for ($i = 0; $i < self::BULK_MAINTENANCE_COUNT; $i++) {
+            $scenario = $catalog[$i % count($catalog)];
+            $category = $categoriesBySlug->get($scenario['category']);
+
+            if (! $category) {
+                continue;
+            }
+
+            $reference = sprintf('BL-%03d', $i + 1);
+            $title = $reference.' '.$scenario['title'];
+            $expectedTitles[] = $title;
+
+            $contract = ($i === 0 && $jointContract)
+                ? $jointContract
+                : $eligible[$i % $eligible->count()];
+
+            // Prefer second-party submitter on the joint-contract sample only.
+            $submitterId = ($i === 0 && $jointContract?->second_user_id)
+                ? (int) $jointContract->second_user_id
+                : (int) $contract->user_id;
+
+            $createdAt = Carbon::parse('2026-07-01')
+                ->addDays(($i * 2) % 85)
+                ->setTime(8 + ($i % 10), ($i * 7) % 60, 0);
+
+            $status = $scenario['status'];
+            $approvedAt = in_array($status, ['in_progress', 'completed', 'rejected'], true)
+                ? $createdAt->copy()->addDays(1 + ($i % 3))
+                : null;
+
+            MaintenanceRequest::query()->updateOrCreate(
+                ['title' => $title],
                 [
-                    'title' => $title,
                     'room_id' => $contract->room_id,
                     'user_id' => $contract->user_id,
-                ],
-                [
-                    'created_by' => $contract->user_id,
-                    'approved_by' => in_array($status, ['in_progress', 'completed', 'rejected'], true) ? $this->admin->id : null,
-                    'approved_at' => in_array($status, ['in_progress', 'completed', 'rejected'], true) ? now()->subDays(2 + ($i % 10)) : null,
-                    'category' => $categories[$i % count($categories)],
-                    'priority' => $priorities[$i % count($priorities)],
-                    'description' => 'Bulk demo maintenance request for '.$contract->contract_number.'.',
+                    'created_by' => $submitterId,
+                    'approved_by' => $approvedAt ? $this->admin->id : null,
+                    'approved_at' => $approvedAt,
+                    'maintenance_category_id' => $category->id,
+                    'category' => $category->slug,
+                    'priority' => $scenario['priority'],
+                    'description' => $scenario['description'],
                     'status' => $status,
-                    'resolution_note' => $status === 'completed' ? 'Issue resolved and verified with tenant.' : null,
-                    'rejection_reason' => $status === 'rejected' ? 'Duplicate ticket already scheduled with building technician.' : null,
+                    'resolution_note' => $status === 'completed'
+                        ? ($scenario['resolution_note'] ?? 'Issue resolved and verified with the resident.')
+                        : null,
+                    'rejection_reason' => $status === 'rejected'
+                        ? ($scenario['rejection_reason'] ?? 'Duplicate ticket already scheduled with the building technician.')
+                        : null,
+                    'created_at' => $createdAt,
+                    'updated_at' => $approvedAt ?? $createdAt,
                 ],
             );
-            $created++;
+
+            $synced++;
         }
 
-        $this->command?->info("Bulk maintenance ensured: {$created}");
+        // Remove obsolete bulk BL-* rows from earlier mismatched title/category cycles.
+        $removed = MaintenanceRequest::query()
+            ->where('title', 'like', 'BL-%')
+            ->when(
+                $expectedTitles !== [],
+                fn ($query) => $query->whereNotIn('title', $expectedTitles),
+            )
+            ->delete();
+
+        $this->command?->info(
+            "Bulk maintenance ensured/synced: {$synced} (BL-001…BL-"
+            .str_pad((string) self::BULK_MAINTENANCE_COUNT, 3, '0', STR_PAD_LEFT)
+            .'); obsolete BL rows removed: '.$removed
+        );
+    }
+
+    /**
+     * Title/category/priority/status pairs — never cycle category independently of title.
+     *
+     * @return list<array{
+     *     title: string,
+     *     category: string,
+     *     priority: string,
+     *     status: string,
+     *     description: string,
+     *     resolution_note?: string|null,
+     *     rejection_reason?: string|null
+     * }>
+     */
+    private function bulkMaintenanceCatalog(): array
+    {
+        return [
+            [
+                'title' => 'Leaking kitchen faucet',
+                'category' => 'plumbing',
+                'priority' => 'medium',
+                'status' => 'completed',
+                'description' => 'Water drips continuously from the kitchen tap even when fully closed.',
+                'resolution_note' => 'Washer replaced and faucet resealed. Resident confirmed no further drip.',
+            ],
+            [
+                'title' => 'AC not cooling properly',
+                'category' => 'hvac',
+                'priority' => 'high',
+                'status' => 'in_progress',
+                'description' => 'Bedroom air conditioner runs but does not produce cold air during afternoon heat.',
+            ],
+            [
+                'title' => 'Corridor light flickering',
+                'category' => 'electrical',
+                'priority' => 'medium',
+                'status' => 'pending',
+                'description' => 'Common corridor light outside the unit flickers every few seconds after dark.',
+            ],
+            [
+                'title' => 'Balcony door lock stuck',
+                'category' => 'general',
+                'priority' => 'high',
+                'status' => 'pending',
+                'description' => 'Balcony sliding door lock is jammed and the door cannot be secured overnight.',
+            ],
+            [
+                'title' => 'Water heater intermittent',
+                'category' => 'appliance',
+                'priority' => 'medium',
+                'status' => 'completed',
+                'description' => 'Bathroom water heater works briefly then shuts off before the tank is hot.',
+                'resolution_note' => 'Thermostat reset and heating element checked. Hot water restored.',
+            ],
+            [
+                'title' => 'Bathroom drain clogged',
+                'category' => 'plumbing',
+                'priority' => 'medium',
+                'status' => 'pending',
+                'description' => 'Water drains very slowly and begins backing up after a few minutes of use.',
+            ],
+            [
+                'title' => 'Socket sparking near TV',
+                'category' => 'electrical',
+                'priority' => 'high',
+                'status' => 'in_progress',
+                'description' => 'Living room outlet sparks when the TV plug is inserted. Outlet is currently unused.',
+            ],
+            [
+                'title' => 'Ceiling paint peeling',
+                'category' => 'general',
+                'priority' => 'low',
+                'status' => 'pending',
+                'description' => 'Paint is peeling near the living room ceiling corner with no active leak visible.',
+            ],
+            [
+                'title' => 'Toilet not flushing',
+                'category' => 'plumbing',
+                'priority' => 'medium',
+                'status' => 'in_progress',
+                'description' => 'Master bathroom toilet handle moves but the cistern does not release water.',
+            ],
+            [
+                'title' => 'Refrigerator not cooling',
+                'category' => 'appliance',
+                'priority' => 'medium',
+                'status' => 'pending',
+                'description' => 'Kitchen refrigerator runs loudly but the freezer compartment is no longer cold.',
+            ],
+            [
+                'title' => 'Air conditioner making noise',
+                'category' => 'hvac',
+                'priority' => 'low',
+                'status' => 'completed',
+                'description' => 'Living room AC makes a repeating rattle when the fan is on medium speed.',
+                'resolution_note' => 'Loose outdoor bracket tightened. Noise no longer present.',
+            ],
+            [
+                'title' => 'Power outlet not working',
+                'category' => 'electrical',
+                'priority' => 'medium',
+                'status' => 'rejected',
+                'description' => 'Bedroom wall outlet has no power while neighboring outlets still work.',
+                'rejection_reason' => 'Duplicate of an earlier ticket already scheduled with the building electrician.',
+            ],
+            [
+                'title' => 'Low water pressure',
+                'category' => 'plumbing',
+                'priority' => 'medium',
+                'status' => 'pending',
+                'description' => 'Shower water pressure drops sharply between 06:00 and 08:00 each morning.',
+            ],
+            [
+                'title' => 'Washing machine not starting',
+                'category' => 'appliance',
+                'priority' => 'low',
+                'status' => 'completed',
+                'description' => 'Washer powers on but the start button does not begin a wash cycle.',
+                'resolution_note' => 'Door latch sensor cleaned and cycle restarted successfully.',
+            ],
+            [
+                'title' => 'AC leaking water',
+                'category' => 'hvac',
+                'priority' => 'high',
+                'status' => 'pending',
+                'description' => 'Indoor AC unit drips water onto the bedroom floor after about 30 minutes of use.',
+            ],
+            [
+                'title' => 'Cabinet hinge loose',
+                'category' => 'general',
+                'priority' => 'low',
+                'status' => 'completed',
+                'description' => 'Kitchen cabinet door hangs unevenly and scrapes the frame when opened.',
+                'resolution_note' => 'Hinge screws tightened and door realigned.',
+            ],
+        ];
     }
 
     /**

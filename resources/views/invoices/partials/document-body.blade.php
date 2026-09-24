@@ -37,6 +37,10 @@
             <span class="invoice-doc__summary-label">Billing Period</span>
             <span class="invoice-doc__summary-value">{{ $document['summary']['billing_period'] ?? '—' }}</span>
         </div>
+        <div class="invoice-doc__summary-row">
+            <span class="invoice-doc__summary-label">Status</span>
+            <span class="invoice-doc__summary-value">{{ $document['summary']['status'] ?? '—' }}</span>
+        </div>
         <div class="invoice-doc__summary-row invoice-doc__summary-row--due">
             <span class="invoice-doc__summary-label">Amount Due</span>
             <span class="invoice-doc__summary-value">{{ $document['summary']['amount_due'] ?? '—' }}</span>
@@ -86,6 +90,12 @@
             <span>Subtotal</span>
             <span>{{ $document['totals']['subtotal'] ?? '—' }}</span>
         </div>
+        @if ((int) ($document['totals']['overdue_days'] ?? 0) > 0)
+            <div class="invoice-doc__totals-row">
+                <span>Overdue Days</span>
+                <span>{{ (int) $document['totals']['overdue_days'] }} days</span>
+            </div>
+        @endif
         <div class="invoice-doc__totals-row">
             <span>Late Fee</span>
             <span>{{ $document['totals']['late_fee'] ?? '—' }}</span>

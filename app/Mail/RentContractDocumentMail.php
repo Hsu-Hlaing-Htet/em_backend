@@ -2,10 +2,17 @@
 
 namespace App\Mail;
 
+use App\Models\Contract;
+
 class RentContractDocumentMail extends ContractDocumentMail
 {
-    public function __construct(\App\Models\Contract $contract, string $documentPdf, string $filename, ?string $customerContractUrl = null)
+    public function __construct(Contract $contract, string $customerName)
     {
-        parent::__construct($contract, $documentPdf, 'Rental/Lease Agreement', $filename, $customerContractUrl);
+        parent::__construct(
+            contract: $contract,
+            emailSubject: 'Rent Contract Available',
+            customerName: $customerName,
+            introLine: 'Your rent contract is now available in your Customer Portal.',
+        );
     }
 }

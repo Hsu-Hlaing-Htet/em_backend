@@ -59,6 +59,16 @@ class ContractLifecycleService
         return $this->invoiceOutstandingBalance($contract);
     }
 
+    public function approvedPaidAmount(Contract $contract): float
+    {
+        return round((float) Payment::query()
+            ->where('status', Payment::STATUS_APPROVED)
+            ->whereHas('invoice', fn ($query) => $query
+                ->where('contract_id', $contract->id)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED))
+            ->sum('amount'), 2);
+    }
+
     private function saleCanBeCompleted(Contract $contract): bool
     {
         if ($contract->payment_type === 'installment' && (int) ($contract->duration_months ?? 0) <= 0) {
@@ -110,16 +120,6 @@ class ContractLifecycleService
             ->with('payments')
             ->get()
             ->sum(fn (Invoice $invoice): float => $this->invoiceCurrentBalance($invoice)), 2);
-    }
-
-    private function approvedPaidAmount(Contract $contract): float
-    {
-        return round((float) Payment::query()
-            ->where('status', Payment::STATUS_APPROVED)
-            ->whereHas('invoice', fn ($query) => $query
-                ->where('contract_id', $contract->id)
-                ->where('status', '!=', Invoice::STATUS_CANCELLED))
-            ->sum('amount'), 2);
     }
 
     private function invoiceCurrentBalance(Invoice $invoice): float

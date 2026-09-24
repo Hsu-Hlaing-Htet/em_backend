@@ -6,6 +6,7 @@ use App\Models\Building;
 use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
+use App\Models\MaintenanceCategory;
 use App\Models\MaintenanceRequest;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
@@ -95,6 +96,14 @@ class WorkflowScenarioSeeder extends Seeder
             $cash,
             $kbz,
         );
+
+        // Joint-party demo: Tenant 2 on the primary active rent (for shared maintenance access tests).
+        $jointSecond = $customers->get('minmin@gmail.com');
+        if ($activeRent && $jointSecond && (int) $jointSecond->id !== (int) $activeRent->user_id) {
+            $activeRent->update(['second_user_id' => $jointSecond->id]);
+            $activeRent->load('secondUser');
+        }
+
         $this->seedRentCompleted($admin, $customers->get('zawzaw@gmail.com'), $rooms['R-COMPLETED'], $fullPlan, $chargeTypes);
         $this->seedRentRejected($admin, $customers->get('eiei@gmail.com'), $rooms['R-REJECTED'], $fullPlan);
 
@@ -614,7 +623,7 @@ class WorkflowScenarioSeeder extends Seeder
             $paidMonth->copy()->day(9),
         );
 
-        // Partial consolidated invoice + approved partial payment + draft receipt
+        // Partial consolidated invoice + approved partial payment + issued receipt
         $partialMonth = $start->copy()->addMonths(1);
         $partialUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $partialMonth, 'approved', $admin);
         $partialInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
@@ -647,8 +656,9 @@ class WorkflowScenarioSeeder extends Seeder
         BillingSeederSupport::upsertReceipt(
             $partialPayment,
             $admin,
-            Receipt::STATUS_DRAFT,
-            Receipt::APPROVAL_PENDING,
+            Receipt::STATUS_ISSUED,
+            Receipt::APPROVAL_APPROVED,
+            $partialMonth->copy()->day(11),
         );
 
         // Unpaid issued consolidated invoice (rent + electricity + water + service charge)
@@ -729,7 +739,7 @@ class WorkflowScenarioSeeder extends Seeder
             'note' => 'Rejected payment attempt against consolidated invoice.',
         ]);
 
-        // Approved payment with draft approved receipt (not yet emailed to customer)
+        // Approved payment with issued receipt (available in portal; email optional/manual Send)
         $receiptMonth = $start->copy()->addMonths(5);
         $receiptUtility = $this->seedUtilityForRoom($admin, $room, $utilityTypes, $receiptMonth, 'approved', $admin);
         $receiptInvoice = BillingSeederSupport::upsertConsolidatedInvoice(
@@ -746,7 +756,7 @@ class WorkflowScenarioSeeder extends Seeder
             [$receiptUtility->id],
         );
         $this->replacePayments($receiptInvoice);
-        $awaitingIssuePayment = BillingSeederSupport::upsertPayment($receiptInvoice, '[WF:receipt-awaiting-issue]', [
+        $awaitingEmailPayment = BillingSeederSupport::upsertPayment($receiptInvoice, '[WF:receipt-awaiting-email]', [
             'payment_method_id' => $cash->id,
             'created_by' => $customer->id,
             'approved_by' => $admin->id,
@@ -756,19 +766,26 @@ class WorkflowScenarioSeeder extends Seeder
             'rejection_reason' => null,
             'payment_date' => $receiptMonth->copy()->day(7)->toDateString(),
             'status' => 'approved',
-            'note' => 'Approved consolidated payment; receipt approved but not emailed yet.',
+            'note' => 'Approved consolidated payment; receipt issued, not emailed yet.',
         ]);
         BillingSeederSupport::upsertReceipt(
-            $awaitingIssuePayment,
+            $awaitingEmailPayment,
             $admin,
-            Receipt::STATUS_DRAFT,
+            Receipt::STATUS_ISSUED,
             Receipt::APPROVAL_APPROVED,
-            null,
+            $receiptMonth->copy()->day(8),
         );
+        // Issued and customer-visible, but document email not yet sent (manual Send).
+        Receipt::query()
+            ->where('payment_id', $awaitingEmailPayment->id)
+            ->update([
+                'sent_at' => null,
+                'sent_by' => null,
+            ]);
 
-        // Approved payment with rejected receipt approval (maintenance fee invoice kept separate)
+        // Approved payment with issued receipt (maintenance fee invoice kept separate)
         $maintCharge = $chargeTypes->get('maintenance-fee')?->id ?? $chargeTypes->get('monthly-rent')?->id;
-        $rejReceiptInvoice = BillingSeederSupport::upsertInvoice(
+        $maintInvoice = BillingSeederSupport::upsertInvoice(
             'INV-000011',
             $admin,
             $contract->id,
@@ -779,24 +796,24 @@ class WorkflowScenarioSeeder extends Seeder
             now()->subMonths(1)->day(10),
             [['charge_type_id' => $maintCharge, 'description' => 'One-time maintenance fee', 'amount' => 50000]],
         );
-        $this->replacePayments($rejReceiptInvoice);
-        $rejReceiptPayment = BillingSeederSupport::upsertPayment($rejReceiptInvoice, '[WF:receipt-rejected]', [
+        $this->replacePayments($maintInvoice);
+        $maintPayment = BillingSeederSupport::upsertPayment($maintInvoice, '[WF:receipt-maint]', [
             'payment_method_id' => $kbz->id,
             'created_by' => $customer->id,
             'approved_by' => $admin->id,
             'approved_at' => now()->subMonths(1)->day(5),
             'amount' => 50000,
-            'proof_image_path' => 'payments/wf-receipt-rej.jpg',
+            'proof_image_path' => 'payments/wf-receipt-maint.jpg',
             'rejection_reason' => null,
             'payment_date' => now()->subMonths(1)->day(4)->toDateString(),
             'status' => 'approved',
-            'note' => 'Approved payment with rejected receipt draft.',
+            'note' => 'Approved maintenance fee payment with issued receipt.',
         ]);
         BillingSeederSupport::upsertReceipt(
-            $rejReceiptPayment,
+            $maintPayment,
             $admin,
-            Receipt::STATUS_DRAFT,
-            Receipt::APPROVAL_REJECTED,
+            Receipt::STATUS_ISSUED,
+            Receipt::APPROVAL_APPROVED,
             now()->subMonths(1)->day(6),
         );
 
@@ -886,16 +903,21 @@ class WorkflowScenarioSeeder extends Seeder
             'status' => 'approved',
             'note' => 'Secondary tenant consolidated payment.',
         ]);
-        // Approved payment intentionally without receipt yet (pending receipt processing)
-        Receipt::query()->where('payment_id', $payment->id)->delete();
+        BillingSeederSupport::upsertReceipt(
+            $payment,
+            $admin,
+            Receipt::STATUS_ISSUED,
+            Receipt::APPROVAL_APPROVED,
+            $start->copy()->day(9),
+        );
 
         $this->matrix['rent-active-secondary'] = $this->row(
             $customer->email,
             $room,
             $contract,
             'paid',
-            'approved (no receipt yet)',
-            'none — demonstrates pending receipt creation',
+            'approved',
+            'issued',
             'none',
         );
     }
@@ -1166,14 +1188,68 @@ class WorkflowScenarioSeeder extends Seeder
             return;
         }
 
+        $categoriesBySlug = MaintenanceCategory::query()
+            ->where('status', MaintenanceCategory::STATUS_ACTIVE)
+            ->get()
+            ->keyBy('slug');
+
+        $secondPartyId = $activeRent->second_user_id
+            ?: $customers->get('minmin@gmail.com')?->id;
+
         $defs = [
-            ['title' => 'WF Pending — leaking kitchen faucet', 'category' => 'plumbing', 'priority' => 'medium', 'status' => 'pending', 'description' => 'Tap drips continuously in the kitchen.', 'resolution_note' => null, 'rejection_reason' => null],
-            ['title' => 'WF In Progress — AC not cooling', 'category' => 'hvac', 'priority' => 'high', 'status' => 'in_progress', 'description' => 'Bedroom AC runs without cold air during Yangon heat.', 'resolution_note' => null, 'rejection_reason' => null],
-            ['title' => 'WF Completed — balcony lock fixed', 'category' => 'general', 'priority' => 'medium', 'status' => 'completed', 'description' => 'Balcony sliding door lock stuck.', 'resolution_note' => 'Lock assembly replaced and tested with tenant.', 'rejection_reason' => null],
-            ['title' => 'WF Rejected — outlet sparking duplicate', 'category' => 'electrical', 'priority' => 'high', 'status' => 'rejected', 'description' => 'Living room outlet sparks when plugging appliances.', 'resolution_note' => null, 'rejection_reason' => 'Duplicate of an earlier ticket already scheduled with the building electrician.'],
+            [
+                'title' => 'WF Pending — leaking kitchen faucet',
+                'category' => 'plumbing',
+                'priority' => 'medium',
+                'status' => 'pending',
+                'description' => 'Kitchen tap drips continuously even when fully closed.',
+                'resolution_note' => null,
+                'rejection_reason' => null,
+                'created_by' => $activeRent->user_id,
+                'created_at' => '2026-08-28 09:15:00',
+            ],
+            [
+                'title' => 'WF In Progress — AC not cooling',
+                'category' => 'hvac',
+                'priority' => 'high',
+                'status' => 'in_progress',
+                'description' => 'Bedroom AC runs without cold air during Yangon afternoon heat.',
+                'resolution_note' => null,
+                'rejection_reason' => null,
+                'created_by' => $secondPartyId ?: $activeRent->user_id,
+                'created_at' => '2026-09-05 14:40:00',
+            ],
+            [
+                'title' => 'WF Completed — balcony lock fixed',
+                'category' => 'general',
+                'priority' => 'high',
+                'status' => 'completed',
+                'description' => 'Balcony sliding door lock was stuck and could not be secured.',
+                'resolution_note' => 'Lock assembly replaced and tested with the resident.',
+                'rejection_reason' => null,
+                'created_by' => $activeRent->user_id,
+                'created_at' => '2026-07-20 11:05:00',
+            ],
+            [
+                'title' => 'WF Rejected — outlet sparking duplicate',
+                'category' => 'electrical',
+                'priority' => 'high',
+                'status' => 'rejected',
+                'description' => 'Living room outlet sparks when plugging in appliances.',
+                'resolution_note' => null,
+                'rejection_reason' => 'Duplicate of an earlier ticket already scheduled with the building electrician.',
+                'created_by' => $activeRent->user_id,
+                'created_at' => '2026-08-10 16:20:00',
+            ],
         ];
 
-        foreach ($defs as $def) {
+        foreach ($defs as $index => $def) {
+            $category = $categoriesBySlug->get($def['category']);
+            $createdAt = Carbon::parse($def['created_at']);
+            $approvedAt = in_array($def['status'], ['in_progress', 'completed', 'rejected'], true)
+                ? $createdAt->copy()->addDays(2)
+                : null;
+
             MaintenanceRequest::query()->updateOrCreate(
                 [
                     'title' => $def['title'],
@@ -1181,21 +1257,24 @@ class WorkflowScenarioSeeder extends Seeder
                     'user_id' => $activeRent->user_id,
                 ],
                 [
-                    'created_by' => $activeRent->user_id,
-                    'approved_by' => in_array($def['status'], ['in_progress', 'completed', 'rejected'], true) ? $admin->id : null,
-                    'approved_at' => in_array($def['status'], ['in_progress', 'completed', 'rejected'], true) ? now()->subDays(2) : null,
+                    'created_by' => $def['created_by'],
+                    'approved_by' => $approvedAt ? $admin->id : null,
+                    'approved_at' => $approvedAt,
+                    'maintenance_category_id' => $category?->id,
                     'category' => $def['category'],
                     'priority' => $def['priority'],
                     'description' => $def['description'],
                     'status' => $def['status'],
                     'resolution_note' => $def['resolution_note'],
                     'rejection_reason' => $def['rejection_reason'],
+                    'created_at' => $createdAt,
+                    'updated_at' => $approvedAt ?? $createdAt,
                 ],
             );
         }
 
         if (isset($this->matrix['rent-active-primary'])) {
-            $this->matrix['rent-active-primary']['maintenance'] = 'pending / in_progress / completed(+note) / rejected(+reason)';
+            $this->matrix['rent-active-primary']['maintenance'] = 'pending / in_progress / completed(+note) / rejected(+reason); joint second party on R-000003';
         }
     }
 

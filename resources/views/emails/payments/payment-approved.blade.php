@@ -38,31 +38,16 @@
                                 PAYMENT APPROVED
                             </p>
                             <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:16px;line-height:1.6;color:#1C1917;">
-                                Hello{{ $userName !== '' ? ' '.$userName : '' }},
+                                Dear{{ $userName !== '' ? ' '.$userName : ' Customer' }},
                             </p>
                             <p style="margin:16px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.6;color:#5C5650;">
-                                Your payment has been approved. Your receipt is now available in your Customer Portal.
+                                Your payment has been approved.
                             </p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:28px 40px 0 40px;">
-                            <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.5;">
-                                <a href="{{ $actionUrl }}" target="_blank" rel="noopener noreferrer" style="color:#8F2338;text-decoration:none;font-weight:500;">
-                                    {{ $actionLabel }}
-                                </a>
+                            <p style="margin:16px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.6;color:#5C5650;">
+                                Your receipt is now available in your Customer Portal.
                             </p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:16px 40px 0 40px;">
-                            <p style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;line-height:1.55;color:#8A837C;">
-                                If the link above does not work, copy and paste this URL into your browser:
-                            </p>
-                            <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:12px;line-height:1.55;word-break:break-all;">
-                                <a href="{{ $actionUrl }}" target="_blank" rel="noopener noreferrer" style="color:#8A837C;text-decoration:underline;">
-                                    {{ $displayableActionUrl }}
-                                </a>
+                            <p style="margin:24px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.6;color:#1C1917;">
+                                Rosewood Royale
                             </p>
                         </td>
                     </tr>

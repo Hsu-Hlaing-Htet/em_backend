@@ -30,7 +30,7 @@ final class ContractDocumentProfile
             priceLabel: 'Sale Price',
             depositLabel: 'Booking Deposit',
             mailSubjectPrefix: 'Property Sale Agreement',
-            tenantSignatureLabel: 'Customer Signature',
+            tenantSignatureLabel: 'Owner',
             mailClass: SaleContractDocumentMail::class,
         );
     }
@@ -44,7 +44,7 @@ final class ContractDocumentProfile
             priceLabel: 'Rent Price',
             depositLabel: 'Security Deposit',
             mailSubjectPrefix: 'Rental/Lease Agreement',
-            tenantSignatureLabel: 'Tenant Signature',
+            tenantSignatureLabel: 'Tenant',
             mailClass: RentContractDocumentMail::class,
         );
     }

@@ -22,8 +22,6 @@ class PaymentRejectedNotification extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
-        $actionUrl = $frontendUrl.'/customer/payments/'.$this->payment->id;
         $appName = (string) config('app.name');
 
         return (new MailMessage)
@@ -36,9 +34,6 @@ class PaymentRejectedNotification extends Notification
             ], [
                 'appName' => $appName,
                 'userName' => (string) ($notifiable->name ?? ''),
-                'actionUrl' => $actionUrl,
-                'displayableActionUrl' => $actionUrl,
-                'actionLabel' => 'View Payment →',
             ]);
     }
 }

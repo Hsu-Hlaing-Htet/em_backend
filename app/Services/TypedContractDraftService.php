@@ -108,6 +108,8 @@ class TypedContractDraftService
             $builder->where('contract_number', 'like', '%'.$search.'%')
                 ->orWhereHas('user', fn (Builder $userQuery) => $userQuery
                     ->where('name', 'like', '%'.$search.'%'))
+                ->orWhereHas('secondUser', fn (Builder $userQuery) => $userQuery
+                    ->where('name', 'like', '%'.$search.'%'))
                 ->orWhereHas('room', fn (Builder $roomQuery) => $roomQuery
                     ->where('room_number', 'like', '%'.$search.'%'));
         });

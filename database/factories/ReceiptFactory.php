@@ -23,13 +23,13 @@ class ReceiptFactory extends Factory
         return [
             'payment_id' => Payment::factory()->approved(),
             'receipt_number' => SeedNumberGenerator::nextReceiptNumber(),
-            'receipt_pdf_path' => fake()->optional(0.5)->filePath(),
-            'status' => 'draft',
-            'approval_status' => 'pending',
-            'issued_at' => null,
+            'receipt_pdf_path' => 'receipts/'.fake()->uuid().'.pdf',
+            'status' => 'issued',
+            'approval_status' => 'approved',
+            'issued_at' => now(),
             'created_by' => User::factory()->admin(),
-            'approved_by' => null,
-            'approved_at' => null,
+            'approved_by' => User::factory()->admin(),
+            'approved_at' => now(),
         ];
     }
 
@@ -48,10 +48,13 @@ class ReceiptFactory extends Factory
     public function approved(): static
     {
         return $this->state(fn () => [
-            'status' => 'draft',
+            'status' => 'issued',
             'approval_status' => 'approved',
+            'issued_at' => now(),
             'approved_by' => User::factory()->admin(),
             'approved_at' => now(),
+            'sent_at' => null,
+            'sent_by' => null,
         ]);
     }
 }

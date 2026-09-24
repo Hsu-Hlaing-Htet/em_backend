@@ -194,52 +194,6 @@ class ReceiptService
         return $this->find($locked->id);
     }
 
-    public function approve(Receipt $receipt): Receipt
-    {
-        return DB::transaction(function () use ($receipt): Receipt {
-            /** @var Receipt $locked */
-            $locked = Receipt::query()
-                ->whereKey($receipt->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if (! $locked->isPendingApproval()) {
-                throw new ConcurrentConflictException('Only pending receipts can be approved.');
-            }
-
-            $locked->update([
-                'approval_status' => Receipt::APPROVAL_APPROVED,
-                'approved_by' => Auth::id(),
-                'approved_at' => now(),
-            ]);
-
-            return $this->find($locked->id);
-        });
-    }
-
-    public function reject(Receipt $receipt): Receipt
-    {
-        return DB::transaction(function () use ($receipt): Receipt {
-            /** @var Receipt $locked */
-            $locked = Receipt::query()
-                ->whereKey($receipt->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            if (! $locked->isPendingApproval()) {
-                throw new ConcurrentConflictException('Only pending receipts can be rejected.');
-            }
-
-            $locked->update([
-                'approval_status' => Receipt::APPROVAL_REJECTED,
-                'approved_by' => Auth::id(),
-                'approved_at' => now(),
-            ]);
-
-            return $this->find($locked->id);
-        });
-    }
-
     public function issue(Receipt $receipt): Receipt
     {
         return DB::transaction(function () use ($receipt): Receipt {

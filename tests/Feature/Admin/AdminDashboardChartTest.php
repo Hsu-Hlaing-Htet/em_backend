@@ -136,6 +136,8 @@ test('admin dashboard charts endpoint returns live chart metrics', function () {
     expect($response->json('receivable_aging'))->toHaveCount(4);
     expect($response->json('occupancy_by_building.0.label'))->toBe('Rosewood Tower');
     expect($response->json('pending_approval_breakdown.items'))->toHaveCount(4);
+    expect(collect($response->json('pending_approval_breakdown.items'))->pluck('key')->all())
+        ->toBe(['payments', 'invoices', 'utilities', 'others']);
     expect($response->json('pending_approval_breakdown.latest'))->toBeArray();
     expect($response->json('system_alerts'))->toHaveKeys([
         'expired_contracts',
@@ -452,6 +454,7 @@ test('pending approval latest returns newest five matching kpi definition', func
     expect($latest->first()['type_label'])->toBe('Payment');
     expect($latest->first()['to'])->toBe('/admin/payments/approval/'.$pendingPayment->id);
     expect($latest->first()['created_at'])->toContain('·');
+    expect($latest->pluck('kind')->all())->not->toContain('receipt');
 
     $invoiceItem = $latest->firstWhere('reference', 'INV-000164');
     expect($invoiceItem)->not->toBeNull();

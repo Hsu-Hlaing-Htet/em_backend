@@ -64,6 +64,7 @@ Route::middleware(['auth:sanctum', 'role:customer'])->prefix('customer')->group(
     Route::get('invoices', [CustomerPortalController::class, 'invoices']);
     Route::get('invoices/{invoice}', [CustomerPortalController::class, 'showInvoice']);
     Route::get('invoices/{invoice}/document/download', [CustomerPortalController::class, 'downloadInvoiceDocument']);
+    Route::get('invoices/{invoice}/document/preview', [CustomerPortalController::class, 'previewInvoiceDocument']);
     Route::get('payments', [CustomerPortalController::class, 'payments']);
     Route::post('payments', [CustomerPortalController::class, 'storePayment']);
     Route::get('payments/{payment}', [CustomerPortalController::class, 'showPayment']);
@@ -160,6 +161,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::post('invoices/generate-from-contract/{contract}', [InvoiceController::class, 'generateFromContract']);
     Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue']);
     Route::get('invoices/{invoice}/document/download', [InvoiceController::class, 'downloadDocument']);
+    Route::get('invoices/{invoice}/document/preview', [InvoiceController::class, 'previewDocument']);
     Route::get('invoices/{invoice}/document/export', [InvoiceController::class, 'exportDocument']);
     Route::post('invoices/{invoice}/document/email', [InvoiceController::class, 'sendDocumentEmail']);
     Route::apiResource('invoices', InvoiceController::class);
@@ -169,8 +171,6 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::post('payments/{payment}/proof', [PaymentController::class, 'uploadProof']);
     Route::apiResource('payments', PaymentController::class);
 
-    Route::post('receipts/{receipt}/approve', [ReceiptController::class, 'approve']);
-    Route::post('receipts/{receipt}/reject', [ReceiptController::class, 'reject']);
     Route::post('receipts/{receipt}/issue', [ReceiptController::class, 'issue']);
     Route::get('receipts/{receipt}/document/download', [ReceiptController::class, 'downloadDocument']);
     Route::get('receipts/{receipt}/document/export', [ReceiptController::class, 'exportDocument']);

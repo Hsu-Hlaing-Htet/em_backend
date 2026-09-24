@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\Receipt;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
+use App\Support\CustomerPortalUrl;
 use App\Support\DocumentFilename;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
@@ -80,25 +81,46 @@ class ReceiptDocumentService
 
         $receipt->loadMissing([
             'payment.invoice.contract.user',
+            'payment.invoice.contract.secondUser',
             'payment.invoice.contract.room',
         ]);
-        $email = $data['email'] ?? $receipt->payment?->invoice?->contract?->user?->email;
 
-        if (! $email) {
+        $contract = $receipt->payment?->invoice?->contract;
+        $partyUsers = $contract?->partyUsers() ?? collect();
+        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
+            ? [trim((string) $data['email'])]
+            : ($contract?->partyEmails() ?? []);
+
+        if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the receipt document.');
         }
 
-        $this->sendEmailToRecipient($receipt, $email);
+        foreach ($emails as $email) {
+            $this->sendEmailToRecipient($receipt, $email, CustomerPortalUrl::customerNameForEmail(
+                $partyUsers,
+                $email,
+                $contract?->user?->name,
+            ));
+        }
     }
 
-    public function sendEmailToRecipient(Receipt $receipt, string $email): void
+    public function sendEmailToRecipient(Receipt $receipt, string $email, ?string $customerName = null): void
     {
-        $filename = $this->filename($receipt);
+        $receipt->loadMissing([
+            'payment.invoice.contract.user',
+            'payment.invoice.contract.secondUser',
+        ]);
+
+        $name = $customerName
+            ?: CustomerPortalUrl::customerNameForEmail(
+                $receipt->payment?->invoice?->contract?->partyUsers() ?? collect(),
+                $email,
+                $receipt->payment?->invoice?->contract?->user?->name,
+            );
 
         Mail::to($email)->send(new ReceiptDocumentMail(
             $receipt,
-            $this->renderPdfBinary($this->renderHtml($receipt)),
-            $filename,
+            $name,
         ));
     }
 

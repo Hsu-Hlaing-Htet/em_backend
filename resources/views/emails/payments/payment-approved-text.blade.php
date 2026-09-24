@@ -2,14 +2,10 @@ ROSEWOOD ROYALE
 
 PAYMENT APPROVED
 
-Hello{{ $userName !== '' ? ' '.$userName : '' }},
+Dear{{ $userName !== '' ? ' '.$userName : ' Customer' }},
 
-Your payment has been approved. Your receipt is now available in your Customer Portal.
+Your payment has been approved.
 
-{{ $actionLabel }}
-{{ $actionUrl }}
+Your receipt is now available in your Customer Portal.
 
-If the link above does not work, copy and paste this URL into your browser:
-{{ $displayableActionUrl }}
-
-© {{ date('Y') }} {{ $appName }}. All rights reserved.
+Rosewood Royale

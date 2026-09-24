@@ -38,7 +38,7 @@ class DatabaseSeeder extends Seeder
             UtilityTypeSeeder::class,
             UtilityRateSeeder::class,
             WorkflowScenarioSeeder::class,
-            BulkDemoSeeder::class,
+            LargeDemoSeeder::class,
             RoomImageSeeder::class,
         ]);
 
@@ -57,7 +57,7 @@ class DatabaseSeeder extends Seeder
                 ['Former rent (completed)', 'zawzaw@gmail.com'],
                 ['Former sale (completed/sold)', 'nwenwe@gmail.com'],
                 ['Registered only (no contract/maintenance)', 'tuntun@gmail.com'],
-                ['Secondary active rent (approved payment, no receipt)', 'hlahla@gmail.com'],
+                ['Secondary active rent (approved payment + issued receipt)', 'hlahla@gmail.com'],
                 ['Bulk customers', 'name-based Gmail addresses, e.g. moephyu@gmail.com'],
             ]
         );
@@ -82,6 +82,7 @@ class DatabaseSeeder extends Seeder
             'payments' => Payment::query()->count(),
             'receipts' => Receipt::query()->count(),
             'maintenance_requests' => MaintenanceRequest::query()->count(),
+            'notification_reads' => \App\Models\CustomerNotificationRead::query()->count(),
         ];
 
         $total = array_sum($tables);
@@ -120,10 +121,9 @@ class DatabaseSeeder extends Seeder
                     Payment::query()->where('status', 'pending')->count().'/'
                     .Payment::query()->where('status', 'approved')->count().'/'
                     .Payment::query()->where('status', 'rejected')->count()],
-                ['Receipts approval pending/approved/rejected',
-                    Receipt::query()->where('approval_status', 'pending')->count().'/'
-                    .Receipt::query()->where('approval_status', 'approved')->count().'/'
-                    .Receipt::query()->where('approval_status', 'rejected')->count()],
+                ['Receipts issued/draft',
+                    Receipt::query()->where('status', 'issued')->count().'/'
+                    .Receipt::query()->where('status', 'draft')->count()],
                 ['Maintenance pending/in_progress/completed/rejected',
                     MaintenanceRequest::query()->where('status', 'pending')->count().'/'
                     .MaintenanceRequest::query()->where('status', 'in_progress')->count().'/'
@@ -133,7 +133,6 @@ class DatabaseSeeder extends Seeder
                     Contract::query()->where('status', 'active')
                         ->whereBetween('end_date', [now()->toDateString(), now()->addDays(60)->toDateString()])
                         ->count()],
-                ['Rooms with <2 images', Room::query()->has('roomImages', '<', 2)->count()],
                 ['Pending/rejected payments with receipt',
                     Payment::query()->whereIn('status', ['pending', 'rejected'])->whereHas('receipt')->count()],
                 ['Invoice total mismatches',

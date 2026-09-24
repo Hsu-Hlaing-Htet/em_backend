@@ -108,12 +108,15 @@ class InvoiceResource extends JsonResource
 
     private function resolveInvoiceType(): string
     {
-        if ($this->type === 'rent') {
-            return 'rent';
+        // Utility-sourced invoices are linked via utilities.invoice_id / utility_id.
+        // Consolidated rent+utility bills keep type=rent but still expose utility
+        // when the only contract charge is absent and utility charges are present.
+        if ($this->type === 'utility' || $this->isUtilitySourcedInvoice()) {
+            return 'utility';
         }
 
-        if ($this->type === 'utility') {
-            return 'utility';
+        if ($this->type === 'rent') {
+            return 'rent';
         }
 
         if ($this->type === 'sale') {
@@ -131,6 +134,39 @@ class InvoiceResource extends JsonResource
         }
 
         return 'other';
+    }
+
+    private function isUtilitySourcedInvoice(): bool
+    {
+        if ($this->utility_id) {
+            return true;
+        }
+
+        if ($this->relationLoaded('utility') && $this->utility) {
+            return true;
+        }
+
+        if ($this->relationLoaded('utilities') && $this->utilities->isNotEmpty()) {
+            // Consolidated rent/sale + utility: keep contract type unless this
+            // invoice has utility charges without a matching contract charge.
+            if ($this->type === 'rent' || $this->type === 'sale') {
+                if (! $this->relationLoaded('items')) {
+                    return false;
+                }
+
+                $hasContractCharge = $this->items->contains(function ($item): bool {
+                    $slug = $item->relationLoaded('chargeType') ? $item->chargeType?->slug : null;
+
+                    return in_array($slug, ['monthly-rent', 'sale-installment', 'booking-deposit'], true);
+                });
+
+                return ! $hasContractCharge;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     private function resolveBillingPeriod(): ?string

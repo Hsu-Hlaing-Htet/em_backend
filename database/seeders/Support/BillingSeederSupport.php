@@ -25,6 +25,123 @@ final class BillingSeederSupport
         return SeedNumberGenerator::nextInvoiceNumber();
     }
 
+    public static function isCanonicalInvoiceNumber(string $invoiceNumber): bool
+    {
+        return (bool) preg_match('/^INV-\d{6}$/', $invoiceNumber);
+    }
+
+    /**
+     * Rename legacy INV-CF-* seed invoice numbers to INV-000001 style in place.
+     * Preserves invoice IDs and payment/receipt foreign keys.
+     */
+    public static function normalizeLegacySeedInvoiceNumbers(): int
+    {
+        self::resetSequences();
+
+        $renamed = 0;
+
+        Invoice::query()
+            ->where('invoice_number', 'like', 'INV-CF-%')
+            ->orderBy('id')
+            ->each(function (Invoice $invoice) use (&$renamed): void {
+                $invoice->update([
+                    'invoice_number' => self::nextInvoiceNumber(),
+                ]);
+                $renamed++;
+            });
+
+        return $renamed;
+    }
+
+    /**
+     * Upsert a contract charge invoice using a stable business key
+     * (contract + seed suffix / billing month), with a canonical INV-000001 number.
+     *
+     * @param  list<array<string, mixed>>  $items
+     */
+    public static function upsertSeedChargeInvoice(
+        string $seedKey,
+        User $admin,
+        Contract $contract,
+        string $type,
+        string $status,
+        Carbon $issuedDate,
+        Carbon $dueDate,
+        array $items,
+        float $lateFee = 0,
+        ?Carbon $billingMonth = null,
+    ): Invoice {
+        $existing = self::findSeedChargeInvoice($contract, $seedKey, $billingMonth);
+
+        $invoiceNumber = ($existing && self::isCanonicalInvoiceNumber((string) $existing->invoice_number))
+            ? (string) $existing->invoice_number
+            : self::nextInvoiceNumber();
+
+        // When renaming a legacy INV-CF row, update the number in place first so
+        // updateOrCreate keeps the same primary key and payment FKs stay valid.
+        if ($existing && (string) $existing->invoice_number !== $invoiceNumber) {
+            $existing->update(['invoice_number' => $invoiceNumber]);
+        }
+
+        return self::upsertInvoice(
+            $invoiceNumber,
+            $admin,
+            $contract->id,
+            null,
+            $type,
+            $status,
+            $issuedDate,
+            $dueDate,
+            $items,
+            $lateFee,
+            $billingMonth,
+        );
+    }
+
+    public static function findSeedChargeInvoice(
+        Contract $contract,
+        string $seedKey,
+        ?Carbon $billingMonth = null,
+    ): ?Invoice {
+        $legacyNumber = sprintf('INV-CF-%s-%s', $contract->contract_number, $seedKey);
+
+        $legacy = Invoice::query()
+            ->where('invoice_number', $legacyNumber)
+            ->first();
+
+        if ($legacy) {
+            return $legacy;
+        }
+
+        if ($billingMonth) {
+            return Invoice::query()
+                ->where('contract_id', $contract->id)
+                ->whereDate('billing_month', $billingMonth->copy()->startOfMonth()->toDateString())
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->orderBy('id')
+                ->first();
+        }
+
+        $description = match (true) {
+            $seedKey === 'DEP' => 'Sale booking deposit',
+            $seedKey === 'FULL' => 'Sale purchase settlement',
+            $seedKey === 'SETTLE' => 'Sale installment early settlement',
+            default => null,
+        };
+
+        if ($description === null) {
+            return null;
+        }
+
+        return Invoice::query()
+            ->where('contract_id', $contract->id)
+            ->whereNull('billing_month')
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->whereHas('items', fn ($query) => $query->where('description', $description))
+            ->orderBy('id')
+            ->first();
+    }
+
     public static function nextReceiptNumber(): string
     {
         return SeedNumberGenerator::nextReceiptNumber();

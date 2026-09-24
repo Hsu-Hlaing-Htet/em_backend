@@ -35,38 +35,6 @@ class ReceiptController extends Controller
         ]);
     }
 
-    public function approve(Receipt $receipt, ReceiptService $receiptService): JsonResponse
-    {
-        try {
-            $receipt = $receiptService->approve($receipt);
-        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
-            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
-
-            return response()->json(['message' => $exception->getMessage()], $status);
-        }
-
-        return response()->json([
-            'message' => 'Receipt approved successfully.',
-            'data' => new ReceiptResource($receipt),
-        ]);
-    }
-
-    public function reject(Receipt $receipt, ReceiptService $receiptService): JsonResponse
-    {
-        try {
-            $receipt = $receiptService->reject($receipt);
-        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
-            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
-
-            return response()->json(['message' => $exception->getMessage()], $status);
-        }
-
-        return response()->json([
-            'message' => 'Receipt rejected successfully.',
-            'data' => new ReceiptResource($receipt),
-        ]);
-    }
-
     public function issue(Receipt $receipt, ReceiptService $receiptService): JsonResponse
     {
         try {

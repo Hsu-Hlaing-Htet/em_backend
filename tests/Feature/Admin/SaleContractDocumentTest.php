@@ -1,6 +1,5 @@
 <?php
 
-use App\Contracts\DocumentPdfConverter;
 use App\Mail\RentContractDocumentMail;
 use App\Mail\SaleContractDocumentMail;
 use App\Models\Building;
@@ -67,15 +66,6 @@ function expectedSaleDownloadFilename(Contract $contract): string
     return "Rosewood_Royale_Sale_Contract_{$contract->contract_number}.pdf";
 }
 
-function expectedSaleMailFilename(Contract $contract): string
-{
-    return DocumentFilename::saleContract(
-        $contract->start_date,
-        $contract->room?->room_number,
-        $contract->contract_number,
-    );
-}
-
 function seedActiveRentDocumentStack(): array
 {
     $building = Building::query()->create([
@@ -123,7 +113,6 @@ test('admin can download export and email draft sale contract document', functio
     ['room' => $room, 'customer' => $customer] = seedSaleDocumentStack();
     $contract = createSaleDraftContract($admin, $room, $customer);
     $pdfFilename = expectedSaleDownloadFilename($contract);
-    $mailFilename = expectedSaleMailFilename($contract);
 
     $this->actingAs($admin, 'sanctum')
         ->get("/api/sale-contract-drafts/{$contract->id}/document/download")
@@ -142,10 +131,10 @@ test('admin can download export and email draft sale contract document', functio
         ->assertOk()
         ->assertJsonPath('message', 'Sale contract document sent successfully.');
 
-    Mail::assertSent(SaleContractDocumentMail::class, function (SaleContractDocumentMail $mail) use ($customer, $mailFilename) {
+    Mail::assertSent(SaleContractDocumentMail::class, function (SaleContractDocumentMail $mail) use ($customer) {
         return $mail->hasTo($customer->email)
-            && $mail->filename === $mailFilename
-            && str_starts_with($mail->documentPdf, '%PDF');
+            && $mail->emailSubject === 'Sale Contract Available'
+            && $mail->attachments() === [];
     });
 });
 
@@ -156,18 +145,6 @@ test('admin can download export and email approved sale contract document', func
     ['room' => $room, 'customer' => $customer] = seedSaleDocumentStack();
     $contract = createSaleDraftContract($admin, $room, $customer);
     $pdfFilename = expectedSaleDownloadFilename($contract);
-    $capture = (object) ['html' => ''];
-
-    app()->bind(DocumentPdfConverter::class, fn () => new class($capture) implements DocumentPdfConverter {
-        public function __construct(private object $capture) {}
-
-        public function convert(string $html): string
-        {
-            $this->capture->html = $html;
-
-            return '%PDF-1.4 sale preview email';
-        }
-    });
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/sale-contract-drafts/{$contract->id}/approve")
@@ -192,19 +169,17 @@ test('admin can download export and email approved sale contract document', func
         ->assertOk()
         ->assertJsonPath('message', "Contract sent successfully to {$customer->email}.");
 
-    Mail::assertSent(SaleContractDocumentMail::class, function (SaleContractDocumentMail $mail) use ($customer, $contract, $pdfFilename) {
+    Mail::assertSent(SaleContractDocumentMail::class, function (SaleContractDocumentMail $mail) use ($customer) {
         return $mail->hasTo($customer->email)
-            && $mail->filename === $pdfFilename
-            && $mail->customerContractUrl === rtrim((string) config('app.frontend_url'), '/')."/customer/contracts/{$contract->id}"
-            && $mail->envelope()->subject === "Your Rosewood Royale Property Sale Agreement – {$contract->contract_number}"
-            && $mail->documentPdf === '%PDF-1.4 sale preview email';
+            && $mail->emailSubject === 'Sale Contract Available'
+            && $mail->attachments() === []
+            && ! str_contains($mail->render(), 'View in Customer Portal')
+            && ! str_contains($mail->render(), 'href=')
+            && ! str_contains($mail->render(), 'ngrok')
+            && ! str_contains($mail->render(), 'localhost');
     });
 
     Mail::assertNotSent(SaleContractDocumentMail::class, fn (SaleContractDocumentMail $mail) => $mail->hasTo('custom@example.com'));
-    expect($capture->html)
-        ->toContain('Sale preview')
-        ->toContain('contract-preview-pdf-overrides')
-        ->not->toContain('@media print');
 });
 
 test('admin can email active rent contract document to the registered tenant', function () {
@@ -213,19 +188,6 @@ test('admin can email active rent contract document to the registered tenant', f
     $admin = saleDocumentAdmin();
     ['room' => $room, 'customer' => $customer] = seedActiveRentDocumentStack();
     $contract = createRentDraftContractForDocument($admin, $room, $customer);
-    $pdfFilename = "Rosewood_Royale_Rent_Contract_{$contract->contract_number}.pdf";
-    $capture = (object) ['html' => ''];
-
-    app()->bind(DocumentPdfConverter::class, fn () => new class($capture) implements DocumentPdfConverter {
-        public function __construct(private object $capture) {}
-
-        public function convert(string $html): string
-        {
-            $this->capture->html = $html;
-
-            return '%PDF-1.4 rent preview email';
-        }
-    });
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/rent-contract-drafts/{$contract->id}/approve")
@@ -239,16 +201,17 @@ test('admin can email active rent contract document to the registered tenant', f
         ->assertOk()
         ->assertJsonPath('message', "Contract sent successfully to {$customer->email}.");
 
-    Mail::assertSent(RentContractDocumentMail::class, function (RentContractDocumentMail $mail) use ($customer, $contract, $pdfFilename) {
+    Mail::assertSent(RentContractDocumentMail::class, function (RentContractDocumentMail $mail) use ($customer) {
         return $mail->hasTo($customer->email)
-            && $mail->filename === $pdfFilename
-            && $mail->customerContractUrl === rtrim((string) config('app.frontend_url'), '/')."/customer/contracts/{$contract->id}"
-            && $mail->envelope()->subject === "Your Rosewood Royale Rental/Lease Agreement – {$contract->contract_number}"
-            && $mail->documentPdf === '%PDF-1.4 rent preview email';
+            && $mail->emailSubject === 'Rent Contract Available'
+            && $mail->attachments() === []
+            && ! str_contains($mail->render(), 'View in Customer Portal')
+            && ! str_contains($mail->render(), 'href=')
+            && ! str_contains($mail->render(), 'ngrok')
+            && ! str_contains($mail->render(), 'localhost');
     });
 
     Mail::assertNotSent(RentContractDocumentMail::class, fn (RentContractDocumentMail $mail) => $mail->hasTo('custom@example.com'));
-    expect($capture->html)->toContain('Rent preview');
 });
 
 test('unauthorized users cannot email active contract documents', function () {

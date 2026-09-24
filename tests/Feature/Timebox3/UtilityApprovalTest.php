@@ -46,6 +46,19 @@ test('utility submit and approve generates consolidated invoice with line items'
     expect($invoice->status)->toBe('draft');
     expect($invoice->items)->not->toBeEmpty();
     expect(ChargeType::query()->where('slug', 'utility-charges')->exists())->toBeTrue();
+
+    // Pending Approval queue (Admin Invoices Approval) lists draft invoices.
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/invoices?status=draft')
+        ->assertOk()
+        ->assertJsonFragment(['id' => $invoice->id]);
+
+    // Double-approve is rejected; still exactly one invoice.
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/utilities/{$utilityId}/approve")
+        ->assertStatus(409);
+
+    expect(Invoice::query()->where('contract_id', $contract->id)->count())->toBe(1);
 });
 
 test('rejected utility does not generate an invoice', function () {

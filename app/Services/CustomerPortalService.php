@@ -356,11 +356,15 @@ class CustomerPortalService
             ->get();
 
         foreach ($dueInvoices as $invoice) {
+            $isUtilityBill = $invoice->utility_id !== null || $invoice->type === 'utility';
+
             $items->push([
                 'id' => "invoice-{$invoice->id}",
-                'type' => 'invoice',
-                'title' => "Invoice {$invoice->invoice_number} requires payment",
-                'message' => "Due on {$invoice->due_date?->toDateString()} · Total {$invoice->total_amount}",
+                'type' => $isUtilityBill ? 'utility' : 'invoice',
+                'title' => $isUtilityBill ? 'Utility Bill Available' : 'Invoice Available',
+                'message' => $isUtilityBill
+                    ? 'Your utility bill is now available in your Customer Portal.'
+                    : 'Your invoice is now available in your Customer Portal.',
                 'status' => $invoice->status,
                 'created_at' => $invoice->updated_at?->toDateTimeString(),
                 'resource_id' => $invoice->id,
@@ -401,7 +405,7 @@ class CustomerPortalService
                     'id' => "payment-{$payment->id}",
                     'type' => 'payment',
                     'title' => 'Payment Rejected',
-                    'message' => 'Your payment has been rejected. Please check the details and submit again.',
+                    'message' => 'Your payment has been rejected. Please check the details in your Customer Portal and submit again if needed.',
                     'status' => $payment->status,
                     'created_at' => $payment->updated_at?->toDateTimeString(),
                     'resource_id' => $payment->id,
@@ -436,8 +440,8 @@ class CustomerPortalService
             $items->push([
                 'id' => "receipt-{$receipt->id}",
                 'type' => 'receipt',
-                'title' => "Receipt {$receipt->receipt_number} is ready",
-                'message' => "Payment for {$receipt->payment?->invoice?->invoice_number} · Download your receipt",
+                'title' => 'Receipt Available',
+                'message' => 'Your receipt is now available in your Customer Portal.',
                 'status' => $receipt->status,
                 'created_at' => $receipt->sent_at?->toDateTimeString() ?? $receipt->issued_at?->toDateTimeString() ?? $receipt->updated_at?->toDateTimeString(),
                 'resource_id' => $receipt->id,
@@ -456,8 +460,10 @@ class CustomerPortalService
             $items->push([
                 'id' => "contract-{$contract->id}",
                 'type' => 'contract',
-                'title' => "Contract {$contract->contract_number} is {$contract->status}",
-                'message' => ucfirst((string) $contract->type)." contract · Room {$contract->room?->room_number}",
+                'title' => $contract->type === 'sale' ? 'Sale Contract Available' : 'Rent Contract Available',
+                'message' => $contract->type === 'sale'
+                    ? 'Your sale contract is now available in your Customer Portal.'
+                    : 'Your rent contract is now available in your Customer Portal.',
                 'status' => $contract->status,
                 'created_at' => $contract->updated_at?->toDateTimeString(),
                 'resource_id' => $contract->id,
@@ -542,7 +548,7 @@ class CustomerPortalService
 
         return match ($action) {
             'download' => $this->invoiceDocumentService->downloadResponse($invoice),
-            'export' => $this->invoiceDocumentService->exportResponse($invoice),
+            'export', 'preview' => $this->invoiceDocumentService->exportResponse($invoice),
             default => throw new InvalidArgumentException('Unsupported document action.'),
         };
     }

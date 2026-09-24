@@ -176,8 +176,18 @@ class PaymentService
      */
     public function create(array $data): Payment
     {
+        unset(
+            $data['payment_date'],
+            $data['status'],
+            $data['created_by'],
+            $data['approved_by'],
+            $data['approved_at'],
+        );
+
         return Payment::query()->create([
             ...$data,
+            // Authoritative payment date comes from the server clock, not the client.
+            'payment_date' => now()->toDateString(),
             'status' => Payment::STATUS_PENDING,
             'created_by' => Auth::id(),
         ]);

@@ -7,7 +7,6 @@ use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\MaintenanceRequest;
 use App\Models\Payment;
-use App\Models\Receipt;
 use App\Models\Room;
 use App\Models\Utility;
 use Carbon\Carbon;
@@ -478,8 +477,7 @@ class AdminDashboardService
                 'label' => 'Others',
                 'icon' => 'pi pi-ellipsis-h',
                 'count' => $this->pendingSaleContractCount()
-                    + $this->pendingRentContractCount()
-                    + Receipt::query()->where('approval_status', Receipt::APPROVAL_PENDING)->count(),
+                    + $this->pendingRentContractCount(),
                 'to' => '/admin/approvals/sale-contracts',
             ],
         ];
@@ -556,7 +554,7 @@ class AdminDashboardService
 
         $candidates = $candidates->concat(
             Contract::query()
-                ->with(['user', 'room.building'])
+                ->with(['user', 'secondUser', 'room.building'])
                 ->where('type', 'rent')
                 ->where('status', 'draft')
                 ->orderByDesc('created_at')
@@ -570,7 +568,7 @@ class AdminDashboardService
 
         $candidates = $candidates->concat(
             Contract::query()
-                ->with(['user', 'room.building'])
+                ->with(['user', 'secondUser', 'room.building'])
                 ->where('type', 'sale')
                 ->where('status', 'draft')
                 ->orderByDesc('created_at')
@@ -611,30 +609,6 @@ class AdminDashboardService
                 })
         );
 
-        $candidates = $candidates->concat(
-            Receipt::query()
-                ->with(['payment.invoice.contract.user'])
-                ->where('approval_status', Receipt::APPROVAL_PENDING)
-                ->orderByDesc('created_at')
-                ->orderByDesc('id')
-                ->limit($limit)
-                ->get()
-                ->map(function (Receipt $receipt) {
-                    $customer = $receipt->payment?->invoice?->contract?->user?->name ?? '—';
-
-                    return [
-                        'id' => 'receipt-'.$receipt->id,
-                        'kind' => 'receipt',
-                        'type_label' => 'Receipt',
-                        'reference' => $receipt->receipt_number ?: 'RCP-'.str_pad((string) $receipt->id, 6, '0', STR_PAD_LEFT),
-                        'detail' => $customer,
-                        'created_at' => $this->formatApprovalDateTime($receipt->created_at),
-                        'created_at_sort' => $receipt->created_at?->timestamp ?? 0,
-                        'to' => '/admin/receipts/approval/'.$receipt->id,
-                    ];
-                })
-        );
-
         return $candidates
             ->sortByDesc('created_at_sort')
             ->take($limit)
@@ -652,7 +626,7 @@ class AdminDashboardService
      */
     private function mapPendingContractApproval(Contract $contract, string $typeLabel, string $routePrefix): array
     {
-        $customer = $contract->user?->name ?? '—';
+        $customer = $contract->partyDisplayName() ?: '—';
         $room = $contract->room;
         $building = $room?->building?->building_name;
         $unit = $room?->room_number;
@@ -835,8 +809,7 @@ class AdminDashboardService
             + $this->pendingRentContractCount()
             + Utility::query()->where('status', 'pending')->count()
             + Invoice::query()->where('status', 'draft')->count()
-            + Payment::query()->where('status', 'pending')->count()
-            + Receipt::query()->where('approval_status', Receipt::APPROVAL_PENDING)->count();
+            + Payment::query()->where('status', 'pending')->count();
     }
 
     private function pendingApprovalsCreatedOn(Carbon $day): int
@@ -864,10 +837,6 @@ class AdminDashboardService
                 ->count()
             + Payment::query()
                 ->where('status', 'pending')
-                ->whereBetween('created_at', [$start, $end])
-                ->count()
-            + Receipt::query()
-                ->where('approval_status', Receipt::APPROVAL_PENDING)
                 ->whereBetween('created_at', [$start, $end])
                 ->count();
     }

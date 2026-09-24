@@ -7,6 +7,7 @@ use App\Models\Contract;
 use App\Models\Utility;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
+use App\Support\CustomerPortalUrl;
 use App\Support\DocumentFilename;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
@@ -65,6 +66,7 @@ class UtilityDocumentService
     public function sendEmail(Utility $utility, array $data): void
     {
         $utility->loadMissing(['room', 'contract.user', 'contract.secondUser']);
+        $partyUsers = $utility->contract?->partyUsers() ?? collect();
         $emails = isset($data['email']) && trim((string) $data['email']) !== ''
             ? [trim((string) $data['email'])]
             : ($utility->contract?->partyEmails() ?? []);
@@ -73,6 +75,7 @@ class UtilityDocumentService
             $occupant = $this->resolveOccupant($utility);
             if ($occupant?->email) {
                 $emails = [trim((string) $occupant->email)];
+                $partyUsers = collect([$occupant]);
             }
         }
 
@@ -80,16 +83,16 @@ class UtilityDocumentService
             throw new InvalidArgumentException('Occupant email is required to send the utility bill document.');
         }
 
-        $filename = $this->filename($utility);
-        $pdf = $this->renderPdfBinary($this->renderHtml($utility));
-        $reference = $this->referenceNumber($utility);
-
         foreach ($emails as $email) {
+            $name = CustomerPortalUrl::customerNameForEmail(
+                $partyUsers,
+                $email,
+                $utility->contract?->user?->name ?? $this->resolveOccupant($utility)?->name,
+            );
+
             Mail::to($email)->send(new UtilityDocumentMail(
                 $utility,
-                $pdf,
-                $filename,
-                $reference,
+                $name,
             ));
         }
     }

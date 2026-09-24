@@ -326,9 +326,12 @@ test('timebox 4 relationships and payment method seeder idempotency', function (
     $receipt = Receipt::query()->create([
         'payment_id' => $payment->id,
         'receipt_number' => 'RCP-TB4-0001',
-        'status' => 'draft',
-        'approval_status' => 'pending',
+        'status' => 'issued',
+        'approval_status' => 'approved',
+        'issued_at' => now(),
         'created_by' => $admin->id,
+        'approved_by' => $admin->id,
+        'approved_at' => now(),
     ]);
 
     expect($payment->invoice->id)->toBe($invoice->id);
@@ -340,4 +343,50 @@ test('timebox 4 relationships and payment method seeder idempotency', function (
     $methodCount = PaymentMethod::query()->count();
     (new PaymentMethodSeeder)->run();
     expect(PaymentMethod::query()->count())->toBe($methodCount);
+});
+
+test('admin payment create sets payment_date from server clock and ignores client date', function () {
+    $this->travelTo(now()->startOfDay()->setTime(14, 30));
+
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    ['invoice' => $invoice, 'method' => $method] = tb4IssuedInvoice($admin, $customer, 85000);
+    $expectedDate = now()->toDateString();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $method->id,
+            'amount' => 85000,
+            'note' => 'Front desk cash',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.payment_date', $expectedDate)
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonMissingPath('data.errors.payment_date');
+
+    $paymentId = (int) Payment::query()->orderByDesc('id')->value('id');
+    $payment = Payment::query()->findOrFail($paymentId);
+
+    expect($payment->payment_date?->toDateString())->toBe($expectedDate);
+
+    $rejected = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $method->id,
+            'amount' => 85000,
+            'payment_date' => '2020-01-01',
+        ])
+        ->assertStatus(422);
+
+    expect($rejected->json('data.payment_date'))->not->toBeEmpty();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", ['amount' => 85000])
+        ->assertOk()
+        ->assertJsonPath('data.payment_date', $expectedDate)
+        ->assertJsonPath('data.status', 'approved');
+
+    expect(Payment::query()->find($paymentId)?->payment_date?->toDateString())->toBe($expectedDate);
+    expect(Payment::query()->find($paymentId)?->approved_at)->not->toBeNull();
 });

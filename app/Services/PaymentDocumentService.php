@@ -6,6 +6,7 @@ use App\Mail\PaymentDocumentMail;
 use App\Models\Payment;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
+use App\Support\CustomerPortalUrl;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
 use InvalidArgumentException;
@@ -64,8 +65,10 @@ class PaymentDocumentService
      */
     public function sendEmail(Payment $payment, array $data): void
     {
-        $payment->loadMissing(['invoice.contract.user']);
-        $email = $data['email'] ?? $payment->invoice?->contract?->user?->email;
+        $payment->loadMissing(['invoice.contract.user', 'invoice.contract.secondUser']);
+        $contract = $payment->invoice?->contract;
+        $partyUsers = $contract?->partyUsers() ?? collect();
+        $email = $data['email'] ?? $contract?->user?->email;
 
         if (! $email) {
             throw new InvalidArgumentException('Customer email is required to send the payment confirmation document.');
@@ -74,8 +77,7 @@ class PaymentDocumentService
         // Payment has no customer-facing document download; email remains unused via HTTP.
         Mail::to($email)->send(new PaymentDocumentMail(
             $payment,
-            $this->renderPdfBinary($this->renderHtml($payment)),
-            $this->filename($payment),
+            CustomerPortalUrl::customerNameForEmail($partyUsers, (string) $email, $contract?->user?->name),
         ));
     }
 

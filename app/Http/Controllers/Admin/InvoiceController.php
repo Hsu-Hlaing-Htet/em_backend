@@ -117,6 +117,11 @@ class InvoiceController extends Controller
         return $invoiceDocumentService->downloadResponse($invoiceDocumentService->find($invoice->id));
     }
 
+    public function previewDocument(Invoice $invoice, InvoiceDocumentService $invoiceDocumentService): Response
+    {
+        return $invoiceDocumentService->previewResponse($invoiceDocumentService->find($invoice->id));
+    }
+
     public function exportDocument(Invoice $invoice, InvoiceDocumentService $invoiceDocumentService): Response
     {
         return $invoiceDocumentService->exportResponse($invoiceDocumentService->find($invoice->id));

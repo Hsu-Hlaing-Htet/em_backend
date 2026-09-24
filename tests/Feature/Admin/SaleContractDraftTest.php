@@ -316,6 +316,51 @@ test('sale contract draft list filters search payment type and created dates bef
         ->assertJsonPath('data.data.0.id', $augustInstallment->id);
 });
 
+test('sale contract draft list search finds joint contracts by second customer name once', function () {
+    $admin = saleDraftAdmin();
+    ['room' => $room] = seedSaleDraftStack();
+
+    $owner1 = User::factory()->customer()->create([
+        'name' => 'Daw Su Su',
+        'status' => User::STATUS_ACTIVE,
+    ]);
+    $owner2 = User::factory()->customer()->create([
+        'name' => 'U Aung Ye',
+        'status' => User::STATUS_ACTIVE,
+    ]);
+
+    $contract = Contract::query()->create([
+        'contract_number' => 'S-JOINT-001',
+        'user_id' => $owner1->id,
+        'second_user_id' => $owner2->id,
+        'room_id' => $room->id,
+        'created_by' => $admin->id,
+        'contract_total' => 500000000,
+        'deposit_amount' => 50000000,
+        'type' => 'sale',
+        'payment_type' => 'full',
+        'duration_months' => null,
+        'start_date' => '2026-08-01',
+        'status' => Contract::STATUS_PENDING,
+    ]);
+
+    $bySecond = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/sale-contract-drafts?search='.urlencode('Aung Ye'))
+        ->assertOk();
+
+    expect($bySecond->json('data.total'))->toBe(1)
+        ->and($bySecond->json('data.data.0.id'))->toBe($contract->id)
+        ->and($bySecond->json('data.data.0.second_customer_name'))->toBe('U Aung Ye')
+        ->and($bySecond->json('data.data.0.party_display_name'))->toBe('Daw Su Su + U Aung Ye');
+
+    $byFirst = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/sale-contract-drafts?search='.urlencode('Daw Su Su'))
+        ->assertOk();
+
+    expect($byFirst->json('data.total'))->toBe(1)
+        ->and($byFirst->json('data.data.0.id'))->toBe($contract->id);
+});
+
 test('show sale contract draft returns relationships and computed payment summary', function () {
     $admin = saleDraftAdmin();
     ['room' => $room, 'customer' => $customer, 'building' => $building] = seedSaleDraftStack();

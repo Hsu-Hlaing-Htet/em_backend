@@ -2,46 +2,24 @@
 
 namespace App\Mail;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Attachment;
-use Illuminate\Mail\Mailables\Content;
-use Illuminate\Mail\Mailables\Envelope;
-use Illuminate\Queue\SerializesModels;
-
-class HtmlDocumentMail extends Mailable
+/**
+ * @deprecated Use CustomerDocumentAvailableMail. Kept so old references fail loudly if revived.
+ */
+class HtmlDocumentMail extends CustomerDocumentAvailableMail
 {
-    use Queueable, SerializesModels;
-
     public function __construct(
-        public string $referenceNumber,
-        public string $documentPdf,
-        public string $subjectPrefix,
-        public string $filename,
-    ) {}
+        string $referenceNumber,
+        string $documentPdf,
+        string $subjectPrefix,
+        string $filename,
+    ) {
+        unset($documentPdf, $filename);
 
-    public function envelope(): Envelope
-    {
-        return new Envelope(
-            subject: $this->subjectPrefix.' - '.$this->referenceNumber,
+        parent::__construct(
+            emailSubject: $subjectPrefix.' Available',
+            customerName: 'Customer',
+            introLine: 'Your document ('.$referenceNumber.') is now available in your Customer Portal.',
+            detailLine: 'Please log in to your Customer Portal to view or download it.',
         );
-    }
-
-    public function content(): Content
-    {
-        return new Content(
-            htmlString: '<p>Please find your '.$this->subjectPrefix.' ('.e($this->referenceNumber).') attached.</p>',
-        );
-    }
-
-    /**
-     * @return array<int, Attachment>
-     */
-    public function attachments(): array
-    {
-        return [
-            Attachment::fromData(fn () => $this->documentPdf, $this->filename)
-                ->withMime('application/pdf'),
-        ];
     }
 }

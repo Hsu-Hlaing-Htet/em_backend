@@ -242,7 +242,7 @@ test('failed receipt document email keeps sent_at null and allows retry', functi
     Mail::assertSent(ReceiptDocumentMail::class);
 });
 
-test('already finalized payment receipt skips separate receipt approval', function () {
+test('already finalized payment receipt has no separate receipt approval endpoint', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -257,7 +257,7 @@ test('already finalized payment receipt skips separate receipt approval', functi
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertStatus(409);
+        ->assertNotFound();
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/document/email", [

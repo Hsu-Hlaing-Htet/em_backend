@@ -282,16 +282,30 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
         ->postJson("/api/utilities/{$utility->id}/document/email")
         ->assertOk();
 
-    Mail::assertSent(UtilityDocumentMail::class, function (UtilityDocumentMail $mail) use ($utilityFilename) {
-        return $mail->filename === $utilityFilename && str_starts_with($mail->documentPdf, '%PDF');
+    Mail::assertSent(UtilityDocumentMail::class, function (UtilityDocumentMail $mail) {
+        $html = $mail->render();
+
+        return $mail->emailSubject === 'Utility Bill Available'
+            && $mail->attachments() === []
+            && ! str_contains($html, 'View in Customer Portal')
+            && ! str_contains($html, 'href=')
+            && ! str_contains($html, 'ngrok')
+            && ! str_contains($html, 'localhost');
     });
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/invoices/{$invoice->id}/document/email")
         ->assertOk();
 
-    Mail::assertSent(InvoiceDocumentMail::class, function (InvoiceDocumentMail $mail) use ($invoiceFilename) {
-        return $mail->filename === $invoiceFilename && str_starts_with($mail->documentPdf, '%PDF');
+    Mail::assertSent(InvoiceDocumentMail::class, function (InvoiceDocumentMail $mail) {
+        $html = $mail->render();
+
+        return $mail->emailSubject === 'Invoice Available'
+            && $mail->attachments() === []
+            && ! str_contains($html, 'View in Customer Portal')
+            && ! str_contains($html, 'href=')
+            && ! str_contains($html, 'ngrok')
+            && ! str_contains($html, 'localhost');
     });
 
     $this->actingAs($admin, 'sanctum')
@@ -300,10 +314,16 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
         ])
         ->assertOk();
 
-    Mail::assertSent(ReceiptDocumentMail::class, function (ReceiptDocumentMail $mail) use ($receiptFilename, $customer) {
+    Mail::assertSent(ReceiptDocumentMail::class, function (ReceiptDocumentMail $mail) use ($customer) {
+        $html = $mail->render();
+
         return $mail->hasTo($customer->email)
-            && $mail->filename === $receiptFilename
-            && str_starts_with($mail->documentPdf, '%PDF');
+            && $mail->emailSubject === 'Receipt Available'
+            && $mail->attachments() === []
+            && ! str_contains($html, 'View in Customer Portal')
+            && ! str_contains($html, 'href=')
+            && ! str_contains($html, 'ngrok')
+            && ! str_contains($html, 'localhost');
     });
 
     $this->actingAs($customer, 'sanctum')
@@ -385,6 +405,8 @@ test('invoice document html uses rosewood invoice template fields', function () 
         ->toContain('Previous Unit')
         ->toContain('Current Unit')
         ->toContain('Billing Period')
+        ->toContain('Status')
+        ->toContain('Issued')
         ->toContain('Amount Due')
         ->toContain('Late Fee')
         ->toContain('Notes')
@@ -393,9 +415,45 @@ test('invoice document html uses rosewood invoice template fields', function () 
         ->toContain('MMK ')
         ->toContain('Confidential')
         ->toContain('Page 1 of 1')
+        ->toContain('--inv-accent: #7a3149')
+        ->toContain('background: #ffffff !important')
         ->not->toContain('Tax')
         ->not->toContain('Discount')
         ->not->toContain('Payment History');
+});
+
+test('invoice document preview matches export html', function () {
+    $admin = pdfDownloadAdmin();
+    ['contract' => $contract] = pdfDownloadStack($admin);
+
+    $invoice = Invoice::query()->create([
+        'contract_id' => $contract->id,
+        'invoice_number' => 'INV-000227',
+        'type' => 'rent',
+        'status' => 'issued',
+        'issued_date' => '2026-08-01',
+        'due_date' => '2026-08-15',
+        'late_fee' => 0,
+        'total_amount' => 500000,
+        'created_by' => $admin->id,
+        'approved_by' => $admin->id,
+        'approved_at' => now(),
+    ]);
+
+    $preview = $this->actingAs($admin, 'sanctum')
+        ->get("/api/invoices/{$invoice->id}/document/preview")
+        ->assertOk()
+        ->assertHeader('content-type', 'text/html; charset=UTF-8')
+        ->getContent();
+
+    $export = $this->actingAs($admin, 'sanctum')
+        ->get("/api/invoices/{$invoice->id}/document/export")
+        ->assertOk()
+        ->getContent();
+
+    expect($preview)->toBe($export)
+        ->toContain('Status')
+        ->toContain('INV-000227');
 });
 
 test('payment document download route does not exist', function () {

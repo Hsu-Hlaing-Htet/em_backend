@@ -19,17 +19,22 @@ class ContractResource extends JsonResource
         $depositAmount = (float) $this->deposit_amount;
         $contractTotal = (float) $this->contract_total;
         $isRent = $this->type === 'rent';
-        $remainingBalance = $isRent ? $contractTotal : max($contractTotal - $depositAmount, 0);
+        // Financing residual after deposit (sale) — used for installment estimates / documents.
+        $financedBalance = $isRent ? $contractTotal : max($contractTotal - $depositAmount, 0);
         $interestPercentage = (float) ($this->paymentPlan?->interest_percentage ?? 0);
-        $interestAmount = $remainingBalance * ($interestPercentage / 100);
+        $interestAmount = $financedBalance * ($interestPercentage / 100);
         $totalInstallmentAmount = $this->payment_type === 'installment'
-            ? $remainingBalance + $interestAmount
+            ? $financedBalance + $interestAmount
             : 0;
         $estimatedMonthlyPayment = $isRent
             ? (float) $roomPrice
             : ($this->payment_type === 'installment' && $this->duration_months
                 ? (int) ceil($totalInstallmentAmount / $this->duration_months)
                 : 0);
+
+        $lifecycle = app(\App\Services\ContractLifecycleService::class);
+        $paidAmount = $lifecycle->approvedPaidAmount($this->resource);
+        $remainingAmount = $lifecycle->contractOutstandingBalance($this->resource);
 
         return [
             'id' => $this->id,
@@ -38,6 +43,10 @@ class ContractResource extends JsonResource
             'second_user_id' => $this->second_user_id,
             'user_name' => $this->relationLoaded('user') ? $this->user?->name : null,
             'customer_name' => $this->relationLoaded('user') ? $this->user?->name : null,
+            'second_customer_name' => $this->relationLoaded('secondUser') ? $this->secondUser?->name : null,
+            'party_display_name' => $this->relationLoaded('user')
+                ? $this->partyDisplayName()
+                : null,
             'customer' => $this->whenLoaded('user', fn () => [
                 'id' => $this->user?->id,
                 'name' => $this->user?->name,
@@ -87,7 +96,9 @@ class ContractResource extends JsonResource
             'payment_plan' => $this->whenLoaded('paymentPlan', fn () => new PaymentPlanResource($this->paymentPlan)),
             'contract_total' => $this->contract_total,
             'deposit_amount' => $this->deposit_amount,
-            'remaining_balance' => number_format($remainingBalance, 2, '.', ''),
+            'paid_amount' => number_format($paidAmount, 2, '.', ''),
+            'remaining_amount' => number_format($remainingAmount, 2, '.', ''),
+            'remaining_balance' => number_format($financedBalance, 2, '.', ''),
             'interest_percentage' => number_format($interestPercentage, 2, '.', ''),
             'total_installment_amount' => number_format($totalInstallmentAmount, 2, '.', ''),
             'estimated_monthly_payment' => number_format($estimatedMonthlyPayment, 2, '.', ''),

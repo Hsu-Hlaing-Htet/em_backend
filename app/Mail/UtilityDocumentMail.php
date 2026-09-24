@@ -4,15 +4,15 @@ namespace App\Mail;
 
 use App\Models\Utility;
 
-class UtilityDocumentMail extends HtmlDocumentMail
+class UtilityDocumentMail extends CustomerDocumentAvailableMail
 {
-    public function __construct(Utility $utility, string $documentPdf, string $filename, string $referenceNumber)
+    public function __construct(Utility $utility, string $customerName)
     {
         parent::__construct(
-            referenceNumber: $referenceNumber,
-            documentPdf: $documentPdf,
-            subjectPrefix: 'Utility Bill',
-            filename: $filename,
+            emailSubject: 'Utility Bill Available',
+            customerName: $customerName,
+            introLine: 'Your utility bill is now available in your Customer Portal.',
+            detailLine: 'Please log in to your Customer Portal to view the details and make payment if required.',
         );
     }
 }

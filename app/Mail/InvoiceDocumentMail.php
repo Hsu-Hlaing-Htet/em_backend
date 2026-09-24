@@ -4,15 +4,15 @@ namespace App\Mail;
 
 use App\Models\Invoice;
 
-class InvoiceDocumentMail extends HtmlDocumentMail
+class InvoiceDocumentMail extends CustomerDocumentAvailableMail
 {
-    public function __construct(Invoice $invoice, string $documentPdf, string $filename)
+    public function __construct(Invoice $invoice, string $customerName)
     {
         parent::__construct(
-            referenceNumber: $invoice->invoice_number,
-            documentPdf: $documentPdf,
-            subjectPrefix: 'Tax Invoice',
-            filename: $filename,
+            emailSubject: 'Invoice Available',
+            customerName: $customerName,
+            introLine: 'Your invoice is now available in your Customer Portal.',
+            detailLine: 'Please log in to your Customer Portal to view the details and make payment if required.',
         );
     }
 }

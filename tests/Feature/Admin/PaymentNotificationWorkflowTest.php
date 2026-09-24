@@ -172,7 +172,7 @@ test('payment rejection notifies customer and never creates a receipt', function
         ->assertOk()
         ->assertJsonFragment([
             'title' => 'Payment Rejected',
-            'message' => 'Your payment has been rejected. Please check the details and submit again.',
+            'message' => 'Your payment has been rejected. Please check the details in your Customer Portal and submit again if needed.',
         ]);
 
     $this->actingAs($admin, 'sanctum')

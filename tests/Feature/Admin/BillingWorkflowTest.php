@@ -198,9 +198,14 @@ test('invoice payment receipt workflow completes end to end', function () {
         ->postJson("/api/receipts/{$receipt->id}/issue")
         ->assertStatus(409);
 
+    // Manual receipt approve/reject endpoints are retired.
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/receipts/{$receipt->id}/approve")
-        ->assertStatus(409);
+        ->assertNotFound();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/reject")
+        ->assertNotFound();
 
     // Customer can view the receipt immediately after payment approval.
     $this->actingAs($customer, 'sanctum')

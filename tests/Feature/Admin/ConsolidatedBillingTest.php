@@ -218,10 +218,14 @@ test('utility item cannot be invoiced twice', function (): void {
     $electricity = consolidatedUtilityType('electricity-cb-dup', 'Electricity');
     $utility = consolidatedApprovedUtility($room, $admin, $electricity, 5000);
 
-    app(InvoiceService::class)->generateFromUtility($utility);
+    $first = app(InvoiceService::class)->generateFromUtility($utility);
+    $second = app(InvoiceService::class)->generateFromUtility($utility->fresh());
 
-    expect(fn () => app(InvoiceService::class)->generateFromUtility($utility->fresh()))
-        ->toThrow(\App\Exceptions\ConcurrentConflictException::class);
+    expect($second->id)->toBe($first->id);
+    expect(Invoice::query()->where('contract_id', $first->contract_id)
+        ->whereDate('billing_month', $first->billing_month->toDateString())
+        ->count())->toBe(1);
+    expect($utility->fresh()->invoice_id)->toBe($first->id);
 });
 
 test('invoice total equals the sum of all invoice items', function (): void {
