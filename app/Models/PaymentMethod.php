@@ -95,7 +95,7 @@ class PaymentMethod extends Model
     public function isAvailableForCustomer(): bool
     {
         return $this->status === self::STATUS_ACTIVE
-            && (bool) $this->is_customer_visible;
+            && $this->type !== self::TYPE_CASH;
     }
 
     public function qrImageUrl(): ?string
@@ -108,6 +108,9 @@ class PaymentMethod extends Model
     }
 
     /**
+     * Customer Portal availability: Active and not Cash.
+     * Cash may remain Active for Admin/office use but never for customers.
+     *
      * @param  Builder<PaymentMethod>  $query
      * @return Builder<PaymentMethod>
      */
@@ -115,7 +118,17 @@ class PaymentMethod extends Model
     {
         return $query
             ->where('status', self::STATUS_ACTIVE)
-            ->where('is_customer_visible', true);
+            ->where('type', '!=', self::TYPE_CASH);
+    }
+
+    /**
+     * Keep legacy is_customer_visible column aligned with Active + non-Cash.
+     */
+    public static function syncCustomerVisibleFlag(?string $type, ?string $status): bool
+    {
+        return $status === self::STATUS_ACTIVE
+            && $type !== null
+            && $type !== self::TYPE_CASH;
     }
 
     /**

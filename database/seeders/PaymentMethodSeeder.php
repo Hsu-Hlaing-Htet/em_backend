@@ -63,22 +63,25 @@ class PaymentMethodSeeder extends Seeder
                 'is_customer_visible' => true,
                 'sort_order' => 40,
             ],
-            // Legacy office methods — keep IDs, hide from Customer Portal.
             [
                 'name' => 'KBZ Bank Transfer',
                 'slug' => 'kbz-bank-transfer',
                 'type' => PaymentMethod::TYPE_BANK_TRANSFER,
                 'status' => PaymentMethod::STATUS_ACTIVE,
-                'is_customer_visible' => false,
-                'sort_order' => 110,
+                'account_name' => 'Rosewood Royale',
+                'account_number' => '0123456789',
+                'is_customer_visible' => true,
+                'sort_order' => 50,
             ],
             [
                 'name' => 'AYA Bank Transfer',
                 'slug' => 'aya-bank-transfer',
                 'type' => PaymentMethod::TYPE_BANK_TRANSFER,
                 'status' => PaymentMethod::STATUS_ACTIVE,
-                'is_customer_visible' => false,
-                'sort_order' => 120,
+                'account_name' => 'Rosewood Royale',
+                'account_number' => '9876543210',
+                'is_customer_visible' => true,
+                'sort_order' => 60,
             ],
             [
                 'name' => 'Cheque',
@@ -93,6 +96,12 @@ class PaymentMethodSeeder extends Seeder
         foreach ($methods as $method) {
             $slug = $method['slug'];
             unset($method['slug']);
+
+            // Keep legacy column aligned with Active + non-Cash.
+            $method['is_customer_visible'] = PaymentMethod::syncCustomerVisibleFlag(
+                $method['type'],
+                $method['status'],
+            );
 
             PaymentMethod::withTrashed()->updateOrCreate(
                 ['slug' => $slug],

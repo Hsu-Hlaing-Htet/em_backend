@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\PaymentMethod;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\AdminListSorts;
+use App\Support\PhoneNumber;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -30,7 +31,13 @@ class PaymentMethodService
             array_merge(AdminListSorts::namedSettings(), [
                 'type' => 'type',
                 'sort_order' => 'sort_order',
-            ])
+            ]),
+            static function ($builder): void {
+                $builder
+                    ->orderBy('payment_methods.sort_order')
+                    ->orderBy('payment_methods.name')
+                    ->orderBy('payment_methods.id');
+            }
         );
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
@@ -46,7 +53,13 @@ class PaymentMethodService
      */
     public function create(array $data): PaymentMethod
     {
-        return PaymentMethod::query()->create($this->prepareData($data));
+        $prepared = $this->prepareData($data);
+
+        if (! array_key_exists('sort_order', $prepared) || $prepared['sort_order'] === null || $prepared['sort_order'] === '') {
+            $prepared['sort_order'] = $this->nextSortOrder();
+        }
+
+        return PaymentMethod::query()->create($prepared);
     }
 
     /**
@@ -55,6 +68,13 @@ class PaymentMethodService
     public function update(PaymentMethod $paymentMethod, array $data): PaymentMethod
     {
         $prepared = $this->prepareData($data, $paymentMethod);
+
+        // Ordering is managed automatically / by seeders — ignore client-provided values on update
+        // unless an explicit sort_order key is present (API/tests). Prefer preserving existing.
+        if (! array_key_exists('sort_order', $data)) {
+            unset($prepared['sort_order']);
+        }
+
         $paymentMethod->update($prepared);
 
         return $paymentMethod->fresh();
@@ -102,11 +122,8 @@ class PaymentMethodService
         }
 
         if (array_key_exists('is_customer_visible', $data)) {
-            $data['is_customer_visible'] = filter_var(
-                $data['is_customer_visible'],
-                FILTER_VALIDATE_BOOLEAN,
-                FILTER_NULL_ON_FAILURE
-            ) ?? false;
+            // Admin UI no longer controls this flag; ignore client-provided values.
+            unset($data['is_customer_visible']);
         }
 
         if (array_key_exists('sort_order', $data) && $data['sort_order'] !== null && $data['sort_order'] !== '') {
@@ -136,17 +153,58 @@ class PaymentMethodService
             $data['qr_image_path'] = null;
         }
 
-        // Cash / non-wallet methods should not keep empty wallet-only fields forced.
-        if (($data['type'] ?? $existing?->type) === PaymentMethod::TYPE_CASH) {
-            $data['phone_number'] = $data['phone_number'] ?? null;
-            $data['account_name'] = $data['account_name'] ?? null;
-            $data['account_number'] = $data['account_number'] ?? null;
-            if (! ($uploadedQr instanceof UploadedFile) && ! $removeQr) {
-                // Keep existing QR path unless explicitly cleared — but Cash shouldn't have QR.
+        // Normalize type-specific fields so stale values are never persisted.
+        $type = $data['type'] ?? $existing?->type;
+        $status = $data['status'] ?? $existing?->status;
+        $typeChanged = $existing !== null
+            && array_key_exists('type', $data)
+            && (string) $data['type'] !== (string) $existing->type;
+
+        if ($type === PaymentMethod::TYPE_WALLET) {
+            $data['account_name'] = null;
+            $data['account_number'] = null;
+
+            if (array_key_exists('phone_number', $data) && $data['phone_number'] !== null && $data['phone_number'] !== '') {
+                $normalizedPhone = PhoneNumber::normalizePaymentMethodWalletPhone($data['phone_number']);
+                if ($normalizedPhone !== null) {
+                    $data['phone_number'] = $normalizedPhone;
+                }
+            }
+        } elseif ($type === PaymentMethod::TYPE_BANK_TRANSFER) {
+            $data['phone_number'] = null;
+        } else {
+            $data['phone_number'] = null;
+            $data['account_name'] = null;
+            $data['account_number'] = null;
+        }
+
+        // Derive legacy column from Active + non-Cash (single source of truth).
+        $data['is_customer_visible'] = PaymentMethod::syncCustomerVisibleFlag(
+            is_string($type) ? $type : null,
+            is_string($status) ? $status : null,
+        );
+
+        // QR images are wallet-only. Clear when creating/changing away from wallet.
+        if ($type !== PaymentMethod::TYPE_WALLET && ! ($uploadedQr instanceof UploadedFile)) {
+            if ($existing === null || $typeChanged || $removeQr) {
+                if ($existing?->qr_image_path) {
+                    $this->deleteQrImage($existing->qr_image_path);
+                }
+                $data['qr_image_path'] = null;
             }
         }
 
         return $data;
+    }
+
+    /**
+     * Place new methods after existing ones (seeders use steps of 10).
+     */
+    private function nextSortOrder(): int
+    {
+        $max = (int) PaymentMethod::query()->max('sort_order');
+
+        return $max + 10;
     }
 
     private function deleteQrImage(?string $path): void

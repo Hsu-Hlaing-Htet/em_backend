@@ -19,32 +19,41 @@ class PaymentMethodFactory extends Factory
     public function definition(): array
     {
         $name = fake()->unique()->company().' '.fake()->randomElement(['Transfer', 'Pay', 'Cash']);
+        $type = fake()->randomElement([
+            PaymentMethod::TYPE_WALLET,
+            PaymentMethod::TYPE_CASH,
+            PaymentMethod::TYPE_BANK_TRANSFER,
+            PaymentMethod::TYPE_CHEQUE,
+            PaymentMethod::TYPE_OTHER,
+        ]);
+        $status = fake()->randomElement([
+            PaymentMethod::STATUS_ACTIVE,
+            PaymentMethod::STATUS_INACTIVE,
+        ]);
 
         return [
             'name' => $name,
             'slug' => Str::slug($name),
-            'type' => fake()->randomElement([
-                PaymentMethod::TYPE_WALLET,
-                PaymentMethod::TYPE_CASH,
-                PaymentMethod::TYPE_BANK_TRANSFER,
-                PaymentMethod::TYPE_CHEQUE,
-                PaymentMethod::TYPE_OTHER,
-            ]),
-            'status' => fake()->randomElement([
-                PaymentMethod::STATUS_ACTIVE,
-                PaymentMethod::STATUS_INACTIVE,
-            ]),
-            'is_customer_visible' => true,
+            'type' => $type,
+            'status' => $status,
+            'is_customer_visible' => PaymentMethod::syncCustomerVisibleFlag($type, $status),
             'sort_order' => 0,
         ];
     }
 
     public function active(): static
     {
-        return $this->state(fn () => [
-            'status' => PaymentMethod::STATUS_ACTIVE,
-            'is_customer_visible' => true,
-        ]);
+        return $this->state(function (array $attributes) {
+            $type = $attributes['type'] ?? PaymentMethod::TYPE_OTHER;
+
+            return [
+                'status' => PaymentMethod::STATUS_ACTIVE,
+                'is_customer_visible' => PaymentMethod::syncCustomerVisibleFlag(
+                    $type,
+                    PaymentMethod::STATUS_ACTIVE,
+                ),
+            ];
+        });
     }
 
     public function wallet(): static

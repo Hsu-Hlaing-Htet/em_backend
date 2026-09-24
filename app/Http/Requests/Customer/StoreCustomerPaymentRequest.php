@@ -25,7 +25,7 @@ class StoreCustomerPaymentRequest extends FormRequest
                 'integer',
                 Rule::exists('payment_methods', 'id')
                     ->where('status', PaymentMethod::STATUS_ACTIVE)
-                    ->where('is_customer_visible', true)
+                    ->whereNot('type', PaymentMethod::TYPE_CASH)
                     ->whereNull('deleted_at'),
             ],
             'payment_date' => ['required', 'date'],
