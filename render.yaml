@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: em-backend
+    name: rosewood-royale-backend
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
@@ -11,24 +11,68 @@ services:
       - key: APP_DEBUG
         value: "false"
       - key: APP_KEY
-        generateValue: true
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: APP_TIMEZONE
+        value: Asia/Yangon
       - key: LOG_CHANNEL
         value: stderr
+      - key: LOG_LEVEL
+        value: info
       - key: DB_CONNECTION
-        value: pgsql
-      - key: DB_SSLMODE
-        value: require
-      - key: RUN_MIGRATIONS
-        value: "true"
-      - key: FRONTEND_URL
-        sync: false
+        value: mysql
       - key: DB_HOST
         sync: false
       - key: DB_PORT
-        value: "5432"
+        value: "3306"
       - key: DB_DATABASE
         sync: false
       - key: DB_USERNAME
         sync: false
       - key: DB_PASSWORD
+        sync: false
+      - key: RUN_MIGRATIONS
+        value: "false"
+      - key: SESSION_DRIVER
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: FILESYSTEM_DISK
+        value: public
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CORS_SUPPORTS_CREDENTIALS
+        value: "false"
+      - key: SANCTUM_STATEFUL_DOMAINS
+        sync: false
+      - key: AI_SERVICE_BASE_URL
+        sync: false
+      - key: AI_SERVICE_TIMEOUT_SECONDS
+        value: "60"
+      - key: AI_SERVICE_INTERNAL_KEY
+        sync: false
+      - key: DOCUMENTS_CHROME_PATH
+        value: /usr/bin/chromium
+      - key: CHROME_NO_SANDBOX
+        value: "true"
+      - key: MAIL_MAILER
+        sync: false
+      - key: MAIL_HOST
+        sync: false
+      - key: MAIL_PORT
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_ENCRYPTION
+        sync: false
+      - key: MAIL_FROM_ADDRESS
+        sync: false
+      - key: MAIL_FROM_NAME
         sync: false

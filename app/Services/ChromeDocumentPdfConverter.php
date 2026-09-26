@@ -29,7 +29,7 @@ class ChromeDocumentPdfConverter implements DocumentPdfConverter
                 throw new RuntimeException('Unable to write temporary HTML for PDF conversion.');
             }
 
-            $result = Process::timeout(120)->run([
+            $chromeArgs = [
                 $chromePath,
                 '--headless=new',
                 '--disable-gpu',
@@ -42,7 +42,18 @@ class ChromeDocumentPdfConverter implements DocumentPdfConverter
                 '--print-to-pdf-no-header',
                 '--print-to-pdf='.$pdfPath,
                 'file://'.$htmlPath,
-            ]);
+            ];
+
+            // Chromium in Docker/Render needs these flags; local macOS Chrome does not.
+            if ($this->shouldDisableSandbox()) {
+                array_splice($chromeArgs, 1, 0, [
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-setuid-sandbox',
+                ]);
+            }
+
+            $result = Process::timeout(120)->run($chromeArgs);
 
             if ($result->failed()) {
                 throw new RuntimeException('Chrome PDF conversion failed: '.$result->errorOutput());
@@ -84,5 +95,14 @@ class ChromeDocumentPdfConverter implements DocumentPdfConverter
         }
 
         return null;
+    }
+
+    private function shouldDisableSandbox(): bool
+    {
+        if (filter_var(env('CHROME_NO_SANDBOX', false), FILTER_VALIDATE_BOOL)) {
+            return true;
+        }
+
+        return is_file('/.dockerenv');
     }
 }
