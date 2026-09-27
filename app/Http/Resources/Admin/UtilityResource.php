@@ -16,6 +16,10 @@ class UtilityResource extends JsonResource
     public function toArray(Request $request): array
     {
         $occupant = $this->resolveOccupant();
+        $contract = $this->relationLoaded('contract') ? $this->contract : null;
+        $secondUser = $contract && $contract->relationLoaded('secondUser')
+            ? $contract->secondUser
+            : null;
 
         return [
             'id' => $this->id,
@@ -29,8 +33,13 @@ class UtilityResource extends JsonResource
             'total_amount' => $this->total_amount,
             'status' => $this->status,
             'items' => UtilityItemResource::collection($this->whenLoaded('items')),
-            'customer_name' => $occupant?->name,
+            'customer_name' => $contract && $contract->relationLoaded('user')
+                ? $contract->partyDisplayName()
+                : $occupant?->name,
+            'primary_customer_name' => $occupant?->name,
             'customer_email' => $occupant?->email,
+            'second_customer_name' => $secondUser?->name,
+            'second_customer_email' => $secondUser?->email,
             'customer_phone' => $occupant?->profile?->phone,
             'customer_address' => $occupant?->profile?->address,
             'customer_nrc' => $occupant?->profile?->nrc,

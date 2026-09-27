@@ -74,7 +74,14 @@ class ReceiptResource extends JsonResource
             'customer_name' => $contract
                 ? $contract->partyDisplayName()
                 : $user?->name,
+            'primary_customer_name' => $user?->name,
             'customer_email' => $user?->email,
+            'second_customer_name' => $contract?->relationLoaded('secondUser')
+                ? $contract->secondUser?->name
+                : null,
+            'second_customer_email' => $contract?->relationLoaded('secondUser')
+                ? $contract->secondUser?->email
+                : null,
             'customer_phone' => $user?->relationLoaded('profile') ? $user->profile?->phone : null,
             'customer_nrc' => $user?->relationLoaded('profile') ? $user->profile?->nrc : null,
             'building_name' => $buildingName,

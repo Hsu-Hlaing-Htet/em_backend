@@ -112,6 +112,8 @@ final class BillingEagerLoads
     {
         return [
             'room.building',
+            'contract.user.profile',
+            'contract.secondUser.profile',
             'items.utilityType',
             'creator',
             'approver',
