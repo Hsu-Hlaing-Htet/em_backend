@@ -187,6 +187,14 @@ it('lets either party submit payment, records the submitter, and shares approved
         ->getJson("/api/customer/payments/{$payment->id}")
         ->assertOk()
         ->assertJsonPath('data.id', $payment->id)
+        ->assertJsonPath('data.submitted_by_user_id', $c2->id)
+        ->assertJsonPath('data.paid_by', $c2->name)
+        ->assertJsonPath('data.submitted_by_name', $c2->name);
+
+    $this->actingAs($c2, 'sanctum')
+        ->getJson("/api/customer/payments/{$payment->id}")
+        ->assertOk()
+        ->assertJsonPath('data.paid_by', $c2->name)
         ->assertJsonPath('data.submitted_by_user_id', $c2->id);
 
     $this->actingAs($admin, 'sanctum')
@@ -405,5 +413,49 @@ it('keeps one-customer contracts fully compatible', function (): void {
 
     $this->actingAs($c2, 'sanctum')
         ->getJson("/api/customer/invoices/{$invoice->id}")
+        ->assertNotFound();
+});
+
+it('shows customer paid_by for party submitters and omits admin recorder for admin cash', function (): void {
+    ['admin' => $admin, 'customer1' => $c1, 'customer2' => $c2, 'customer3' => $c3] = equalPartyUsers();
+    $contract = equalPartySharedContract($c1, $c2, $admin);
+    $invoice = equalPartyInvoice($contract, $admin, 'INV-EQ-PAIDBY');
+    $method = equalPartyPaymentMethod();
+
+    $customerPayment = Payment::query()->create([
+        'invoice_id' => $invoice->id,
+        'payment_method_id' => $method->id,
+        'created_by' => $c1->id,
+        'amount' => null,
+        'payment_date' => now()->toDateString(),
+        'status' => 'pending',
+        'proof_image_path' => 'payments/eq-paidby.jpg',
+    ]);
+
+    $this->actingAs($c1, 'sanctum')
+        ->getJson("/api/customer/payments/{$customerPayment->id}")
+        ->assertOk()
+        ->assertJsonPath('data.paid_by', $c1->name);
+
+    $adminCash = Payment::query()->create([
+        'invoice_id' => $invoice->id,
+        'payment_method_id' => PaymentMethod::query()->where('type', 'cash')->value('id') ?? $method->id,
+        'created_by' => $admin->id,
+        'amount' => 100000,
+        'amount_received' => 100000,
+        'payment_date' => now()->toDateString(),
+        'status' => 'pending',
+        'note' => 'Office cash — no separate customer payer field',
+    ]);
+
+    // Admin is the recorder; Customer Portal must not invent a customer payer.
+    $this->actingAs($c2, 'sanctum')
+        ->getJson("/api/customer/payments/{$adminCash->id}")
+        ->assertOk()
+        ->assertJsonPath('data.paid_by', null)
+        ->assertJsonPath('data.created_by', $admin->id);
+
+    $this->actingAs($c3, 'sanctum')
+        ->getJson("/api/customer/payments/{$customerPayment->id}")
         ->assertNotFound();
 });

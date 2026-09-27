@@ -302,7 +302,9 @@ it('shows an owned payment and denies another customer payment', function (): vo
         ->assertOk()
         ->assertJsonPath('data.id', $ownPayment->id)
         ->assertJsonPath('data.invoice_id', $ownInvoice->id)
-        ->assertJsonPath('data.invoice_summary.invoice_number', 'INV-PAY-OWN-1');
+        ->assertJsonPath('data.invoice_summary.invoice_number', 'INV-PAY-OWN-1')
+        ->assertJsonPath('data.paid_by', $customer->name)
+        ->assertJsonPath('data.submitted_by_user_id', $customer->id);
 
     $this->actingAs($customer, 'sanctum')
         ->getJson("/api/customer/payments/{$otherPayment->id}")

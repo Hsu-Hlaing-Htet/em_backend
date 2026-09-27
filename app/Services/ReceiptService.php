@@ -5,10 +5,11 @@ namespace App\Services;
 use App\Exceptions\ConcurrentConflictException;
 use App\Models\Payment;
 use App\Models\Receipt;
-use App\Support\BillingEagerLoads;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\AdminListSorts;
+use App\Support\BillingEagerLoads;
+use App\Support\CustomerNotificationRecipients;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
@@ -78,6 +79,9 @@ class ReceiptService
             $builder->orWhereHas('payment.invoice', fn ($invoiceQuery) => $invoiceQuery
                 ->where('invoice_number', 'like', '%'.$search.'%'))
                 ->orWhereHas('payment.invoice.contract.user', fn ($userQuery) => $userQuery
+                    ->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%'))
+                ->orWhereHas('payment.invoice.contract.secondUser', fn ($userQuery) => $userQuery
                     ->where('name', 'like', '%'.$search.'%')
                     ->orWhere('email', 'like', '%'.$search.'%'));
         });
@@ -250,8 +254,7 @@ class ReceiptService
             }
 
             $locked->loadMissing([
-                'payment.invoice.contract.user.profile',
-                'payment.invoice.contract.secondUser.profile',
+                'payment.invoice.contract',
             ]);
 
             $contract = $locked->payment?->invoice?->contract;
@@ -260,28 +263,11 @@ class ReceiptService
                 throw new InvalidArgumentException('Unable to resolve the receipt customer.');
             }
 
-            $partyEmails = $contract->partyEmails();
+            // CURRENT users.email at send time — ignore request/UI email (may be stale).
+            $emails = CustomerNotificationRecipients::emailsForContract($contract);
 
-            if ($partyEmails === []) {
+            if ($emails === []) {
                 throw new InvalidArgumentException('Customer email is required to send the receipt.');
-            }
-
-            $explicitEmail = isset($data['email']) && $data['email'] !== null && $data['email'] !== ''
-                ? trim((string) $data['email'])
-                : null;
-
-            if ($explicitEmail !== null) {
-                $allowed = collect($partyEmails)->contains(
-                    fn (string $partyEmail): bool => strcasecmp($partyEmail, $explicitEmail) === 0
-                );
-
-                if (! $allowed) {
-                    throw new InvalidArgumentException('Receipt can only be sent to a linked contract party email.');
-                }
-
-                $emails = [$explicitEmail];
-            } else {
-                $emails = $partyEmails;
             }
 
             if (! $locked->receipt_pdf_path) {

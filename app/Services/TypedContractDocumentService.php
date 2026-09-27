@@ -7,6 +7,7 @@ use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\ContractDocumentProfile;
 use App\Support\ContractDraftProfile;
 use App\Support\CustomerPortalUrl;
+use App\Support\CustomerNotificationRecipients;
 use App\Support\DocumentFilename;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
@@ -79,11 +80,10 @@ class TypedContractDocumentService
      */
     public function sendEmail(Contract $contract, array $data): void
     {
-        $contract->loadMissing(['user.profile', 'secondUser.profile', 'room']);
-        $partyUsers = $contract->partyUsers();
-        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
-            ? [trim((string) $data['email'])]
-            : $contract->partyEmails();
+        $contract->loadMissing(['room']);
+        // CURRENT users.email only — ignore request/UI email (may be stale after account update).
+        $partyUsers = CustomerNotificationRecipients::usersForContract($contract);
+        $emails = CustomerNotificationRecipients::emailsForContract($contract);
 
         if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
@@ -107,8 +107,7 @@ class TypedContractDocumentService
      */
     public function sendEmailToContractCustomer(Contract $contract, array $data = []): string
     {
-        $contract->loadMissing(['user.profile', 'secondUser.profile', 'room']);
-        $emails = $contract->partyEmails();
+        $emails = CustomerNotificationRecipients::emailsForContract($contract);
 
         if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the contract document.');
@@ -266,7 +265,7 @@ class TypedContractDocumentService
                 ['label' => 'Contract Total', 'value' => $this->formatCurrency($contractTotal)],
                 ['label' => 'Deposit', 'value' => $this->formatCurrency($depositAmount)],
                 ['label' => 'Interest (%)', 'value' => number_format($interestPercentage, 2).'%'],
-                ['label' => 'Remaining Balance', 'value' => $this->formatCurrency($remainingBalance)],
+                ['label' => 'Balance After Deposit', 'value' => $this->formatCurrency($remainingBalance)],
                 ['label' => 'Total Installment Amount', 'value' => $this->formatCurrency($totalInstallmentAmount)],
                 ['label' => 'Duration', 'value' => $contract->duration_months.' months'],
                 ['label' => 'Estimated Monthly Payment', 'value' => $this->formatCurrency($estimatedMonthlyPayment)],

@@ -287,10 +287,11 @@ class CustomerPortalService
 
             unset($data['amount'], $data['proof'], $data['status'], $data['approved_by'], $data['approved_at']);
 
+            // Do not pass amount — PaymentService stamps the current invoice balance
+            // as the applied amount for non-cash customer submissions.
             $payment = $this->paymentService->create([
                 ...$data,
                 'invoice_id' => $lockedInvoice->id,
-                'amount' => null,
                 'created_by' => $user->id,
                 'status' => 'pending',
             ]);

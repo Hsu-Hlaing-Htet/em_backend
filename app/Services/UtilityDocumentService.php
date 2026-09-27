@@ -8,6 +8,7 @@ use App\Models\Utility;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\CustomerPortalUrl;
+use App\Support\CustomerNotificationRecipients;
 use App\Support\DocumentFilename;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
@@ -65,19 +66,11 @@ class UtilityDocumentService
      */
     public function sendEmail(Utility $utility, array $data): void
     {
-        $utility->loadMissing(['room', 'contract.user', 'contract.secondUser']);
-        $partyUsers = $utility->contract?->partyUsers() ?? collect();
-        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
-            ? [trim((string) $data['email'])]
-            : ($utility->contract?->partyEmails() ?? []);
-
-        if ($emails === [] && $utility->contract_id === null) {
-            $occupant = $this->resolveOccupant($utility);
-            if ($occupant?->email) {
-                $emails = [trim((string) $occupant->email)];
-                $partyUsers = collect([$occupant]);
-            }
-        }
+        $utility->loadMissing(['room']);
+        $occupant = $this->resolveOccupant($utility);
+        $resolved = CustomerNotificationRecipients::forUtility($utility, $occupant);
+        $emails = $resolved['emails'];
+        $partyUsers = $resolved['users'];
 
         if ($emails === []) {
             throw new InvalidArgumentException('Occupant email is required to send the utility bill document.');
@@ -87,7 +80,7 @@ class UtilityDocumentService
             $name = CustomerPortalUrl::customerNameForEmail(
                 $partyUsers,
                 $email,
-                $utility->contract?->user?->name ?? $this->resolveOccupant($utility)?->name,
+                $utility->contract?->user?->name ?? $occupant?->name,
             );
 
             Mail::to($email)->send(new UtilityDocumentMail(
@@ -139,7 +132,7 @@ class UtilityDocumentService
                 'amount' => $this->formatCurrency((float) $item->amount),
             ])->all(),
             'totalDue' => [
-                'label' => 'Total Amount',
+                'label' => 'Total',
                 'amount' => $this->formatCurrency((float) $utility->total_amount),
             ],
         ];

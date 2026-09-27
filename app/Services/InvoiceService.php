@@ -191,13 +191,9 @@ class InvoiceService
         });
 
         // Email is best-effort — never roll back a successful issue on mail failure.
+        // sendEmail resolves CURRENT party emails once (joint contracts included).
         try {
-            $issued->loadMissing(['contract.user', 'contract.secondUser']);
-            foreach ($issued->contract?->partyEmails() ?? [] as $email) {
-                $this->invoiceDocumentService->sendEmail($issued, [
-                    'email' => $email,
-                ]);
-            }
+            $this->invoiceDocumentService->sendEmail($issued, []);
         } catch (\Throwable $exception) {
             report($exception);
         }

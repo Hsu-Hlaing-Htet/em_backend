@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Customer;
 
+use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Customer\StoreCustomerMaintenanceRequestRequest;
 use App\Http\Requests\Customer\StoreCustomerPaymentRequest;
@@ -35,8 +36,32 @@ class CustomerPortalController extends Controller
             : $payment->receipt()->first();
 
         $resource['receipt_id'] = $receipt?->isDeliveredToCustomer() ? $receipt->id : null;
+        $resource['paid_by'] = $this->resolveCustomerFacingPaidBy($payment);
 
         return $resource;
+    }
+
+    /**
+     * Customer Portal Paid By: actual contract party who submitted the payment.
+     * Admin-created Cash payments store created_by as the Admin recorder and have
+     * no separate customer-payer field — return null rather than inventing a payer.
+     */
+    private function resolveCustomerFacingPaidBy(Payment $payment): ?string
+    {
+        $payment->loadMissing(['creator', 'invoice.contract.user', 'invoice.contract.secondUser']);
+
+        $creator = $payment->creator;
+        $contract = $payment->invoice?->contract;
+
+        if (! $creator || ! $contract || ! $payment->created_by) {
+            return null;
+        }
+
+        $isContractParty = $contract->partyUsers()->contains(
+            fn ($party) => (int) $party->id === (int) $payment->created_by,
+        );
+
+        return $isContractParty ? $creator->name : null;
     }
 
     public function dashboard(Request $request, CustomerPortalService $customerPortalService): JsonResponse
@@ -201,8 +226,10 @@ class CustomerPortalController extends Controller
                 $request->safe()->except(['proof']),
                 $request->file('proof'),
             );
-        } catch (InvalidArgumentException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 422);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
         }
 
         return response()->json([
