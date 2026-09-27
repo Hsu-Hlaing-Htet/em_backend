@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Models\Payment;
+use App\Support\PaymentFinancialSummary;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -23,10 +24,10 @@ class PaymentResource extends JsonResource
         $room = $contract && $contract->relationLoaded('room') ? $contract->room : null;
         $building = $room && $room->relationLoaded('building') ? $room->building : null;
         $profile = $user && $user->relationLoaded('profile') ? $user->profile : null;
+        $paidByName = $this->relationLoaded('creator') ? $this->creator?->name : null;
 
-        $invoiceAmount = $invoice
-            ? round((float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0), 2)
-            : 0.0;
+        $financialSummary = PaymentFinancialSummary::fromPayment($this->resource, $invoice);
+        $invoiceAmount = $financialSummary['total'];
         $approvedPaidAmount = $this->resolveInvoicePaidAmount($invoice);
         $balance = max(round($invoiceAmount - $approvedPaidAmount, 2), 0);
 
@@ -45,10 +46,18 @@ class PaymentResource extends JsonResource
                 ? $this->paymentMethod?->type
                 : null,
             'amount' => $this->amount,
+            'amount_received' => $this->amount_received,
+            // List PAID (MMK): tendered/submitted for this payment (cash received, else applied).
+            'paid' => $this->resolveTenderedAmount(),
+            'refund_amount' => $this->resolveRefundAmount(),
+            'invoice_subtotal' => $financialSummary['subtotal'],
+            'invoice_late_fee' => $financialSummary['late_fee'],
             'invoice_amount' => $invoiceAmount,
             'paid_amount' => $approvedPaidAmount,
             'balance' => $balance,
             'current_balance' => $balance,
+            // Shared Payment Detail / Receipt financial meanings (Admin + Customer).
+            'financial_summary' => $financialSummary,
             'display_status' => $this->resolveDisplayStatus($invoice),
             'property_unit' => $this->resolvePropertyUnit($building?->building_name, $room?->room_number),
             'reference_number' => $invoice?->invoice_number,
@@ -60,15 +69,20 @@ class PaymentResource extends JsonResource
             'rejection_reason' => $this->rejection_reason,
             'payment_date' => $this->payment_date?->toDateString(),
             'status' => $this->status,
-            'customer_name' => $user?->name,
+            // Contract parties for list "Customer" (joint: "Name 1 + Name 2").
+            'customer_name' => $contract
+                ? $contract->partyDisplayName()
+                : $user?->name,
             'customer_email' => $user?->email,
             'customer_phone' => $profile?->phone,
             'customer_nrc' => $profile?->nrc,
             'building_name' => $building?->building_name,
             'room_number' => $room?->room_number,
-            'created_by_name' => $this->relationLoaded('creator') ? $this->creator?->name : null,
+            'created_by_name' => $paidByName,
+            // Actual submitter/recorder of this payment (Admin Cash or Customer Portal).
+            'paid_by' => $paidByName,
             'submitted_by_user_id' => $this->created_by,
-            'submitted_by_name' => $this->relationLoaded('creator') ? $this->creator?->name : null,
+            'submitted_by_name' => $paidByName,
             'approved_by_name' => $this->relationLoaded('approver') ? $this->approver?->name : null,
             'created_by' => $this->created_by,
             'approved_by' => $this->approved_by,
@@ -79,6 +93,32 @@ class PaymentResource extends JsonResource
             'receipt_number' => $this->relationLoaded('receipt') ? $this->receipt?->receipt_number : null,
             'receipt_status' => $this->relationLoaded('receipt') ? $this->receipt?->status : null,
         ];
+    }
+
+    private function resolveRefundAmount(): ?float
+    {
+        $summary = PaymentFinancialSummary::fromPayment($this->resource);
+
+        return $summary['show_change'] ? $summary['change'] : (
+            $this->amount_received === null ? null : 0.0
+        );
+    }
+
+    /**
+     * Amount actually submitted/tendered for this payment (list PAID column).
+     * Cash over-tender uses amount_received; wallet/bank uses applied amount.
+     */
+    private function resolveTenderedAmount(): ?float
+    {
+        if ($this->amount_received !== null && $this->amount_received !== '') {
+            return round((float) $this->amount_received, 2);
+        }
+
+        if ($this->amount !== null && $this->amount !== '') {
+            return round((float) $this->amount, 2);
+        }
+
+        return null;
     }
 
     private function resolveInvoicePaidAmount($invoice): float

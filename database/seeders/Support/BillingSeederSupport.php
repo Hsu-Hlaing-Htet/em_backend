@@ -408,13 +408,18 @@ final class BillingSeederSupport
         Carbon $paymentDate,
         string $rejectionReason,
     ): Payment {
+        $amount = round(
+            (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0),
+            2,
+        );
+
         return Payment::query()->create([
             'invoice_id' => $invoice->id,
             'payment_method_id' => $paymentMethod->id,
             'created_by' => $customer->id,
             'approved_by' => $admin->id,
             'approved_at' => $paymentDate->copy()->addDay(),
-            'amount' => null,
+            'amount' => $amount,
             'proof_image_path' => 'payments/rejected-'.$invoice->invoice_number.'.jpg',
             'note' => 'Customer submitted proof for verification.',
             'rejection_reason' => $rejectionReason,

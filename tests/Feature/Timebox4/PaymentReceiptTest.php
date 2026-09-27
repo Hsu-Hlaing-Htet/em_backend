@@ -18,6 +18,7 @@ use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
@@ -132,10 +133,99 @@ test('customer can submit payment with proof and invalid proof is rejected', fun
         ])
         ->assertCreated()
         ->assertJsonPath('data.status', 'pending')
-        ->assertJsonPath('data.amount', null)
+        ->assertJsonPath('data.amount', '100000.00')
         ->json('data.id');
 
     expect(Payment::query()->find($paymentId)?->proof_image_path)->not->toBeNull();
+});
+
+test('admin payment approval list exposes pending payment amount', function () {
+    Storage::fake('public');
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    ['invoice' => $invoice, 'method' => $method] = tb4IssuedInvoice($admin, $customer, 647102);
+
+    $paymentId = $this->actingAs($customer, 'sanctum')
+        ->postJson('/api/customer/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $method->id,
+            'payment_date' => now()->toDateString(),
+            'proof' => UploadedFile::fake()->image('wallet.jpg'),
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.amount', '647102.00')
+        ->json('data.id');
+
+    $list = $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/payments?status=pending')
+        ->assertOk()
+        ->json('data.data');
+
+    $row = collect($list)->firstWhere('id', $paymentId);
+
+    expect($row)->not->toBeNull()
+        ->and((float) $row['amount'])->toBe(647102.0)
+        ->and((float) $row['paid'])->toBe(647102.0)
+        ->and((float) $row['invoice_amount'])->toBe(647102.0);
+});
+
+test('admin payment list and approval list share tendered paid mapping for cash over-tender', function () {
+    Mail::fake();
+    Notification::fake();
+
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    ['invoice' => $invoice] = tb4IssuedInvoice($admin, $customer, 20527418);
+    $cash = PaymentMethod::query()->where('type', 'cash')->firstOrFail();
+
+    $created = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 20527418,
+            'amount_received' => 30000000,
+            'note' => 'Office cash over-tender',
+        ])
+        ->assertCreated()
+        ->json('data');
+
+    $paymentId = (int) $created['id'];
+
+    expect((float) $created['invoice_amount'])->toBe(20527418.0)
+        ->and((float) $created['amount'])->toBe(20527418.0)
+        ->and((float) $created['paid'])->toBe(30000000.0)
+        ->and((float) $created['amount_received'])->toBe(30000000.0)
+        ->and((float) $created['financial_summary']['paid'])->toBe(30000000.0)
+        ->and((float) $created['financial_summary']['change'])->toBe(9472582.0);
+
+    $approvalRow = collect(
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/payments?status=pending')
+            ->assertOk()
+            ->json('data.data')
+    )->firstWhere('id', $paymentId);
+
+    expect($approvalRow)->not->toBeNull()
+        ->and((float) $approvalRow['invoice_amount'])->toBe(20527418.0)
+        ->and((float) $approvalRow['paid'])->toBe(30000000.0)
+        ->and((float) $approvalRow['amount'])->toBe(20527418.0);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", [])
+        ->assertOk();
+
+    $listRow = collect(
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/payments?status=approved')
+            ->assertOk()
+            ->json('data.data')
+    )->firstWhere('id', $paymentId);
+
+    expect($listRow)->not->toBeNull()
+        ->and((float) $listRow['invoice_amount'])->toBe(20527418.0)
+        ->and((float) $listRow['paid'])->toBe(30000000.0)
+        ->and((float) $listRow['amount'])->toBe(20527418.0)
+        ->and($listRow['paid_by'])->toBe($admin->name);
 });
 
 test('admin can retrieve pending payments then approve or reject', function () {
@@ -389,4 +479,187 @@ test('admin payment create sets payment_date from server clock and ignores clien
 
     expect(Payment::query()->find($paymentId)?->payment_date?->toDateString())->toBe($expectedDate);
     expect(Payment::query()->find($paymentId)?->approved_at)->not->toBeNull();
+});
+
+test('admin cash over-tender stores received amount and approves without proof or request amount', function () {
+    Mail::fake();
+    Notification::fake();
+
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    ['invoice' => $invoice] = tb4IssuedInvoice($admin, $customer, 693681);
+    $cash = PaymentMethod::query()->where('type', 'cash')->firstOrFail();
+
+    $created = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 693681,
+            'amount_received' => 700000,
+            'note' => 'Office cash',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.status', 'pending')
+        ->json('data');
+
+    expect((float) $created['amount'])->toBe(693681.0)
+        ->and((float) $created['amount_received'])->toBe(700000.0)
+        ->and((float) $created['refund_amount'])->toBe(6319.0)
+        ->and((float) $created['financial_summary']['subtotal'])->toBe(693681.0)
+        ->and((float) $created['financial_summary']['late_fee'])->toBe(0.0)
+        ->and((float) $created['financial_summary']['total'])->toBe(693681.0)
+        ->and((float) $created['financial_summary']['paid'])->toBe(700000.0)
+        ->and($created['financial_summary']['show_change'])->toBeTrue()
+        ->and((float) $created['financial_summary']['change'])->toBe(6319.0)
+        ->and($created['financial_summary']['balance'])->toBeNull();
+
+    $pendingRow = collect(
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/payments?status=pending')
+            ->assertOk()
+            ->json('data.data')
+    )->firstWhere('id', (int) $created['id']);
+
+    expect($pendingRow)->not->toBeNull()
+        ->and((float) $pendingRow['amount'])->toBe(693681.0)
+        ->and((float) $pendingRow['paid'])->toBe(700000.0)
+        ->and((float) $pendingRow['invoice_amount'])->toBe(693681.0)
+        ->and((float) $pendingRow['amount'])->not->toBe(700000.0);
+
+    expect($created['proof_image_url'] ?? null)->toBeNull();
+
+    $paymentId = (int) $created['id'];
+
+    // List-style approve: no amount in body, no proof, no remark.
+    $approved = $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", [])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'approved')
+        ->json('data');
+
+    expect((float) $approved['amount'])->toBe(693681.0)
+        ->and((float) $approved['amount_received'])->toBe(700000.0)
+        ->and((float) $approved['refund_amount'])->toBe(6319.0)
+        ->and((float) $approved['financial_summary']['paid'])->toBe(700000.0)
+        ->and($approved['financial_summary']['show_change'])->toBeTrue()
+        ->and((float) $approved['financial_summary']['change'])->toBe(6319.0);
+
+    expect(Invoice::query()->find($invoice->id)?->status)->toBe('paid');
+    expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
+
+    $receipt = Receipt::query()->where('payment_id', $paymentId)->first();
+    expect((float) Payment::query()->find($paymentId)?->amount)->toBe(693681.0);
+
+    $receiptPayload = $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/receipts/{$receipt->id}")
+        ->assertOk()
+        ->json('data');
+
+    expect((float) $receiptPayload['financial_summary']['subtotal'])->toBe(693681.0)
+        ->and((float) $receiptPayload['financial_summary']['total'])->toBe(693681.0)
+        ->and((float) $receiptPayload['financial_summary']['paid'])->toBe(700000.0)
+        ->and($receiptPayload['financial_summary']['show_change'])->toBeTrue()
+        ->and((float) $receiptPayload['financial_summary']['change'])->toBe(6319.0)
+        ->and((float) $receiptPayload['amount_received'])->toBe(700000.0);
+
+    $receiptHtml = $this->actingAs($admin, 'sanctum')
+        ->get("/api/receipts/{$receipt->id}/document/export")
+        ->assertOk()
+        ->getContent();
+
+    expect($receiptHtml)
+        ->toContain('Subtotal')
+        ->toContain('Paid')
+        ->toContain('Change')
+        ->toContain('MMK 700,000')
+        ->toContain('MMK 6,319')
+        ->not->toContain('Remaining Balance');
+
+    // Duplicate approve must not create a second receipt.
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$paymentId}/approve", [])
+        ->assertStatus(409);
+
+    expect(Receipt::query()->where('payment_id', $paymentId)->count())->toBe(1);
+    expect($receipt?->id)->toBe(Receipt::query()->where('payment_id', $paymentId)->value('id'));
+});
+
+test('admin cash payment requires amount_received and rejects under-tender', function () {
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    ['invoice' => $invoice] = tb4IssuedInvoice($admin, $customer, 100000);
+    $cash = PaymentMethod::query()->where('type', 'cash')->firstOrFail();
+
+    $missingReceived = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 100000,
+        ])
+        ->assertStatus(422);
+
+    expect($missingReceived->json('data.amount_received'))->not->toBeEmpty();
+
+    $under = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 100000,
+            'amount_received' => 70000,
+        ])
+        ->assertStatus(422);
+
+    expect($under->json('data.amount_received'))->not->toBeEmpty();
+});
+
+test('admin cash create clamps whole-mmk rounding overage under 1 and returns 422 for true overpay', function () {
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    // Matches INV-000227-style fractional balance with whole-MMK UI amount.
+    ['invoice' => $invoice] = tb4IssuedInvoice($admin, $customer, 693680.50);
+    $cash = PaymentMethod::query()->where('type', 'cash')->firstOrFail();
+
+    $created = $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 693681,
+            'amount_received' => 700000,
+            'note' => 'Test',
+        ])
+        ->assertCreated()
+        ->json('data');
+
+    expect((float) $created['amount'])->toBe(693680.50)
+        ->and((float) $created['amount_received'])->toBe(700000.0)
+        ->and((float) $created['refund_amount'])->toBe(6319.5);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 693681,
+            'amount_received' => 700000,
+        ])
+        ->assertStatus(409)
+        ->assertJsonPath('message', 'This invoice already has a pending payment.');
+});
+
+test('admin payment create rejects inactive payment method with 422', function () {
+    $admin = tb4Admin();
+    $customer = tb4Customer();
+    ['invoice' => $invoice] = tb4IssuedInvoice($admin, $customer, 50000);
+    $cash = PaymentMethod::query()->where('type', 'cash')->firstOrFail();
+    $cash->update(['status' => PaymentMethod::STATUS_INACTIVE]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson('/api/payments', [
+            'invoice_id' => $invoice->id,
+            'payment_method_id' => $cash->id,
+            'amount' => 50000,
+            'amount_received' => 50000,
+        ])
+        ->assertStatus(422);
+
+    $cash->update(['status' => PaymentMethod::STATUS_ACTIVE]);
 });

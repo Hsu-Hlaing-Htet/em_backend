@@ -5,12 +5,14 @@ namespace App\Services;
 use App\Exceptions\ConcurrentConflictException;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentMethod;
 use App\Notifications\PaymentApprovedNotification;
 use App\Notifications\PaymentRejectedNotification;
 use App\Services\Concerns\AppliesBillingPropertyFilters;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\AdminListSorts;
 use App\Support\BillingEagerLoads;
+use App\Support\CustomerNotificationRecipients;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -184,13 +186,100 @@ class PaymentService
             $data['approved_at'],
         );
 
-        return Payment::query()->create([
-            ...$data,
-            // Authoritative payment date comes from the server clock, not the client.
-            'payment_date' => now()->toDateString(),
-            'status' => Payment::STATUS_PENDING,
-            'created_by' => Auth::id(),
-        ]);
+        return DB::transaction(function () use ($data): Payment {
+            $method = PaymentMethod::query()->findOrFail((int) $data['payment_method_id']);
+
+            /** @var Invoice $invoice */
+            $invoice = Invoice::query()
+                ->whereKey((int) $data['invoice_id'])
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (in_array($invoice->status, ['paid', 'cancelled', 'draft'], true)) {
+                if ($invoice->status === 'paid') {
+                    throw new ConcurrentConflictException('Invoice has already been fully paid.');
+                }
+
+                throw new InvalidArgumentException('This invoice is not open for payment.');
+            }
+
+            // Re-read outstanding under the invoice row lock so concurrent Admin/Customer
+            // creates never validate against a stale balance.
+            $invoice->unsetRelation('payments');
+            $balance = $this->invoiceCurrentBalance($invoice);
+
+            if ($balance <= 0) {
+                throw new ConcurrentConflictException('Invoice has already been fully paid.');
+            }
+
+            $hasPending = Payment::query()
+                ->where('invoice_id', $invoice->id)
+                ->where('status', Payment::STATUS_PENDING)
+                ->exists();
+
+            if ($hasPending) {
+                throw new ConcurrentConflictException('This invoice already has a pending payment.');
+            }
+
+            $hasAppliedAmount = array_key_exists('amount', $data)
+                && $data['amount'] !== null
+                && $data['amount'] !== '';
+
+            $applied = null;
+            $amountReceived = null;
+
+            if ($hasAppliedAmount) {
+                $requestedApplied = round((float) $data['amount'], 2);
+
+                if ($requestedApplied <= 0) {
+                    throw new InvalidArgumentException('Paid amount must be greater than zero.');
+                }
+
+                // Whole-MMK UI can round remaining balance up by < 1; settle exact balance instead.
+                // Clamp before the over-balance check so a rounded 693681 vs 693680.50 does not 500.
+                $applied = abs($requestedApplied - $balance) < 1.0
+                    ? $balance
+                    : $requestedApplied;
+
+                if ($applied > $balance + 0.009) {
+                    throw new InvalidArgumentException('Paid amount cannot exceed the current balance.');
+                }
+
+                if ($method->isCash()) {
+                    if (! array_key_exists('amount_received', $data) || $data['amount_received'] === null || $data['amount_received'] === '') {
+                        throw new InvalidArgumentException('Received amount is required for cash payments.');
+                    }
+
+                    $amountReceived = round((float) $data['amount_received'], 2);
+
+                    // Cash over-tender is allowed: validate applied amount vs balance, not received.
+                    if ($amountReceived < $applied) {
+                        throw new InvalidArgumentException(
+                            'Received amount cannot be less than the amount applied to the invoice.',
+                        );
+                    }
+                }
+            } elseif ($method->isCash()) {
+                throw new InvalidArgumentException('Paid amount is required for cash payments.');
+            } else {
+                // Customer wallet/bank submissions cannot send amount; store the applied
+                // settlement (current balance) so Approval List / exports show Payment (MMK).
+                $applied = $balance;
+            }
+
+            unset($data['amount_received']);
+
+            return Payment::query()->create([
+                ...$data,
+                'invoice_id' => $invoice->id,
+                'amount' => $applied,
+                'amount_received' => $amountReceived,
+                // Authoritative payment date comes from the server clock, not the client.
+                'payment_date' => now()->toDateString(),
+                'status' => Payment::STATUS_PENDING,
+                'created_by' => Auth::id(),
+            ]);
+        });
     }
 
     /**
@@ -239,11 +328,9 @@ class PaymentService
         });
     }
 
-    public function approve(Payment $payment, float|int|string $amount): Payment
+    public function approve(Payment $payment, float|int|string|null $amount = null): Payment
     {
-        $paidAmount = round((float) $amount, 2);
-
-        $approved = DB::transaction(function () use ($payment, $paidAmount): Payment {
+        $approved = DB::transaction(function () use ($payment, $amount): Payment {
             /** @var Payment $lockedPayment */
             $lockedPayment = Payment::query()
                 ->whereKey($payment->id)
@@ -264,15 +351,28 @@ class PaymentService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $invoice->load('payments');
+            $invoice->unsetRelation('payments');
             $currentBalance = $this->invoiceCurrentBalance($invoice);
+
+            if ($currentBalance <= 0) {
+                throw new ConcurrentConflictException('Invoice has already been fully paid.');
+            }
+
+            $paidAmount = $this->resolveApprovalAmount($lockedPayment, $amount, $currentBalance);
 
             if ($paidAmount <= 0) {
                 throw new InvalidArgumentException('Paid amount must be greater than zero.');
             }
 
-            if ($paidAmount > $currentBalance) {
-                throw new InvalidArgumentException('Paid amount cannot exceed the current balance.');
+            // Clamp tiny whole-MMK rounding overages (< 1 MMK) to the exact remaining balance.
+            if ($paidAmount > $currentBalance && ($paidAmount - $currentBalance) < 1.0) {
+                $paidAmount = $currentBalance;
+            }
+
+            if ($paidAmount > $currentBalance + 0.009) {
+                throw new ConcurrentConflictException(
+                    'Outstanding balance changed. Paid amount cannot exceed the current balance.',
+                );
             }
 
             $lockedPayment->update([
@@ -297,6 +397,28 @@ class PaymentService
         $this->notifyCustomerOfPaymentDecision($approved, 'approved');
 
         return $approved;
+    }
+
+    /**
+     * Resolve the amount applied on approve.
+     * Prefer an explicit request amount, then a pre-stored payment amount (Admin Cash),
+     * then the current invoice balance (full settlement for customer submissions).
+     */
+    private function resolveApprovalAmount(Payment $payment, float|int|string|null $amount, float $currentBalance): float
+    {
+        if ($amount !== null && $amount !== '') {
+            return round((float) $amount, 2);
+        }
+
+        if ($payment->amount !== null && $payment->amount !== '') {
+            return round((float) $payment->amount, 2);
+        }
+
+        if ($currentBalance <= 0) {
+            throw new InvalidArgumentException('Paid amount is required.');
+        }
+
+        return $currentBalance;
     }
 
     public function reject(Payment $payment, ?string $reason = null): Payment
@@ -332,18 +454,22 @@ class PaymentService
     private function notifyCustomerOfPaymentDecision(Payment $payment, string $decision): void
     {
         try {
-            $payment->loadMissing(['invoice.contract.user', 'invoice.contract.secondUser', 'creator', 'receipt']);
+            $payment->loadMissing(['invoice.contract', 'creator', 'receipt']);
             $contract = $payment->invoice?->contract;
 
             if (! $contract) {
                 return;
             }
 
-            $recipients = $contract->partyUsers();
+            // Refresh party users so email reflects CURRENT users.email after any account update.
+            $recipients = CustomerNotificationRecipients::usersForContract($contract);
 
             // Ensure the actual payer is notified even if relations were incomplete.
-            if ($payment->creator && ! $recipients->contains('id', $payment->creator->id)) {
-                $recipients->push($payment->creator);
+            if ($payment->created_by) {
+                $creator = $payment->creator()->first() ?? $payment->creator;
+                if ($creator && ! $recipients->contains('id', $creator->id)) {
+                    $recipients = $recipients->push($creator)->values();
+                }
             }
 
             $notified = [];

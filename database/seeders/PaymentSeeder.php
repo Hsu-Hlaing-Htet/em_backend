@@ -104,11 +104,16 @@ class PaymentSeeder extends Seeder
             }
 
             if ($invoice->status === 'issued') {
+                $pendingAmount = round(
+                    (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0),
+                    2,
+                );
+
                 BillingSeederSupport::createPendingPayment(
                     $customer ?? $admin,
                     $invoice,
                     $paymentMethod,
-                    null,
+                    $pendingAmount,
                     now()->subDay(),
                     'Customer submitted payment proof for admin verification.',
                 );

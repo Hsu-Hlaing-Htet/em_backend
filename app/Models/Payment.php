@@ -19,13 +19,14 @@ class Payment extends Model
 
     protected $fillable = [
         'invoice_id', 'payment_method_id', 'created_by', 'approved_by', 'approved_at', 'amount',
-        'proof_image_path', 'note', 'rejection_reason', 'payment_date', 'status',
+        'amount_received', 'proof_image_path', 'note', 'rejection_reason', 'payment_date', 'status',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'amount_received' => 'decimal:2',
             'payment_date' => 'date',
             'approved_at' => 'datetime',
         ];

@@ -135,6 +135,7 @@ test('payment show includes invoice customer method and property fields', functi
         ->assertOk()
         ->assertJsonPath('data.invoice_number', 'INV-DISP-0001')
         ->assertJsonPath('data.customer_name', $customer->name)
+        ->assertJsonPath('data.paid_by', $customer->name)
         ->assertJsonPath('data.payment_method_name', $method->name)
         ->assertJsonPath('data.building_name', 'Display Audit Tower')
         ->assertJsonPath('data.room_number', 'DA-501')
@@ -153,6 +154,7 @@ test('payment list includes nested display fields for each row', function () {
         ->assertJsonFragment([
             'invoice_number' => 'INV-DISP-0001',
             'customer_name' => 'Mg Mg',
+            'paid_by' => 'Mg Mg',
             'payment_method_name' => 'Cash',
             'building_name' => 'Display Audit Tower',
             'room_number' => 'DA-501',
@@ -194,6 +196,33 @@ test('invoice list includes customer building and room fields', function () {
         ]);
 });
 
+test('invoice list and approval use compact joint customer display name', function () {
+    $admin = billingDisplayAdmin();
+    ['invoice' => $invoice, 'contract' => $contract, 'customer' => $customer] = seedBillingDisplayFixture($admin);
+    $second = User::query()->where('email', 'minmin@gmail.com')->first()
+        ?? User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
+
+    $contract->update(['second_user_id' => $second->id]);
+    $invoice->update(['status' => 'draft', 'issued_date' => null]);
+
+    $jointName = $customer->name.' + '.$second->name;
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson('/api/invoices?per_page=10&payment_status=draft')
+        ->assertOk()
+        ->assertJsonFragment([
+            'invoice_number' => 'INV-DISP-0001',
+            'customer_name' => $jointName,
+            'building_name' => 'Display Audit Tower',
+            'room_number' => 'DA-501',
+        ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/invoices/{$invoice->id}")
+        ->assertOk()
+        ->assertJsonPath('data.customer_name', $jointName);
+});
+
 test('customer cannot access admin payment endpoints', function () {
     $admin = billingDisplayAdmin();
     $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
@@ -229,6 +258,9 @@ test('receipt show includes customer invoice and property fields', function () {
         ->assertJsonPath('data.receipt_number', 'RCP-DISP-0001')
         ->assertJsonPath('data.invoice_number', 'INV-DISP-0001')
         ->assertJsonPath('data.customer_name', $customer->name)
+        ->assertJsonPath('data.paid_by', $customer->name)
+        ->assertJsonPath('data.approved_by_name', $admin->name)
+        ->assertJsonPath('data.paid_amount', 200000)
         ->assertJsonPath('data.building_name', 'Display Audit Tower')
         ->assertJsonPath('data.room_number', 'DA-501')
         ->assertJsonPath('data.property_unit', 'Display Audit Tower · DA-501')
@@ -244,7 +276,11 @@ test('receipt list includes customer and property display fields', function () {
         ->assertOk()
         ->assertJsonFragment([
             'receipt_number' => 'RCP-DISP-0001',
+            'invoice_number' => 'INV-DISP-0001',
             'customer_name' => 'Mg Mg',
+            'paid_by' => 'Mg Mg',
+            'approved_by_name' => $admin->name,
+            'paid_amount' => 200000,
             'building_name' => 'Display Audit Tower',
             'room_number' => 'DA-501',
         ]);
@@ -261,4 +297,46 @@ test('active rent contract show includes customer and room fields', function () 
         ->assertJsonPath('data.customer_name', $customer->name)
         ->assertJsonPath('data.building_name', 'Display Audit Tower')
         ->assertJsonPath('data.room_number', 'DA-501');
+});
+
+test('payment list shows joint customer parties and paid by submitter', function () {
+    $admin = billingDisplayAdmin();
+    ['payment' => $payment, 'contract' => $contract, 'customer' => $customer] = seedBillingDisplayFixture($admin);
+    $second = User::query()->where('email', 'minmin@gmail.com')->first()
+        ?? User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
+
+    $contract->update(['second_user_id' => $second->id]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/payments/{$payment->id}")
+        ->assertOk()
+        ->assertJsonPath('data.customer_name', $customer->name.' + '.$second->name)
+        ->assertJsonPath('data.paid_by', $customer->name)
+        ->assertJsonPath('data.amount', '200000.00');
+});
+
+test('receipt list shows joint customer, paid by, payment amount and payment approver', function () {
+    $admin = billingDisplayAdmin();
+    ['receipt' => $receipt, 'payment' => $payment, 'contract' => $contract, 'customer' => $customer] = seedBillingDisplayReceipt($admin);
+    $second = User::query()->where('email', 'minmin@gmail.com')->first()
+        ?? User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
+
+    $contract->update(['second_user_id' => $second->id]);
+    $payment->update([
+        'amount' => 693681,
+        'amount_received' => 700000,
+        'created_by' => $second->id,
+        'approved_by' => $admin->id,
+    ]);
+
+    $response = $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/receipts/{$receipt->id}")
+        ->assertOk()
+        ->assertJsonPath('data.customer_name', $customer->name.' + '.$second->name)
+        ->assertJsonPath('data.paid_by', $second->name)
+        ->assertJsonPath('data.paid_amount', 693681)
+        ->assertJsonPath('data.approved_by_name', $admin->name)
+        ->assertJsonPath('data.payment_approved_by_name', $admin->name);
+
+    expect($response->json('data.paid_amount'))->not->toBe(700000);
 });

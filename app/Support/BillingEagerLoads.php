@@ -98,6 +98,7 @@ final class BillingEagerLoads
             'payment.invoice.payments',
             'payment.paymentMethod',
             'payment.creator',
+            'payment.approver',
             'creator',
             'approver',
             'sender',

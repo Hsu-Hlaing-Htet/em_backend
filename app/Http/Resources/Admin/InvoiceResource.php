@@ -36,8 +36,14 @@ class InvoiceResource extends JsonResource
             'billing_period' => $this->resolveBillingPeriod(),
             'late_fee' => $this->late_fee,
             'total_amount' => $this->total_amount,
+            // Full invoice value for list/detail TOTAL labels (subtotal + late fee).
+            'invoice_total' => $totalDue,
             'paid_amount' => $paidAmount,
             'remaining_balance' => $remainingBalance,
+            'has_pending_payment' => $this->relationLoaded('payments')
+                && $this->payments->contains(
+                    fn ($payment) => $payment->status === Payment::STATUS_PENDING,
+                ),
             'property_unit' => $this->resolvePropertyUnit($building?->building_name, $room?->room_number),
             'payment_method_name' => $this->resolvePaymentMethodName(),
             'notes' => $this->resolveNotes(),
@@ -62,7 +68,10 @@ class InvoiceResource extends JsonResource
                 return InvoiceItemResource::collection($this->items);
             }),
             // Always emit nested display fields when the parent graph was loaded.
-            'customer_name' => $user?->name,
+            // List/detail Customer column uses compact joint label: "Name" or "Name 1 + Name 2".
+            'customer_name' => $contract && $contract->relationLoaded('user')
+                ? $contract->partyDisplayName()
+                : $user?->name,
             'customer_email' => $user?->email,
             'customer_phone' => $profile?->phone,
             'customer_nrc' => $profile?->nrc,

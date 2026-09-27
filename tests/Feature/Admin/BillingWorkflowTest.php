@@ -106,6 +106,17 @@ function seedDraftInvoice(Contract $contract, User $admin, float $total = 100000
 
 function submitCustomerPayment(mixed $test, User $customer, Invoice $invoice, PaymentMethod $paymentMethod): int
 {
+    $invoice->loadMissing('payments');
+    $approvedPaid = round((float) $invoice->payments
+        ->where('status', 'approved')
+        ->sum(fn ($payment) => (float) ($payment->amount ?? 0)), 2);
+    $expectedAmount = number_format(
+        max(round((float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0) - $approvedPaid, 2), 0),
+        2,
+        '.',
+        '',
+    );
+
     $test->actingAs($customer, 'sanctum')
         ->postJson('/api/customer/payments', [
             'invoice_id' => $invoice->id,
@@ -116,7 +127,7 @@ function submitCustomerPayment(mixed $test, User $customer, Invoice $invoice, Pa
         ])
         ->assertCreated()
         ->assertJsonPath('data.status', 'pending')
-        ->assertJsonPath('data.amount', null);
+        ->assertJsonPath('data.amount', $expectedAmount);
 
     return (int) Payment::query()->orderByDesc('id')->value('id');
 }
@@ -305,7 +316,7 @@ test('rejecting payment keeps invoice payment status synchronized', function () 
         ->assertJsonPath('data.rejection_reason', 'Proof is unclear.');
 
     expect(Invoice::query()->find($invoice->id)?->status)->toBe('partial');
-    expect(Payment::query()->find($secondPaymentId)?->amount)->toBeNull();
+    expect((float) Payment::query()->find($secondPaymentId)?->amount)->toBe(50000.0);
     expect(Receipt::query()->count())->toBe(1);
 });
 
@@ -336,7 +347,7 @@ test('payment approval rejects overpayment and customer cannot submit amount', f
         ->postJson("/api/payments/{$paymentId}/approve", [
             'amount' => 150000,
         ])
-        ->assertStatus(422);
+        ->assertStatus(409);
 
     expect(Payment::query()->find($paymentId)?->status)->toBe('pending');
     expect(Invoice::query()->find($invoice->id)?->status)->toBe('issued');

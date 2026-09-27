@@ -37,7 +37,13 @@ class PaymentController extends Controller
         $proof = $request->file('proof');
         unset($data['proof']);
 
-        $payment = $paymentService->create($data);
+        try {
+            $payment = $paymentService->create($data);
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
+        }
 
         if ($proof) {
             $payment = $paymentService->uploadProof($payment, $proof);
@@ -98,7 +104,10 @@ class PaymentController extends Controller
         PaymentService $paymentService,
     ): JsonResponse {
         try {
-            $payment = $paymentService->approve($payment, $request->validated('amount'));
+            $payment = $paymentService->approve(
+                $payment,
+                $request->validated('amount'),
+            );
         } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
             $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
 

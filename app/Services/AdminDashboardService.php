@@ -73,7 +73,7 @@ class AdminDashboardService
             ],
             [
                 'key' => 'outstanding',
-                'label' => 'Outstanding Balance',
+                'label' => 'Balance',
                 'value' => $this->formatMoney($outstanding),
                 'change' => $this->outstandingChangeLabel($outstandingSeries),
                 'trend' => $this->invertTrend($this->trendFromSeries($outstandingSeries)),

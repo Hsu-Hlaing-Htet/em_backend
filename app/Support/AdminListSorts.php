@@ -156,7 +156,17 @@ final class AdminListSorts
     {
         return [
             'invoice_number' => 'invoice_number',
-            'total_amount' => 'total_amount',
+            // TOTAL = subtotal + late fee (matches invoice_total / list Total column).
+            'total_amount' => static function (Builder $query, string $direction): void {
+                $query->orderByRaw(
+                    '(invoices.total_amount + COALESCE(invoices.late_fee, 0)) '.$direction
+                );
+            },
+            'invoice_total' => static function (Builder $query, string $direction): void {
+                $query->orderByRaw(
+                    '(invoices.total_amount + COALESCE(invoices.late_fee, 0)) '.$direction
+                );
+            },
             'issued_date' => 'issued_date',
             'due_date' => 'due_date',
             'status' => static function (Builder $query, string $direction): void {
@@ -212,6 +222,12 @@ final class AdminListSorts
     {
         return [
             'amount' => 'amount',
+            // List PAID (MMK): tendered amount (received when set, else applied).
+            'paid' => static function (Builder $query, string $direction): void {
+                $query->orderByRaw(
+                    'COALESCE(payments.amount_received, payments.amount) '.$direction
+                );
+            },
             'payment_date' => 'payment_date',
             'status' => static function (Builder $query, string $direction): void {
                 self::orderByCaseRank($query, $direction, 'payments.status', [
@@ -246,6 +262,15 @@ final class AdminListSorts
                     DB::table('invoices')
                         ->selectRaw('invoices.total_amount + COALESCE(invoices.late_fee, 0)')
                         ->whereColumn('invoices.id', 'payments.invoice_id')
+                        ->limit(1),
+                    $direction
+                );
+            },
+            'paid_by' => static function (Builder $query, string $direction): void {
+                $query->orderBy(
+                    DB::table('users')
+                        ->select('users.name')
+                        ->whereColumn('users.id', 'payments.created_by')
                         ->limit(1),
                     $direction
                 );
@@ -335,6 +360,28 @@ final class AdminListSorts
                 $query->orderBy(
                     DB::table('payments')
                         ->select('payments.payment_date')
+                        ->whereColumn('payments.id', 'receipts.payment_id')
+                        ->limit(1),
+                    $direction
+                );
+            },
+            // List DATE column prefers receipt issued_at.
+            'date' => 'issued_at',
+            'paid_by' => static function (Builder $query, string $direction): void {
+                $query->orderBy(
+                    DB::table('users')
+                        ->select('users.name')
+                        ->join('payments', 'payments.created_by', '=', 'users.id')
+                        ->whereColumn('payments.id', 'receipts.payment_id')
+                        ->limit(1),
+                    $direction
+                );
+            },
+            'approved_by_name' => static function (Builder $query, string $direction): void {
+                $query->orderBy(
+                    DB::table('users')
+                        ->select('users.name')
+                        ->join('payments', 'payments.approved_by', '=', 'users.id')
                         ->whereColumn('payments.id', 'receipts.payment_id')
                         ->limit(1),
                     $direction
