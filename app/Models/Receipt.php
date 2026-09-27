@@ -106,8 +106,8 @@ class Receipt extends Model
 
     public function canBeEmailed(): bool
     {
+        // approved + draft/issued may be (re)sent; sent_at is last-send audit only.
         return $this->isApproved()
-            && in_array($this->status, [self::STATUS_DRAFT, self::STATUS_ISSUED], true)
-            && $this->sent_at === null;
+            && in_array($this->status, [self::STATUS_DRAFT, self::STATUS_ISSUED], true);
     }
 }

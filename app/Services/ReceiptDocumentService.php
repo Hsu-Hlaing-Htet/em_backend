@@ -78,7 +78,7 @@ class ReceiptDocumentService
     public function sendEmail(Receipt $receipt, array $data): void
     {
         if (! $receipt->canBeEmailed()) {
-            throw new InvalidArgumentException('Only approved receipts awaiting delivery can be emailed.');
+            throw new InvalidArgumentException('Only approved receipts can be emailed.');
         }
 
         $receipt->loadMissing([

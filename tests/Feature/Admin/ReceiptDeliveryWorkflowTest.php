@@ -175,6 +175,7 @@ test('successful receipt document email marks receipt as sent', function () {
         ])
         ->assertOk()
         ->assertJsonPath('data.is_sent', true)
+        ->assertJsonPath('data.can_send_email', true)
         ->assertJsonPath('data.sent_by', $admin->id);
 
     Mail::assertSent(ReceiptDocumentMail::class);
@@ -189,6 +190,43 @@ test('successful receipt document email marks receipt as sent', function () {
         ->getJson("/api/customer/receipts/{$receipt->id}")
         ->assertOk()
         ->assertJsonPath('data.receipt_number', $receipt->receipt_number);
+});
+
+test('receipt document email can be resent and updates sent_at', function () {
+    Mail::fake();
+
+    $admin = receiptDeliveryAdmin();
+    $customer = receiptDeliveryCustomer();
+    ['payment' => $payment] = seedReceiptDeliveryPayment($admin, $customer);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/payments/{$payment->id}/approve", ['amount' => 450000])
+        ->assertOk();
+
+    $receipt = Receipt::query()->where('payment_id', $payment->id)->firstOrFail();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/document/email")
+        ->assertOk();
+
+    $firstSentAt = $receipt->fresh()->sent_at;
+    expect($firstSentAt)->not->toBeNull()
+        ->and($receipt->fresh()->canBeEmailed())->toBeTrue();
+
+    $customer->forceFill(['email' => 'mgmg-new@example.com'])->save();
+
+    $this->travel(5)->seconds();
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/receipts/{$receipt->id}/document/email")
+        ->assertOk()
+        ->assertJsonPath('data.can_send_email', true)
+        ->assertJsonPath('data.is_sent', true);
+
+    expect(Receipt::query()->where('payment_id', $payment->id)->count())->toBe(1);
+    expect($receipt->fresh()->sent_at?->gt($firstSentAt))->toBeTrue();
+    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(2);
+    Mail::assertSent(ReceiptDocumentMail::class, fn (ReceiptDocumentMail $mail) => $mail->hasTo('mgmg-new@example.com'));
 });
 
 test('failed receipt document email keeps sent_at null and allows retry', function () {
@@ -268,7 +306,7 @@ test('already finalized payment receipt has no separate receipt approval endpoin
     Mail::assertSent(ReceiptDocumentMail::class);
 });
 
-test('repeated send returns conflict without duplicate receipts', function () {
+test('repeated send remains allowed and does not create duplicate receipts', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -291,10 +329,11 @@ test('repeated send returns conflict without duplicate receipts', function () {
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
             'email' => $customer->email,
         ])
-        ->assertStatus(409);
+        ->assertOk()
+        ->assertJsonPath('data.can_send_email', true);
 
     expect(Receipt::query()->where('payment_id', $payment->id)->count())->toBe(1);
-    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(1);
+    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(2);
 });
 
 test('another customer cannot access an issued receipt', function () {

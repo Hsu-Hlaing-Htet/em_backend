@@ -249,10 +249,6 @@ class ReceiptService
                 throw new InvalidArgumentException('Only approved receipts can be sent to the customer.');
             }
 
-            if ($locked->sent_at !== null) {
-                throw new ConcurrentConflictException('This receipt has already been sent to the customer.');
-            }
-
             $locked->loadMissing([
                 'payment.invoice.contract',
             ]);
@@ -285,6 +281,7 @@ class ReceiptService
                 throw new InvalidArgumentException('Unable to send receipt email: '.$exception->getMessage());
             }
 
+            // sent_at = last successful send timestamp (resend allowed).
             $locked->update([
                 'status' => Receipt::STATUS_ISSUED,
                 'issued_at' => $locked->issued_at ?? now(),
