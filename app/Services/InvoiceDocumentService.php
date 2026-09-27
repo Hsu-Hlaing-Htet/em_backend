@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\CustomerPortalUrl;
+use App\Support\CustomerNotificationRecipients;
 use App\Support\DocumentFilename;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
@@ -78,11 +79,10 @@ class InvoiceDocumentService
      */
     public function sendEmail(Invoice $invoice, array $data): void
     {
-        $invoice->loadMissing(['contract.user', 'contract.secondUser', 'contract.room']);
-        $partyUsers = $invoice->contract?->partyUsers() ?? collect();
-        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
-            ? [trim((string) $data['email'])]
-            : ($invoice->contract?->partyEmails() ?? []);
+        $invoice->loadMissing(['contract.room']);
+        // Always resolve CURRENT users.email at send time (ignore request/UI email overrides).
+        $partyUsers = CustomerNotificationRecipients::usersForContract($invoice->contract);
+        $emails = CustomerNotificationRecipients::emailsForInvoice($invoice);
 
         if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the invoice document.');
@@ -157,6 +157,8 @@ class InvoiceDocumentService
                 'due_date' => $dueDate,
                 'billing_period' => $this->billingPeriod($invoice),
                 'status' => $this->statusLabel($invoice),
+                // Full invoice value (subtotal + late fee), not remaining unpaid balance.
+                'total' => $this->formatInvoiceCurrency($amountDue),
                 'amount_due' => $this->formatInvoiceCurrency($amountDue),
             ],
             'items' => $itemRows,
@@ -164,6 +166,7 @@ class InvoiceDocumentService
                 'subtotal' => $this->formatInvoiceCurrency($subtotal),
                 'overdue_days' => $this->overdueDays($invoice),
                 'late_fee' => $this->formatInvoiceCurrency($lateFee),
+                'total' => $this->formatInvoiceCurrency($amountDue),
                 'amount_due' => $this->formatInvoiceCurrency($amountDue),
             ],
             'notes' => $this->buildNotes($invoiceNumber, $dueDate),

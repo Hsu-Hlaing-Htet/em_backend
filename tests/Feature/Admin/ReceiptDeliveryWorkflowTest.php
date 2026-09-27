@@ -321,7 +321,7 @@ test('another customer cannot access an issued receipt', function () {
         ->assertJsonPath('data.total', 0);
 });
 
-test('receipt cannot be sent to a non-customer email address', function () {
+test('receipt send ignores request email and delivers to current party emails', function () {
     Mail::fake();
 
     $admin = receiptDeliveryAdmin();
@@ -338,7 +338,8 @@ test('receipt cannot be sent to a non-customer email address', function () {
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
             'email' => 'wrong@example.com',
         ])
-        ->assertStatus(422);
+        ->assertOk();
 
-    Mail::assertNothingSent();
+    Mail::assertSent(ReceiptDocumentMail::class, fn (ReceiptDocumentMail $mail) => $mail->hasTo($customer->email));
+    Mail::assertNotSent(ReceiptDocumentMail::class, fn (ReceiptDocumentMail $mail) => $mail->hasTo('wrong@example.com'));
 });

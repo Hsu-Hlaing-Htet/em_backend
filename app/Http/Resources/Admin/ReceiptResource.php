@@ -4,6 +4,7 @@ namespace App\Http\Resources\Admin;
 
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Support\PaymentFinancialSummary;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,10 +20,19 @@ class ReceiptResource extends JsonResource
         $room = $contract?->relationLoaded('room') ? $contract->room : null;
         $buildingName = $room?->relationLoaded('building') ? $room->building?->building_name : null;
         $roomNumber = $room?->room_number;
-        $invoiceAmount = $invoice ? (float) $invoice->total_amount : 0.0;
-        $paidAmount = $payment ? (float) $payment->amount : 0.0;
+        $financialSummary = PaymentFinancialSummary::fromPayment($payment, $invoice);
+        $invoiceAmount = $financialSummary['total'];
+        // Applied payment amount only — never cash tender / amount_received.
+        $paidAmount = $payment && $payment->amount !== null && $payment->amount !== ''
+            ? round((float) $payment->amount, 2)
+            : null;
         $approvedPaidAmount = $this->resolveInvoicePaidAmount($invoice);
-        $balance = max(round($invoiceAmount - $approvedPaidAmount, 2), 0);
+        $balance = max(round($invoiceAmount - ($approvedPaidAmount), 2), 0);
+        $paidByName = $payment?->relationLoaded('creator') ? $payment->creator?->name : null;
+        // Receipt list "Approved By" = Payment approver (no separate Receipt approval workflow).
+        $paymentApprovedByName = $payment?->relationLoaded('approver')
+            ? $payment->approver?->name
+            : null;
 
         return [
             'id' => $this->id,
@@ -35,13 +45,21 @@ class ReceiptResource extends JsonResource
             'can_send_email' => $this->canBeEmailed(),
             'is_sent' => $this->isEmailSent(),
             'issued_at' => $this->issued_at?->toDateTimeString(),
+            // List DATE prefers receipt issued/generated date; fall back to payment date.
+            'date' => $this->issued_at?->toDateString()
+                ?? $payment?->payment_date?->toDateString(),
             'sent_at' => $this->sent_at?->toDateTimeString(),
             'sent_by' => $this->sent_by,
             'sent_by_name' => $this->relationLoaded('sender') ? $this->sender?->name : null,
             'invoice_number' => $invoice?->invoice_number,
+            'invoice_base_amount' => $financialSummary['subtotal'],
+            'late_fee' => $financialSummary['late_fee'],
             'invoice_amount' => $invoiceAmount,
             'paid_amount' => $paidAmount,
-            'amount' => $paidAmount ?: null,
+            'amount' => $paidAmount,
+            'amount_received' => $financialSummary['paid'],
+            'refund_amount' => $financialSummary['show_change'] ? $financialSummary['change'] : 0.0,
+            'financial_summary' => $financialSummary,
             'balance' => $balance,
             'payment_type' => $this->resolvePaymentType($invoice),
             'payment_date' => $payment?->payment_date?->toDateString(),
@@ -51,9 +69,11 @@ class ReceiptResource extends JsonResource
             'payment_method_type' => $payment?->relationLoaded('paymentMethod')
                 ? $payment->paymentMethod?->type
                 : null,
-            'payment_amount' => $paidAmount ?: null,
+            'payment_amount' => $paidAmount,
             'property_unit' => $this->resolvePropertyUnit($buildingName, $roomNumber),
-            'customer_name' => $user?->name,
+            'customer_name' => $contract
+                ? $contract->partyDisplayName()
+                : $user?->name,
             'customer_email' => $user?->email,
             'customer_phone' => $user?->relationLoaded('profile') ? $user->profile?->phone : null,
             'customer_nrc' => $user?->relationLoaded('profile') ? $user->profile?->nrc : null,
@@ -61,6 +81,7 @@ class ReceiptResource extends JsonResource
             'room_number' => $roomNumber,
             'items' => $this->resolveInvoiceItems($invoice),
             'created_by_name' => $this->whenLoaded('creator', fn () => $this->creator?->name),
+            'paid_by' => $paidByName,
             'approved_by' => $this->when(
                 $this->approved_by,
                 fn () => [
@@ -68,7 +89,10 @@ class ReceiptResource extends JsonResource
                     'name' => $this->relationLoaded('approver') ? $this->approver?->name : null,
                 ],
             ),
-            'approved_by_name' => $this->whenLoaded('approver', fn () => $this->approver?->name),
+            // Admin list column: Payment.approved_by (not Receipt.approved_by).
+            'approved_by_name' => $paymentApprovedByName
+                ?? ($this->relationLoaded('approver') ? $this->approver?->name : null),
+            'payment_approved_by_name' => $paymentApprovedByName,
             'approved_at' => $this->approved_at?->toDateTimeString(),
             'created_at' => $this->created_at?->toDateTimeString(),
             'updated_at' => $this->updated_at?->toDateTimeString(),

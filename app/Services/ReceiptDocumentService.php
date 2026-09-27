@@ -2,14 +2,14 @@
 
 namespace App\Services;
 
-use App\Http\Resources\Admin\InvoiceItemResource;
 use App\Mail\ReceiptDocumentMail;
-use App\Models\Payment;
 use App\Models\Receipt;
 use App\Services\Concerns\BuildsBillingDocumentData;
 use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\CustomerPortalUrl;
+use App\Support\CustomerNotificationRecipients;
 use App\Support\DocumentFilename;
+use App\Support\PaymentFinancialSummary;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
@@ -25,6 +25,7 @@ class ReceiptDocumentService
         return Receipt::query()
             ->with([
                 'payment.invoice.contract.user.profile',
+                'payment.invoice.contract.secondUser.profile',
                 'payment.invoice.contract.room.building',
                 'payment.invoice.items.chargeType',
                 'payment.invoice.utility.items.utilityType',
@@ -40,6 +41,7 @@ class ReceiptDocumentService
     {
         $receipt->loadMissing([
             'payment.invoice.contract.user.profile',
+            'payment.invoice.contract.secondUser.profile',
             'payment.invoice.contract.room.building',
             'payment.invoice.items.chargeType',
             'payment.invoice.utility.items.utilityType',
@@ -80,16 +82,13 @@ class ReceiptDocumentService
         }
 
         $receipt->loadMissing([
-            'payment.invoice.contract.user',
-            'payment.invoice.contract.secondUser',
+            'payment.invoice.contract',
             'payment.invoice.contract.room',
         ]);
 
         $contract = $receipt->payment?->invoice?->contract;
-        $partyUsers = $contract?->partyUsers() ?? collect();
-        $emails = isset($data['email']) && trim((string) $data['email']) !== ''
-            ? [trim((string) $data['email'])]
-            : ($contract?->partyEmails() ?? []);
+        $partyUsers = CustomerNotificationRecipients::usersForContract($contract);
+        $emails = CustomerNotificationRecipients::emailsForContract($contract);
 
         if ($emails === []) {
             throw new InvalidArgumentException('Customer email is required to send the receipt document.');
@@ -107,15 +106,17 @@ class ReceiptDocumentService
     public function sendEmailToRecipient(Receipt $receipt, string $email, ?string $customerName = null): void
     {
         $receipt->loadMissing([
-            'payment.invoice.contract.user',
-            'payment.invoice.contract.secondUser',
+            'payment.invoice.contract',
         ]);
+
+        $contract = $receipt->payment?->invoice?->contract;
+        $partyUsers = CustomerNotificationRecipients::usersForContract($contract);
 
         $name = $customerName
             ?: CustomerPortalUrl::customerNameForEmail(
-                $receipt->payment?->invoice?->contract?->partyUsers() ?? collect(),
+                $partyUsers,
                 $email,
-                $receipt->payment?->invoice?->contract?->user?->name,
+                $contract?->user?->name,
             );
 
         Mail::to($email)->send(new ReceiptDocumentMail(
@@ -125,35 +126,48 @@ class ReceiptDocumentService
     }
 
     /**
+     * Canonical Receipt document payload — matches browser Preview (useReceiptDocument).
+     *
      * @return array<string, mixed>
      */
     public function buildDocumentData(Receipt $receipt): array
     {
         $payment = $receipt->payment;
         $invoice = $payment?->invoice;
-        $user = $invoice?->contract?->user;
-        $room = $invoice?->contract?->room;
-        $invoiceAmount = $invoice ? (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0) : 0.0;
-        $paidAmount = (float) ($payment?->amount ?? 0);
-        $approvedPaid = 0.0;
-
-        if ($invoice?->relationLoaded('payments')) {
-            $approvedPaid = (float) $invoice->payments
-                ->where('status', Payment::STATUS_APPROVED)
-                ->sum(fn ($item) => (float) ($item->amount ?? 0));
-        }
-
-        $balance = max(round($invoiceAmount - $approvedPaid, 2), 0);
+        $contract = $invoice?->contract;
+        $room = $contract?->room;
+        $summary = PaymentFinancialSummary::fromPayment($payment, $invoice);
         $receiptNumber = $receipt->receipt_number ?: '—';
         $invoiceNumber = $invoice?->invoice_number ?: '—';
-        $issueDate = $this->formatDisplayDate($receipt->issued_at ?? $receipt->created_at);
+        $receiptDate = $this->formatDisplayDate($receipt->issued_at ?? $receipt->created_at);
         $paymentDate = $this->formatDisplayDate($payment?->payment_date);
         $paymentMethod = $payment?->paymentMethod?->name ?: '—';
+        $building = $room?->building?->building_name ?: '';
+        $roomNumber = $room?->room_number ?: '';
+        $propertyRoom = ($building !== '' && $roomNumber !== '')
+            ? "{$building} / {$roomNumber}"
+            : ($building !== '' ? $building : ($roomNumber !== '' ? $roomNumber : '—'));
+        $customerName = $contract
+            ? $contract->partyDisplayName()
+            : ($contract?->user?->name ?: '—');
 
-        $itemRows = $this->resolveLineItems($invoice);
+        $totals = [
+            'subtotal' => $this->formatReceiptCurrency($summary['subtotal']),
+            'late_fee' => $this->formatReceiptCurrency($summary['late_fee']),
+            'total' => $this->formatReceiptCurrency($summary['total']),
+            'paid' => $this->formatReceiptCurrency($summary['paid']),
+            'show_change' => $summary['show_change'],
+            'change' => $summary['show_change']
+                ? $this->formatReceiptCurrency((float) $summary['change'])
+                : null,
+            'balance' => $summary['show_change']
+                ? null
+                : $this->formatReceiptCurrency((float) ($summary['balance'] ?? 0)),
+        ];
 
         return [
-            'title' => 'RECEIPT',
+            'title' => 'PAYMENT RECEIPT',
+            'subtitle' => 'THANK YOU FOR YOUR PAYMENT',
             'company' => [
                 'name' => 'Rosewood Royale Residences',
                 'tagline' => 'Residences & Property Management',
@@ -162,85 +176,170 @@ class ReceiptDocumentService
                 'email' => 'contracts@rosewoodroyale.com',
                 'website' => 'www.rosewoodroyale.com',
             ],
-            'billTo' => [
-                'name' => $user?->name ?: '—',
-                'email' => $user?->email ?: '—',
-                'phone' => $user?->profile?->phone ?: '—',
-            ],
-            'property' => [
-                'building' => $room?->building?->building_name ?: '—',
-                'room' => $room?->room_number ?: '—',
-            ],
-            'summary' => [
+            'header' => [
                 'receipt_number' => $receiptNumber,
-                'issue_date' => $issueDate,
+                'date' => $receiptDate,
+            ],
+            'info' => [
+                'customer_name' => $customerName !== '' ? $customerName : '—',
+                'property_room' => $propertyRoom,
                 'invoice_number' => $invoiceNumber,
+                'payment_for' => $this->buildPaymentFor($invoice),
+                'receipt_number' => $receiptNumber,
+                'receipt_date' => $receiptDate,
+                'payment_method' => $paymentMethod,
                 'payment_date' => $paymentDate,
-                'amount_received' => $this->formatReceiptCurrency($paidAmount),
             ],
-            'items' => $itemRows,
-            'totals' => [
-                'invoice_total' => $this->formatReceiptCurrency($invoiceAmount),
-                'amount_received' => $this->formatReceiptCurrency($paidAmount),
-                'balance' => $this->formatReceiptCurrency($balance),
+            'items' => $this->resolveChargeItems($invoice),
+            'totals' => $totals,
+            'confirmation' => [
+                'title' => 'Payment received successfully.',
+                'message' => 'This receipt confirms that the payment has been recorded successfully.',
             ],
-            'notes' => $this->buildNotes($invoiceNumber, $paymentMethod, $paymentDate),
-            'confidentialNotice' => 'This receipt is intended solely for the named recipient and may contain confidential information.',
+            'footer' => [
+                'left' => 'Rosewood Royale Residences',
+                'right' => 'System-generated receipt • No signature required',
+            ],
+            'financial_summary' => $summary,
         ];
     }
 
     /**
-     * @return list<array<string, string>>
+     * @return list<array{description: string, amount: string}>
      */
-    private function resolveLineItems($invoice): array
+    private function resolveChargeItems($invoice): array
     {
         if (! $invoice || ! $invoice->relationLoaded('items') || $invoice->items->isEmpty()) {
             return [];
         }
 
-        $invoice->items->each(function ($item) use ($invoice): void {
-            $item->setRelation('invoice', $invoice);
+        return $invoice->items
+            ->filter(function ($item): bool {
+                $slug = $item->relationLoaded('chargeType')
+                    ? $item->chargeType?->slug
+                    : null;
 
-            if ($invoice->relationLoaded('utility')) {
-                $item->invoice->setRelation('utility', $invoice->utility);
-            }
-
-            $item->invoice->setRelation('items', $invoice->items);
-        });
-
-        return collect(InvoiceItemResource::collection($invoice->items)->resolve())
-            ->map(function (array $item): array {
-                $isMetered = (bool) ($item['is_metered'] ?? false);
-
+                return $slug !== 'late-fee';
+            })
+            ->map(function ($item): array {
                 return [
-                    'description' => (string) ($item['description'] ?? '—'),
-                    'previous_reading' => $isMetered ? $this->formatReading($item['previous_reading'] ?? null) : '—',
-                    'current_reading' => $isMetered ? $this->formatReading($item['current_reading'] ?? null) : '—',
-                    'usage' => $isMetered ? $this->formatReading($item['usage'] ?? null) : '—',
-                    'unit_price' => $isMetered ? $this->formatUnitPrice($item['unit_price'] ?? null) : '—',
-                    'amount' => $this->formatReceiptCurrency((float) ($item['amount'] ?? 0)),
+                    'description' => $this->resolveItemDescription($item),
+                    'amount' => $this->formatReceiptCurrency((float) ($item->amount ?? 0)),
                 ];
             })
+            ->filter(fn (array $row): bool => trim($row['description']) !== '')
             ->values()
             ->all();
     }
 
-    private function formatReading(mixed $value): string
+    private function resolveItemDescription($item): string
     {
-        if ($value === null || $value === '') {
-            return '—';
+        $slug = $item->relationLoaded('chargeType') ? $item->chargeType?->slug : null;
+        $description = (string) ($item->description ?? '');
+        $chargeName = $item->relationLoaded('chargeType') ? ($item->chargeType?->name ?? '') : '';
+
+        if ($slug === 'monthly-rent') {
+            return 'Rent';
         }
 
-        return number_format((float) $value, 2, '.', '');
+        if ($slug === 'utility-charges') {
+            return $this->extractUtilityType($description) ?: ($chargeName !== '' ? $chargeName : 'Utility');
+        }
+
+        return $this->extractUtilityType($description)
+            ?: ($chargeName !== '' ? $chargeName : ($description !== '' ? $description : 'Charge'));
     }
 
-    private function formatUnitPrice(mixed $value): string
+    private function extractUtilityType(string $description): ?string
     {
-        if ($value === null || $value === '') {
-            return '—';
+        if ($description !== '' && str_contains($description, '—')) {
+            $name = trim((string) substr($description, strpos($description, '—') + strlen('—')));
+
+            return $name !== '' ? $name : null;
         }
 
-        return $this->formatReceiptCurrency((float) $value, 2);
+        return null;
+    }
+
+    private function buildPaymentFor($invoice): string
+    {
+        if (! $invoice) {
+            return 'Charges';
+        }
+
+        $monthLabel = '';
+        if ($invoice->billing_month) {
+            $monthLabel = $invoice->billing_month instanceof CarbonInterface
+                ? $invoice->billing_month->format('F Y')
+                : \Carbon\Carbon::parse($invoice->billing_month)->format('F Y');
+        } elseif ($invoice->issued_date) {
+            $monthLabel = $invoice->issued_date instanceof CarbonInterface
+                ? $invoice->issued_date->format('F Y')
+                : '';
+        }
+
+        $hasRent = false;
+        $hasUtility = false;
+        $otherLabels = [];
+
+        if ($invoice->relationLoaded('items')) {
+            foreach ($invoice->items as $item) {
+                $slug = $item->relationLoaded('chargeType') ? $item->chargeType?->slug : null;
+
+                if ($slug === 'late-fee') {
+                    continue;
+                }
+
+                if ($slug === 'monthly-rent') {
+                    $hasRent = true;
+
+                    continue;
+                }
+
+                $description = (string) ($item->description ?? '');
+
+                if ($slug === 'utility-charges' || $this->extractUtilityType($description)) {
+                    $hasUtility = true;
+
+                    continue;
+                }
+
+                $label = $item->relationLoaded('chargeType')
+                    ? ($item->chargeType?->name ?: $description)
+                    : $description;
+
+                if ($label !== '') {
+                    $otherLabels[] = $label;
+                }
+            }
+        }
+
+        $parts = [];
+
+        if ($hasRent) {
+            $parts[] = 'Rent';
+        }
+
+        if ($hasUtility) {
+            $parts[] = 'Utility';
+        }
+
+        if ($parts === [] && $otherLabels !== []) {
+            $parts[] = $otherLabels[0];
+        }
+
+        if ($parts === []) {
+            $parts[] = match ($invoice->type) {
+                'sale' => 'Sale',
+                'utility' => 'Utility',
+                'rent' => 'Rent',
+                default => 'Charges',
+            };
+        }
+
+        $joined = implode(' & ', $parts);
+
+        return $monthLabel !== '' ? "{$monthLabel} {$joined}" : $joined;
     }
 
     private function formatReceiptCurrency(float $amount, int $decimals = 0): string
@@ -263,11 +362,6 @@ class ReceiptDocumentService
         } catch (\Throwable) {
             return '—';
         }
-    }
-
-    private function buildNotes(string $invoiceNumber, string $paymentMethod, string $paymentDate): string
-    {
-        return "Payment received for invoice {$invoiceNumber} via {$paymentMethod} on {$paymentDate}. Thank you for your payment.";
     }
 
     public function pdfFilename(Receipt $receipt): string

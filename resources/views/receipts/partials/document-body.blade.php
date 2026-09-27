@@ -1,98 +1,96 @@
-<div class="receipt-doc__intro">
-    <div class="receipt-doc__intro-left">
-        <section>
-            <p class="receipt-doc__block-label">Bill To</p>
-            <p class="receipt-doc__block-name">{{ $document['billTo']['name'] ?? '—' }}</p>
-            <p class="receipt-doc__block-line">{{ $document['billTo']['email'] ?? '—' }}</p>
-            <p class="receipt-doc__block-line">{{ $document['billTo']['phone'] ?? '—' }}</p>
-        </section>
-
-        <section>
-            <p class="receipt-doc__block-label">Property</p>
-            <p class="receipt-doc__block-name">{{ $document['property']['building'] ?? '—' }}</p>
-            <p class="receipt-doc__block-line">
-                @if (($document['property']['room'] ?? '—') === '—')
-                    —
-                @else
-                    Unit {{ $document['property']['room'] }}
-                @endif
-            </p>
-        </section>
+<section class="receipt-doc__info">
+    <div class="receipt-doc__info-col">
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Customer Name</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['customer_name'] ?? '—' }}</span>
+        </div>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Property / Room</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['property_room'] ?? '—' }}</span>
+        </div>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Invoice No.</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['invoice_number'] ?? '—' }}</span>
+        </div>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Payment For</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['payment_for'] ?? '—' }}</span>
+        </div>
     </div>
-
-    <aside class="receipt-doc__summary">
-        <div class="receipt-doc__summary-row">
-            <span class="receipt-doc__summary-label">Receipt No.</span>
-            <span class="receipt-doc__summary-value">{{ $document['summary']['receipt_number'] ?? '—' }}</span>
+    <div class="receipt-doc__info-col">
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Receipt No.</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['receipt_number'] ?? '—' }}</span>
         </div>
-        <div class="receipt-doc__summary-row">
-            <span class="receipt-doc__summary-label">Issue Date</span>
-            <span class="receipt-doc__summary-value">{{ $document['summary']['issue_date'] ?? '—' }}</span>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Receipt Date</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['receipt_date'] ?? '—' }}</span>
         </div>
-        <div class="receipt-doc__summary-row">
-            <span class="receipt-doc__summary-label">Invoice No.</span>
-            <span class="receipt-doc__summary-value">{{ $document['summary']['invoice_number'] ?? '—' }}</span>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Payment Method</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['payment_method'] ?? '—' }}</span>
         </div>
-        <div class="receipt-doc__summary-row">
-            <span class="receipt-doc__summary-label">Payment Date</span>
-            <span class="receipt-doc__summary-value">{{ $document['summary']['payment_date'] ?? '—' }}</span>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Payment Date</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['payment_date'] ?? '—' }}</span>
         </div>
-        <div class="receipt-doc__summary-row receipt-doc__summary-row--due">
-            <span class="receipt-doc__summary-label">Amount Received</span>
-            <span class="receipt-doc__summary-value">{{ $document['summary']['amount_received'] ?? '—' }}</span>
-        </div>
-    </aside>
-</div>
+    </div>
+</section>
 
 <div class="receipt-doc__table-wrap">
     <table class="receipt-doc__table">
         <thead>
             <tr>
-                <th class="receipt-doc__col-desc">Description</th>
-                <th class="receipt-doc__col-meter is-center">Previous Unit</th>
-                <th class="receipt-doc__col-meter is-center">Current Unit</th>
-                <th class="receipt-doc__col-meter is-center">Usage</th>
-                <th class="receipt-doc__col-price is-num">Unit Price</th>
-                <th class="receipt-doc__col-amount is-num">Amount</th>
+                <th>Description</th>
+                <th class="is-num">Amount</th>
             </tr>
         </thead>
         <tbody>
             @forelse (($document['items'] ?? []) as $row)
                 <tr>
                     <td>{{ $row['description'] ?? '—' }}</td>
-                    <td class="is-center">{{ $row['previous_reading'] ?? '—' }}</td>
-                    <td class="is-center">{{ $row['current_reading'] ?? '—' }}</td>
-                    <td class="is-center">{{ $row['usage'] ?? '—' }}</td>
-                    <td class="is-num">{{ $row['unit_price'] ?? '—' }}</td>
                     <td class="is-num">{{ $row['amount'] ?? '—' }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6">No line items recorded.</td>
+                    <td colspan="2">No charges recorded.</td>
                 </tr>
             @endforelse
         </tbody>
     </table>
 </div>
 
-<div class="receipt-doc__after">
-    <section class="receipt-doc__notes">
-        <p class="receipt-doc__notes-title">Notes</p>
-        <p>{{ $document['notes'] ?? '' }}</p>
-    </section>
-
-    <div class="receipt-doc__totals">
-        <div class="receipt-doc__totals-row">
-            <span>Invoice Total</span>
-            <span>{{ $document['totals']['invoice_total'] ?? '—' }}</span>
+<div class="receipt-doc__totals">
+    <div class="receipt-doc__totals-row">
+        <span>Subtotal</span>
+        <span>{{ $document['totals']['subtotal'] ?? '—' }}</span>
+    </div>
+    <div class="receipt-doc__totals-row">
+        <span>Late Fee</span>
+        <span>{{ $document['totals']['late_fee'] ?? '—' }}</span>
+    </div>
+    <div class="receipt-doc__totals-row receipt-doc__totals-row--section">
+        <span>Total</span>
+        <span>{{ $document['totals']['total'] ?? '—' }}</span>
+    </div>
+    <div class="receipt-doc__totals-row">
+        <span>Paid</span>
+        <span>{{ $document['totals']['paid'] ?? '—' }}</span>
+    </div>
+    @if (! empty($document['totals']['show_change']))
+        <div class="receipt-doc__totals-row receipt-doc__totals-row--due">
+            <span>Change</span>
+            <span>{{ $document['totals']['change'] ?? '—' }}</span>
         </div>
-        <div class="receipt-doc__totals-row">
-            <span>Amount Received</span>
-            <span>{{ $document['totals']['amount_received'] ?? '—' }}</span>
-        </div>
+    @else
         <div class="receipt-doc__totals-row receipt-doc__totals-row--due">
             <span>Balance</span>
             <span>{{ $document['totals']['balance'] ?? '—' }}</span>
         </div>
-    </div>
+    @endif
 </div>
+
+<section class="receipt-doc__confirmation">
+    <p class="receipt-doc__confirmation-title">{{ $document['confirmation']['title'] ?? 'Payment received successfully.' }}</p>
+    <p class="receipt-doc__confirmation-message">{{ $document['confirmation']['message'] ?? 'This receipt confirms that the payment has been recorded successfully.' }}</p>
+</section>

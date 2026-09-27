@@ -42,8 +42,8 @@
             <span class="invoice-doc__summary-value">{{ $document['summary']['status'] ?? '—' }}</span>
         </div>
         <div class="invoice-doc__summary-row invoice-doc__summary-row--due">
-            <span class="invoice-doc__summary-label">Amount Due</span>
-            <span class="invoice-doc__summary-value">{{ $document['summary']['amount_due'] ?? '—' }}</span>
+            <span class="invoice-doc__summary-label">Total</span>
+            <span class="invoice-doc__summary-value">{{ $document['summary']['total'] ?? $document['summary']['amount_due'] ?? '—' }}</span>
         </div>
     </aside>
 </div>
@@ -101,8 +101,8 @@
             <span>{{ $document['totals']['late_fee'] ?? '—' }}</span>
         </div>
         <div class="invoice-doc__totals-row invoice-doc__totals-row--due">
-            <span>Amount Due</span>
-            <span>{{ $document['totals']['amount_due'] ?? '—' }}</span>
+            <span>Total</span>
+            <span>{{ $document['totals']['total'] ?? $document['totals']['amount_due'] ?? '—' }}</span>
         </div>
     </div>
 </div>
