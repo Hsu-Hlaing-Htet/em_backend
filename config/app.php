@@ -59,13 +59,12 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | Rosewood Royale business time is Myanmar Time (Asia/Yangon, UTC+06:30).
+    | Use APP_TIMEZONE rather than hardcoding offsets in application code.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Yangon'),
 
     /*
     |--------------------------------------------------------------------------
