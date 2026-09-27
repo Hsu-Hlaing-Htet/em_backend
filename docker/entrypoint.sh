@@ -17,12 +17,21 @@ chmod -R 775 storage bootstrap/cache
 sed -ri "s/^Listen .*/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -ri "s/:80>/:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
+# Public disk URLs are /storage/... → public/storage symlink → storage/app/public
+php artisan storage:link --force --no-ansi || true
+
 php artisan config:cache --no-ansi
 php artisan route:cache --no-ansi
 php artisan view:cache --no-ansi
 
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     php artisan migrate --force --no-ansi
+fi
+
+# Render disks are ephemeral: rematerialize seeded gallery files from
+# database/seeders/assets/rooms onto storage/app/public on each boot.
+if [ "${SYNC_SEED_ROOM_IMAGES:-true}" = "true" ]; then
+    php artisan rosewood:sync-seed-room-images --no-ansi || true
 fi
 
 if [ "$1" = "apache" ] || [ "$1" = "serve" ]; then
