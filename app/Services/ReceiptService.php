@@ -34,6 +34,7 @@ class ReceiptService
         $query = Receipt::query()->with(BillingEagerLoads::receipt());
 
         $this->applyReceiptSearch($query, $params);
+        $this->applyPaymentMethodFilter($query, $params);
         $this->applyBuildingRoomFilters($query, $params, 'payment.invoice.contract.room');
         $this->applyDateRangeFilter($query, $params, 'issued_at', 'issued_from', 'issued_to');
         $this->applyApprovalStatusFilter($query, $params);
@@ -85,6 +86,29 @@ class ReceiptService
                     ->where('name', 'like', '%'.$search.'%')
                     ->orWhere('email', 'like', '%'.$search.'%'));
         });
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<Receipt>  $query
+     * @param  array<string, mixed>  $params
+     */
+    private function applyPaymentMethodFilter($query, array $params): void
+    {
+        if (empty($params['payment_method_id'])) {
+            return;
+        }
+
+        $paymentMethodId = (int) $params['payment_method_id'];
+
+        if ($paymentMethodId <= 0) {
+            return;
+        }
+
+        // Same authoritative path as ReceiptResource METHOD: Receipt → Payment → PaymentMethod.
+        $query->whereHas(
+            'payment',
+            fn ($paymentQuery) => $paymentQuery->where('payment_method_id', $paymentMethodId),
+        );
     }
 
     /**
