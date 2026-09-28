@@ -43,26 +43,6 @@ class AiPropertyAssistantController extends Controller
                 ->toArray($request);
         }
 
-        // #region agent log
-        try {
-            @file_put_contents('/Users/hsuhtet/rosewood/.cursor/debug-cc4b96.log', json_encode([
-                'sessionId' => 'cc4b96',
-                'runId' => 'post-fix',
-                'hypothesisId' => 'B',
-                'location' => 'AiPropertyAssistantController.php:ask',
-                'message' => 'Laravel preloaded properties for AI proxy',
-                'data' => [
-                    'purpose' => $purpose,
-                    'propertyCount' => count($payload['properties']),
-                    'question' => substr((string) $payload['question'], 0, 120),
-                ],
-                'timestamp' => (int) (microtime(true) * 1000),
-            ])."\n", FILE_APPEND);
-        } catch (\Throwable) {
-            // ignore debug log failures
-        }
-        // #endregion
-
         try {
             $result = $aiAssistantProxyService->askProperty($payload);
         } catch (RuntimeException $exception) {
