@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\BuildingController;
 use App\Http\Controllers\Admin\ChargeTypeController;
+use App\Http\Controllers\Admin\ContactInquiryController as AdminContactInquiryController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DocumentPreviewPdfController;
 use App\Http\Controllers\Admin\InvoiceController;
@@ -29,6 +30,7 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Customer\AiRentAssistantController;
 use App\Http\Controllers\Customer\CustomerPortalController;
 use App\Http\Controllers\Public\AiPropertyAssistantController;
+use App\Http\Controllers\Public\ContactInquiryController as PublicContactInquiryController;
 use App\Http\Controllers\Public\PropertyController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +39,9 @@ Route::prefix('public')->group(function (): void {
     Route::get('properties/featured', [PropertyController::class, 'featured']);
     Route::get('properties/stats', [PropertyController::class, 'stats']);
     Route::get('properties/{property}', [PropertyController::class, 'show']);
+
+    Route::post('contact', [PublicContactInquiryController::class, 'store'])
+        ->middleware('throttle:contact-public');
 
     Route::post('ai/property/ask', [AiPropertyAssistantController::class, 'ask'])
         ->middleware('throttle:ai-public');
@@ -187,4 +192,6 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::post('maintenance-requests/{maintenance_request}/cancel', [MaintenanceRequestController::class, 'cancel']);
     Route::apiResource('maintenance-requests', MaintenanceRequestController::class);
 
+    Route::get('contact-inquiries', [AdminContactInquiryController::class, 'index']);
+    Route::get('contact-inquiries/{contact_inquiry}', [AdminContactInquiryController::class, 'show']);
 });
