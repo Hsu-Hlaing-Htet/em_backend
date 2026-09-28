@@ -209,7 +209,6 @@ final class ContractFinancialHistorySeederSupport
                     ]],
                     $status,
                     $billingMonth,
-                    $status === 'overdue' ? 25000.0 : 0.0,
                 );
                 $stats['invoices']++;
                 $paymentStats = $this->applyInvoicePaymentPattern($invoice, $status, $contract, 'ins-'.$billingMonth->format('Ym'));
@@ -330,7 +329,6 @@ final class ContractFinancialHistorySeederSupport
                 ]],
                 $status,
                 $billingMonth,
-                $status === 'overdue' ? 25000.0 : 0.0,
             );
             $stats['invoices']++;
             $paymentStats = $this->applyInvoicePaymentPattern($invoice, $status, $contract, 'rent-'.$billingMonth->format('Ym'));
@@ -352,7 +350,6 @@ final class ContractFinancialHistorySeederSupport
         array $items,
         string $status,
         ?Carbon $billingMonth = null,
-        float $lateFee = 0,
     ): Invoice {
         $invoice = BillingSeederSupport::upsertSeedChargeInvoice(
             $suffix,
@@ -363,7 +360,7 @@ final class ContractFinancialHistorySeederSupport
             $issued,
             $due,
             $items,
-            $lateFee,
+            0,
             $billingMonth,
         );
 

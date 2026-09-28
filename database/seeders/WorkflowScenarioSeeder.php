@@ -692,7 +692,7 @@ class WorkflowScenarioSeeder extends Seeder
             $overdueMonth->copy()->day(5),
             now()->subDays(10),
             ConsolidatedBillingSeederSupport::buildRentConsolidatedItems($contract, $overdueUtility, $chargeTypes, $overdueMonth),
-            25000,
+            0,
             [$overdueUtility->id],
         );
         $this->replacePayments($overdueInvoice);

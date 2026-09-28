@@ -117,6 +117,11 @@ class ContractFinancialConsistencySeeder extends Seeder
             $stats['receipts'],
         ));
 
+        $normalized = \Database\Seeders\Support\LateFeeSeedSupport::normalizeHistoricalInvoicePolicies($asOf);
+        if ($normalized > 0) {
+            $this->command?->info("Normalized Late Fee policy snapshots on {$normalized} invoices.");
+        }
+
         // Rent/sale financial rebuild can leave pending utilities against finalized
         // period invoices — reconcile Utility ↔ Invoice approval lifecycle next.
         $this->call(UtilityInvoiceConsistencySeeder::class);

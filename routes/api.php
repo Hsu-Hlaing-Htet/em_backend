@@ -113,6 +113,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('charge-types', ChargeTypeController::class);
     Route::get('maintenance-categories/options', [MaintenanceCategoryController::class, 'options']);
     Route::apiResource('maintenance-categories', MaintenanceCategoryController::class);
+    Route::get('late-fees/options', [LateFeeController::class, 'options']);
     Route::apiResource('late-fees', LateFeeController::class);
     Route::apiResource('payment-methods', PaymentMethodController::class);
     // Multipart updates (QR upload) — PHP does not reliably parse files on PUT.
@@ -160,6 +161,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
 
     Route::post('invoices/generate-from-contract/{contract}', [InvoiceController::class, 'generateFromContract']);
     Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue']);
+    Route::put('invoices/{invoice}/late-fee-policy', [InvoiceController::class, 'updateLateFeePolicy']);
     Route::get('invoices/{invoice}/document/download', [InvoiceController::class, 'downloadDocument']);
     Route::get('invoices/{invoice}/document/preview', [InvoiceController::class, 'previewDocument']);
     Route::get('invoices/{invoice}/document/export', [InvoiceController::class, 'exportDocument']);
@@ -184,4 +186,5 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::post('maintenance-requests/{maintenance_request}/reject', [MaintenanceRequestController::class, 'reject']);
     Route::post('maintenance-requests/{maintenance_request}/cancel', [MaintenanceRequestController::class, 'cancel']);
     Route::apiResource('maintenance-requests', MaintenanceRequestController::class);
+
 });

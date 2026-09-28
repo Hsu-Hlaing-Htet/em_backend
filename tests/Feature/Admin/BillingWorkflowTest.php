@@ -37,6 +37,7 @@ function billingCustomer(): User
     return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
+
 function seedPropertyStack(): array
 {
     $building = \App\Models\Building::query()->create([
@@ -143,7 +144,9 @@ test('invoice payment receipt workflow completes end to end', function () {
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk()
         ->assertJsonPath('data.status', 'issued')
         ->assertJsonPath('data.approved_by.id', $admin->id)
@@ -267,9 +270,9 @@ test('invoice payment receipt workflow completes end to end', function () {
         ->postJson("/api/receipts/{$receipt->id}/document/email", [
             'email' => $customer->email,
         ])
-        ->assertStatus(409);
+        ->assertOk();
 
-    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(1);
+    expect(Mail::sent(ReceiptDocumentMail::class)->count())->toBe(2);
 
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/customer/receipts')
@@ -292,7 +295,9 @@ test('rejecting payment keeps invoice payment status synchronized', function () 
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk();
 
     $paymentId = submitCustomerPayment($this, $customer, $invoice, $paymentMethod);
@@ -328,7 +333,9 @@ test('payment approval rejects overpayment and customer cannot submit amount', f
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk();
 
     $this->actingAs($customer, 'sanctum')
@@ -365,7 +372,9 @@ test('customer can view receipt immediately after payment approval', function ()
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk();
 
     $paymentId = submitCustomerPayment($this, $customer, $invoice, $paymentMethod);
@@ -420,7 +429,9 @@ test('sale contract completes only after confirmed payment clears contract balan
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk();
 
     expect($contract->fresh()->status)->toBe(Contract::STATUS_ACTIVE);
@@ -448,7 +459,9 @@ test('rent contract does not complete after only one paid monthly invoice before
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk();
 
     $paymentId = submitCustomerPayment($this, $customer, $invoice->fresh(), $paymentMethod);
@@ -475,7 +488,9 @@ test('rent contract completes after end date when required invoice balances are 
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk();
 
     $paymentId = submitCustomerPayment($this, $customer, $invoice->fresh(), $paymentMethod);

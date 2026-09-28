@@ -37,6 +37,7 @@ function consolidatedCustomer(): User
     return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
+
 function consolidatedRoom(string $type = 'rent'): Room
 {
     $building = Building::query()->create([
@@ -277,7 +278,7 @@ test('finalized invoice cannot be silently modified by utility generation', func
     $electricity = consolidatedUtilityType('electricity-cb-final', 'Electricity');
 
     $invoice = app(InvoiceService::class)->generateFromContract($contract);
-    app(InvoiceService::class)->issue($invoice);
+    app(InvoiceService::class)->issue($invoice, ['late_fee_selection' => approvalLateFeeRuleId()]);
 
     $utility = consolidatedApprovedUtility($room, $admin, $electricity, 9000);
 
@@ -321,7 +322,7 @@ test('payment and receipt workflows still work with consolidated invoices', func
     $paymentMethod = PaymentMethod::query()->availableForCustomer()->orderBy('sort_order')->orderBy('name')->firstOrFail();
 
     $invoice = app(InvoiceService::class)->generateFromContract($contract);
-    app(InvoiceService::class)->issue($invoice->fresh());
+    app(InvoiceService::class)->issue($invoice->fresh(), ['late_fee_selection' => approvalLateFeeRuleId()]);
 
     $totalDue = (float) $invoice->fresh()->total_amount;
 

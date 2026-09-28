@@ -30,6 +30,7 @@ class InvoiceService
     public function __construct(
         private readonly InvoiceDocumentService $invoiceDocumentService,
         private readonly ContractLifecycleService $contractLifecycleService,
+        private readonly InvoiceLateFeeService $invoiceLateFeeService,
     ) {}
 
     /**
@@ -167,9 +168,12 @@ class InvoiceService
             ->findOrFail($id);
     }
 
-    public function issue(Invoice $invoice): Invoice
+    /**
+     * @param  array{late_fee_selection?: int|string|null, late_fee_rule_id?: int|null, late_fee_waived?: bool|null}  $data
+     */
+    public function issue(Invoice $invoice, array $data = []): Invoice
     {
-        $issued = DB::transaction(function () use ($invoice): Invoice {
+        $issued = DB::transaction(function () use ($invoice, $data): Invoice {
             /** @var Invoice $locked */
             $locked = Invoice::query()
                 ->whereKey($invoice->id)
@@ -180,11 +184,17 @@ class InvoiceService
                 throw new ConcurrentConflictException('Only draft invoices can be issued.');
             }
 
+            $policySnapshot = $this->invoiceLateFeeService->approvalSnapshot($locked, $data);
+
             $locked->update([
+                ...$policySnapshot,
                 'status' => 'issued',
+                // Issue date is the approval/issue moment for this workflow.
                 'issued_date' => now()->toDateString(),
                 'approved_by' => Auth::id(),
                 'approved_at' => now(),
+                // Late fee amount stays 0 until due + grace (scheduler accrues later).
+                'late_fee' => 0,
             ]);
 
             return $locked->fresh(BillingEagerLoads::invoice());
@@ -199,6 +209,26 @@ class InvoiceService
         }
 
         return $issued;
+    }
+
+    /**
+     * Persist Late Fee Rule selection on a draft invoice (shared List ↔ Detail state).
+     *
+     * @param  array{late_fee_selection?: int|string|null, late_fee_rule_id?: int|null, late_fee_waived?: bool|null}  $data
+     */
+    public function updateLateFeePolicy(Invoice $invoice, array $data): Invoice
+    {
+        return DB::transaction(function () use ($invoice, $data): Invoice {
+            /** @var Invoice $locked */
+            $locked = Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $updated = $this->invoiceLateFeeService->assignDraftSelection($locked, $data);
+
+            return $updated->fresh(BillingEagerLoads::invoice());
+        });
     }
 
     public function generateFromContract(Contract $contract, ?Carbon $billingMonth = null): Invoice

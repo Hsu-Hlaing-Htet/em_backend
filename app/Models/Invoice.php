@@ -26,6 +26,8 @@ class Invoice extends Model
     protected $fillable = [
         'contract_id', 'utility_id', 'created_by', 'approved_by', 'approved_at', 'invoice_number', 'type',
         'issued_date', 'due_date', 'billing_month', 'late_fee', 'total_amount', 'status',
+        'late_fee_rule_id', 'late_fee_waived', 'late_fee_policy_name', 'late_fee_policy_type',
+        'late_fee_policy_value', 'late_fee_policy_per', 'late_fee_policy_grace_days', 'late_fee_policy_locked',
     ];
 
     protected function casts(): array
@@ -37,12 +39,21 @@ class Invoice extends Model
             'late_fee' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'approved_at' => 'datetime',
+            'late_fee_waived' => 'boolean',
+            'late_fee_policy_value' => 'decimal:2',
+            'late_fee_policy_grace_days' => 'integer',
+            'late_fee_policy_locked' => 'boolean',
         ];
     }
 
     public function contract(): BelongsTo
     {
         return $this->belongsTo(Contract::class);
+    }
+
+    public function lateFeeRule(): BelongsTo
+    {
+        return $this->belongsTo(LateFee::class, 'late_fee_rule_id');
     }
 
     public function utility(): BelongsTo

@@ -27,6 +27,15 @@ class LateFeeController extends Controller
         ]);
     }
 
+    public function options(LateFeeService $lateFeeService): JsonResponse
+    {
+        $this->authorize('viewAny', LateFee::class);
+
+        return response()->json([
+            'data' => LateFeeResource::collection($lateFeeService->options())->resolve(),
+        ]);
+    }
+
     public function store(StoreLateFeeRequest $request, LateFeeService $lateFeeService): JsonResponse
     {
         $this->authorize('create', LateFee::class);

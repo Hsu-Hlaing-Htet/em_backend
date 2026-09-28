@@ -162,7 +162,7 @@ class InvoiceSeeder extends Seeder
                 'description' => 'Monthly rent — '.$openMonth->format('F Y'),
                 'amount' => $rent,
             ]],
-            lateFee: 25000,
+            lateFee: 0,
         );
 
         $this->seedUtilityInvoices($admin, $contract, $chargeTypes, $utilities, onlyPaid: false);

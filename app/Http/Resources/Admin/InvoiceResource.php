@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Admin;
 
 use App\Models\Payment;
+use App\Support\InvoiceLateFeePolicy;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -35,6 +36,9 @@ class InvoiceResource extends JsonResource
             'due_date' => $this->due_date?->toDateString(),
             'billing_period' => $this->resolveBillingPeriod(),
             'late_fee' => $this->late_fee,
+            'late_fee_rule_id' => $this->late_fee_rule_id,
+            'late_fee_waived' => (bool) $this->late_fee_waived,
+            ...$this->lateFeePolicyPayload(),
             'total_amount' => $this->total_amount,
             // Full invoice value for list/detail TOTAL labels (subtotal + late fee).
             'invoice_total' => $totalDue,
@@ -244,5 +248,18 @@ class InvoiceResource extends JsonResource
             ->filter()
             ->unique()
             ->implode(' · ') ?: null;
+    }
+
+    /**
+     * @return array{late_fee_policy: array<string, mixed>, late_fee_selection: int|string|null}
+     */
+    private function lateFeePolicyPayload(): array
+    {
+        $policy = InvoiceLateFeePolicy::fromInvoice($this->resource);
+
+        return [
+            'late_fee_policy' => $policy,
+            'late_fee_selection' => $policy['selection'],
+        ];
     }
 }

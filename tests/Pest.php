@@ -47,3 +47,20 @@ function something()
 {
     // ..
 }
+
+/**
+ * Active Late Fee rule id for Invoice Approval / issue tests.
+ */
+function approvalLateFeeRuleId(): int
+{
+    return (int) \App\Models\LateFee::query()->firstOrCreate(
+        ['name' => 'Approval Test Late Fee'],
+        [
+            'type' => 'fixed',
+            'value' => 10000,
+            'per' => 'day',
+            'grace_days' => 3,
+            'status' => 'active',
+        ],
+    )->id;
+}

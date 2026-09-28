@@ -29,6 +29,7 @@ function scheduledBillingCustomer(): User
     return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
 }
 
+
 function scheduledBillingRoom(string $type = 'rent'): Room
 {
     $building = Building::query()->create([
@@ -248,7 +249,9 @@ test('scheduled draft invoices become customer-visible only after issue', functi
     expect(collect($draftList)->pluck('id'))->not->toContain($invoice->id);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson("/api/invoices/{$invoice->id}/issue")
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => approvalLateFeeRuleId(),
+        ])
         ->assertOk()
         ->assertJsonPath('data.status', 'issued');
 

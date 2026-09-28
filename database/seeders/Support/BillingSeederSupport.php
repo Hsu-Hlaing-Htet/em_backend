@@ -11,6 +11,7 @@ use App\Models\Receipt;
 use App\Models\User;
 use App\Models\Utility;
 use Carbon\Carbon;
+use Database\Seeders\Support\LateFeeSeedSupport;
 use Illuminate\Support\Collection;
 
 final class BillingSeederSupport
@@ -186,6 +187,16 @@ final class BillingSeederSupport
         $isIssued = in_array($status, ['issued', 'partial', 'paid', 'overdue'], true);
         $billingMonthDate = $billingMonth?->copy()->startOfMonth()->toDateString();
 
+        $policyAttrs = LateFeeSeedSupport::attributesForSeedInvoice(
+            $status,
+            $type,
+            $totalAmount,
+            $invoiceNumber,
+            $dueDate->copy(),
+        );
+
+        // $lateFee call-site arg is ignored: per-invoice policy + dates are authoritative.
+
         $invoice = Invoice::query()->updateOrCreate(
             ['invoice_number' => $invoiceNumber],
             [
@@ -198,9 +209,9 @@ final class BillingSeederSupport
                 'type' => $type,
                 'issued_date' => $isIssued ? $issuedDate->toDateString() : null,
                 'due_date' => $dueDate->toDateString(),
-                'late_fee' => $lateFee,
                 'total_amount' => $totalAmount,
                 'status' => $status,
+                ...$policyAttrs,
             ],
         );
 

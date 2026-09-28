@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\ConcurrentConflictException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\IssueInvoiceRequest;
 use App\Http\Requests\Admin\SendBillingDocumentRequest;
 use App\Http\Requests\Admin\StoreInvoiceRequest;
+use App\Http\Requests\Admin\UpdateInvoiceLateFeePolicyRequest;
 use App\Http\Requests\Admin\UpdateInvoiceRequest;
 use App\Http\Resources\Admin\InvoiceResource;
 use App\Models\Contract;
@@ -65,10 +67,13 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function issue(Invoice $invoice, InvoiceService $invoiceService): JsonResponse
-    {
+    public function issue(
+        IssueInvoiceRequest $request,
+        Invoice $invoice,
+        InvoiceService $invoiceService,
+    ): JsonResponse {
         try {
-            $invoice = $invoiceService->issue($invoice);
+            $invoice = $invoiceService->issue($invoice, $request->validated());
         } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
             $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
 
@@ -77,6 +82,25 @@ class InvoiceController extends Controller
 
         return response()->json([
             'message' => 'Invoice issued and sent to customer successfully.',
+            'data' => new InvoiceResource($invoice),
+        ]);
+    }
+
+    public function updateLateFeePolicy(
+        UpdateInvoiceLateFeePolicyRequest $request,
+        Invoice $invoice,
+        InvoiceService $invoiceService,
+    ): JsonResponse {
+        try {
+            $invoice = $invoiceService->updateLateFeePolicy($invoice, $request->validated());
+        } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
+            $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
+        }
+
+        return response()->json([
+            'message' => 'Late Fee Rule updated.',
             'data' => new InvoiceResource($invoice),
         ]);
     }

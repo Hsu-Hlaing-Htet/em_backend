@@ -6,6 +6,7 @@ use App\Models\LateFee;
 use App\Services\Concerns\AppliesListQuery;
 use App\Support\AdminListSorts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class LateFeeService
 {
@@ -26,6 +27,19 @@ class LateFeeService
         ]));
 
         return $query->paginate((int) ($params['per_page'] ?? 10));
+    }
+
+    /**
+     * Active Late Fee rules available for Invoice Approval selection.
+     *
+     * @return Collection<int, LateFee>
+     */
+    public function options(): Collection
+    {
+        return LateFee::query()
+            ->active()
+            ->orderBy('name')
+            ->get();
     }
 
     public function find(int $id): LateFee

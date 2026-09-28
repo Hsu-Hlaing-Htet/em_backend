@@ -77,4 +77,13 @@ class LateFee extends Model
             self::STATUS_INACTIVE,
         ];
     }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<self>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<self>
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('status', self::STATUS_ACTIVE);
+    }
 }

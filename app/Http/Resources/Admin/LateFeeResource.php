@@ -23,6 +23,7 @@ class LateFeeResource extends JsonResource
             'per' => $this->per,
             'grace_days' => $this->grace_days,
             'status' => $this->status,
+            'option_label' => \App\Support\InvoiceLateFeePolicy::formatOptionLabel($this->resource),
             'created_at' => $this->created_at?->toDateTimeString(),
             'updated_at' => $this->updated_at?->toDateTimeString(),
         ];
