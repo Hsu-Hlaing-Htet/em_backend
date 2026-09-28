@@ -37,8 +37,16 @@
         @include('receipts.partials.document-body')
 
         <footer class="receipt-doc__foot">
-            <span>{{ $document['footer']['left'] ?? ($document['company']['name'] ?? 'Rosewood Royale Residences') }}</span>
-            <span>{{ $document['footer']['right'] ?? 'System-generated receipt • No signature required' }}</span>
+            <div class="receipt-doc__foot-company">
+                <strong>{{ $document['company']['name'] ?? 'Rosewood Royale Residences' }}</strong>
+                <span>{{ $document['company']['address'] ?? '' }}</span><br>
+                <span>{{ $document['company']['phone'] ?? '' }}</span><br>
+                <span>{{ $document['company']['email'] ?? '' }}</span>
+            </div>
+            <div class="receipt-doc__foot-confidential">
+                <span class="receipt-doc__foot-confidential-label">Confidential</span>
+                <span>{{ $document['footer']['confidential_notice'] ?? 'System-generated receipt · No signature required' }}</span>
+            </div>
         </footer>
     </article>
 </body>

@@ -37,10 +37,12 @@
             <span class="invoice-doc__summary-label">Billing Period</span>
             <span class="invoice-doc__summary-value">{{ $document['summary']['billing_period'] ?? '—' }}</span>
         </div>
-        <div class="invoice-doc__summary-row">
-            <span class="invoice-doc__summary-label">Status</span>
-            <span class="invoice-doc__summary-value">{{ $document['summary']['status'] ?? '—' }}</span>
-        </div>
+        @if (! empty($document['summary']['status']))
+            <div class="invoice-doc__summary-row">
+                <span class="invoice-doc__summary-label">Status</span>
+                <span class="invoice-doc__summary-value">{{ $document['summary']['status'] }}</span>
+            </div>
+        @endif
         <div class="invoice-doc__summary-row invoice-doc__summary-row--due">
             <span class="invoice-doc__summary-label">Total</span>
             <span class="invoice-doc__summary-value">{{ $document['summary']['total'] ?? $document['summary']['amount_due'] ?? '—' }}</span>
@@ -83,6 +85,23 @@
     <section class="invoice-doc__notes">
         <p class="invoice-doc__notes-title">Notes</p>
         <p>{{ $document['notes'] ?? '' }}</p>
+        @if (! empty($document['late_fee_notes']['rule']))
+            <div class="invoice-doc__notes-policy">
+                <p class="invoice-doc__notes-policy-label">Late Fee Rule</p>
+                <p>{{ $document['late_fee_notes']['rule'] }}</p>
+                @if (! empty($document['late_fee_notes']['calculation']))
+                    <p class="invoice-doc__notes-policy-label invoice-doc__notes-policy-label--calc">Calculation</p>
+                    @foreach ($document['late_fee_notes']['calculation'] as $line)
+                        <p>{{ $line }}</p>
+                    @endforeach
+                @endif
+            </div>
+        @elseif (! empty($document['late_fee_policy']))
+            <p class="invoice-doc__notes-policy">
+                <span class="invoice-doc__notes-policy-label">Late Fee Rule</span>
+                {{ $document['late_fee_policy'] }}
+            </p>
+        @endif
     </section>
 
     <div class="invoice-doc__totals">
@@ -90,12 +109,6 @@
             <span>Subtotal</span>
             <span>{{ $document['totals']['subtotal'] ?? '—' }}</span>
         </div>
-        @if ((int) ($document['totals']['overdue_days'] ?? 0) > 0)
-            <div class="invoice-doc__totals-row">
-                <span>Overdue Days</span>
-                <span>{{ (int) $document['totals']['overdue_days'] }} days</span>
-            </div>
-        @endif
         <div class="invoice-doc__totals-row">
             <span>Late Fee</span>
             <span>{{ $document['totals']['late_fee'] ?? '—' }}</span>

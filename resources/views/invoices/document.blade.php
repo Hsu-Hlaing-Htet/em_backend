@@ -26,14 +26,13 @@
             <div class="invoice-doc__foot-company">
                 <strong>{{ $document['company']['name'] }}</strong>
                 <span>{{ $document['company']['address'] }}</span><br>
-                <span>{{ $document['company']['phone'] }} · {{ $document['company']['email'] }}</span><br>
-                <span>{{ $document['company']['website'] ?? '' }}</span>
+                <span>{{ $document['company']['phone'] }}</span><br>
+                <span>{{ $document['company']['email'] }}</span>
             </div>
             <div class="invoice-doc__foot-confidential">
                 <span class="invoice-doc__foot-confidential-label">Confidential</span>
-                <span>{{ $document['confidentialNotice'] ?? 'This invoice is intended solely for the named recipient.' }}</span>
+                <span>{{ $document['confidentialNotice'] ?? 'For the named recipient only.' }}</span>
             </div>
-            <div class="invoice-doc__foot-page">Page 1 of 1</div>
         </footer>
     </article>
 </body>

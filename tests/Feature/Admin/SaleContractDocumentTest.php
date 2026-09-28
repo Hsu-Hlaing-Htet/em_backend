@@ -63,7 +63,7 @@ function createSaleDraftContract(User $admin, Room $room, User $customer): Contr
 
 function expectedSaleDownloadFilename(Contract $contract): string
 {
-    return "Rosewood_Royale_Sale_Contract_{$contract->contract_number}.pdf";
+    return ($contract->contract_number ?: 'S-000000').'.pdf';
 }
 
 function seedActiveRentDocumentStack(): array
@@ -265,19 +265,19 @@ test('sale contract document email validates recipient email', function () {
         ->assertJsonValidationErrors(['email']);
 });
 
-test('document filename helper builds TYPE-YEAR-MONTH-ROOM-NUMBER format', function () {
-    expect(DocumentFilename::utility(new DateTimeImmutable('2027-07-01'), 'E-316'))
-        ->toBe('UTL-2027-07-E-316.pdf');
+test('document filename helper builds canonical document-number pdf names', function () {
+    expect(DocumentFilename::utility(123))
+        ->toBe('UTL-000123.pdf');
 
-    expect(DocumentFilename::invoice(new DateTimeImmutable('2027-07-15'), 'E-316', 'INV-000164'))
-        ->toBe('INV-2027-07-E-316-000164.pdf');
+    expect(DocumentFilename::pdf('INV-000164', 'INV-000000'))
+        ->toBe('INV-000164.pdf');
 
-    expect(DocumentFilename::receipt(new DateTimeImmutable('2027-07-20'), 'E-316', 'RCP-000154'))
-        ->toBe('RCP-2027-07-E-316-000154.pdf');
+    expect(DocumentFilename::pdf('RCP-000154', 'RCP-000000'))
+        ->toBe('RCP-000154.pdf');
 
-    expect(DocumentFilename::rentContract(new DateTimeImmutable('2027-07-01'), 'E-316', 'R-000012'))
-        ->toBe('R-2027-07-E-316-000012.pdf');
+    expect(DocumentFilename::pdf('R-000012', 'R-000000'))
+        ->toBe('R-000012.pdf');
 
-    expect(DocumentFilename::saleContract(new DateTimeImmutable('2027-07-01'), 'E-316', 'S-000008'))
-        ->toBe('S-2027-07-E-316-000008.pdf');
+    expect(DocumentFilename::pdf('S-000008', 'S-000000'))
+        ->toBe('S-000008.pdf');
 });

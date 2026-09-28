@@ -5,26 +5,26 @@
             <span class="receipt-doc__info-value">{{ $document['info']['customer_name'] ?? '—' }}</span>
         </div>
         <div class="receipt-doc__info-row">
-            <span class="receipt-doc__info-label">Property / Room</span>
-            <span class="receipt-doc__info-value">{{ $document['info']['property_room'] ?? '—' }}</span>
+            <span class="receipt-doc__info-label">Building</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['building'] ?? '—' }}</span>
         </div>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Room</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['room'] ?? '—' }}</span>
+        </div>
+        <div class="receipt-doc__info-row">
+            <span class="receipt-doc__info-label">Paid By</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['paid_by'] ?? '—' }}</span>
+        </div>
+    </div>
+    <div class="receipt-doc__info-col">
         <div class="receipt-doc__info-row">
             <span class="receipt-doc__info-label">Invoice No.</span>
             <span class="receipt-doc__info-value">{{ $document['info']['invoice_number'] ?? '—' }}</span>
         </div>
         <div class="receipt-doc__info-row">
-            <span class="receipt-doc__info-label">Payment For</span>
-            <span class="receipt-doc__info-value">{{ $document['info']['payment_for'] ?? '—' }}</span>
-        </div>
-    </div>
-    <div class="receipt-doc__info-col">
-        <div class="receipt-doc__info-row">
-            <span class="receipt-doc__info-label">Receipt No.</span>
-            <span class="receipt-doc__info-value">{{ $document['info']['receipt_number'] ?? '—' }}</span>
-        </div>
-        <div class="receipt-doc__info-row">
-            <span class="receipt-doc__info-label">Receipt Date</span>
-            <span class="receipt-doc__info-value">{{ $document['info']['receipt_date'] ?? '—' }}</span>
+            <span class="receipt-doc__info-label">Approved By</span>
+            <span class="receipt-doc__info-value">{{ $document['info']['approved_by'] ?? '—' }}</span>
         </div>
         <div class="receipt-doc__info-row">
             <span class="receipt-doc__info-label">Payment Method</span>
@@ -91,6 +91,18 @@
 </div>
 
 <section class="receipt-doc__confirmation">
+    @if (! empty($document['late_fee_notes']['rule']))
+        <div class="receipt-doc__late-fee">
+            <p class="receipt-doc__late-fee-label">Late Fee Rule</p>
+            <p class="receipt-doc__late-fee-line">{{ $document['late_fee_notes']['rule'] }}</p>
+            @if (! empty($document['late_fee_notes']['calculation']))
+                <p class="receipt-doc__late-fee-label receipt-doc__late-fee-label--calc">Calculation</p>
+                @foreach ($document['late_fee_notes']['calculation'] as $line)
+                    <p class="receipt-doc__late-fee-line">{{ $line }}</p>
+                @endforeach
+            @endif
+        </div>
+    @endif
     <p class="receipt-doc__confirmation-title">{{ $document['confirmation']['title'] ?? 'Payment received successfully.' }}</p>
     <p class="receipt-doc__confirmation-message">{{ $document['confirmation']['message'] ?? 'This receipt confirms that the payment has been recorded successfully.' }}</p>
 </section>

@@ -4,6 +4,7 @@ namespace App\Http\Resources\Admin;
 
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Support\InvoiceLateFeePolicy;
 use App\Support\PaymentFinancialSummary;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -54,6 +55,9 @@ class ReceiptResource extends JsonResource
             'invoice_number' => $invoice?->invoice_number,
             'invoice_base_amount' => $financialSummary['subtotal'],
             'late_fee' => $financialSummary['late_fee'],
+            'late_fee_notes' => $invoice
+                ? InvoiceLateFeePolicy::receiptDocumentNotes($invoice)
+                : null,
             'invoice_amount' => $invoiceAmount,
             'paid_amount' => $paidAmount,
             'amount' => $paidAmount,

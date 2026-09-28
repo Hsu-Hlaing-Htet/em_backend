@@ -115,13 +115,13 @@ it('downloads customer sale contract with the admin pdf template and customer fi
         ->get("/api/sale-contracts/approved/{$contract->id}/document/download")
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Sale_Contract_S-000040.pdf"');
+        ->assertHeader('content-disposition', 'attachment; filename="S-000040.pdf"');
 
     $customerResponse = $this->actingAs($customer, 'sanctum')
         ->get("/api/customer/contracts/{$contract->id}/document/download")
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Sale_Contract_S-000040.pdf"');
+        ->assertHeader('content-disposition', 'attachment; filename="S-000040.pdf"');
 
     expect($customerResponse->getContent())->toBe($adminResponse->getContent());
 });
@@ -135,13 +135,13 @@ it('downloads customer rent contract with the admin pdf template and customer fi
         ->get("/api/rent-contracts/active/{$contract->id}/document/download")
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Rent_Contract_R-000070.pdf"');
+        ->assertHeader('content-disposition', 'attachment; filename="R-000070.pdf"');
 
     $customerResponse = $this->actingAs($customer, 'sanctum')
         ->get("/api/customer/contracts/{$contract->id}/document/download")
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Rent_Contract_R-000070.pdf"');
+        ->assertHeader('content-disposition', 'attachment; filename="R-000070.pdf"');
 
     expect($customerResponse->getContent())->toBe($adminResponse->getContent());
 });
@@ -159,11 +159,11 @@ it('allows customers to export the rendered contract preview through the shared 
     $this->actingAs($customer, 'sanctum')
         ->postJson('/api/document-preview/pdf', [
             'html' => '<html><body><article id="pdf-print">Customer contract preview</article></body></html>',
-            'filename' => 'Rosewood_Royale_Sale_Contract_S-000041.pdf',
+            'filename' => 'S-000041.pdf',
         ])
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Sale_Contract_S-000041.pdf"')
+        ->assertHeader('content-disposition', 'attachment; filename="S-000041.pdf"')
         ->assertSee('%PDF', false);
 });
 

@@ -171,20 +171,21 @@ class UtilityDocumentService
 
     private function referenceNumber(Utility $utility): string
     {
-        return rtrim(DocumentFilename::utility(
-            $utility->billing_month,
+        $billingMonth = $utility->billing_month;
+        $year = $billingMonth?->format('Y') ?? '0000';
+        $month = $billingMonth?->format('m') ?? '00';
+        $room = DocumentFilename::sanitizeSegment(
             $utility->room?->room_number ?? (string) $utility->room_id,
-        ), '.pdf');
+            'UNKNOWN',
+        );
+
+        // Bill No. shown on the PDF (unchanged display format).
+        return "UTL-{$year}-{$month}-{$room}";
     }
 
     private function filename(Utility $utility): string
     {
-        $utility->loadMissing(['room']);
-
-        return DocumentFilename::utility(
-            $utility->billing_month,
-            $utility->room?->room_number ?? (string) $utility->room_id,
-        );
+        return DocumentFilename::utility($utility->id);
     }
 
     private function htmlFilename(Utility $utility): string

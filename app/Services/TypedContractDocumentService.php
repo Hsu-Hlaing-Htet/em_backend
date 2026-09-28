@@ -300,32 +300,12 @@ class TypedContractDocumentService
         return $this->typedContractDraftService->for($this->profile->type);
     }
 
-    private function filename(Contract $contract): string
-    {
-        $contract->loadMissing(['room']);
-
-        if ($contract->type === 'rent') {
-            return DocumentFilename::rentContract(
-                $contract->start_date ?? $contract->created_at,
-                $contract->room?->room_number,
-                $contract->contract_number,
-            );
-        }
-
-        return DocumentFilename::saleContract(
-            $contract->start_date ?? $contract->created_at,
-            $contract->room?->room_number,
-            $contract->contract_number,
-        );
-    }
-
     private function downloadFilename(Contract $contract): string
     {
-        $type = $contract->type === 'rent' ? 'Rent' : 'Sale';
         $prefix = $contract->type === 'rent' ? 'R' : 'S';
-        $contractNumber = $contract->contract_number ?: sprintf('%s-%06d', $prefix, $contract->id);
+        $fallback = sprintf('%s-%06d', $prefix, $contract->id);
 
-        return "Rosewood_Royale_{$type}_Contract_{$contractNumber}.pdf";
+        return DocumentFilename::pdf($contract->contract_number, $fallback);
     }
 
     private function contractEndDate(Contract $contract): string

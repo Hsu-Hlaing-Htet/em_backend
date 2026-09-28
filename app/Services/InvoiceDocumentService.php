@@ -10,6 +10,7 @@ use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\CustomerPortalUrl;
 use App\Support\CustomerNotificationRecipients;
 use App\Support\DocumentFilename;
+use App\Support\InvoiceLateFeePolicy;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
@@ -132,6 +133,9 @@ class InvoiceDocumentService
             ->values()
             ->all();
 
+        $policy = InvoiceLateFeePolicy::fromInvoice($invoice);
+        $lateFeeNotes = InvoiceLateFeePolicy::documentNotes($invoice);
+
         return [
             'title' => 'INVOICE',
             'company' => [
@@ -156,7 +160,10 @@ class InvoiceDocumentService
                 'issue_date' => $issueDate,
                 'due_date' => $dueDate,
                 'billing_period' => $this->billingPeriod($invoice),
-                'status' => $this->statusLabel($invoice),
+                // Approval-stage drafts omit Status (always Draft/Pending). Issued+ keep it.
+                'status' => $invoice->status === Invoice::STATUS_DRAFT
+                    ? null
+                    : $this->statusLabel($invoice),
                 // Full invoice value (subtotal + late fee), not remaining unpaid balance.
                 'total' => $this->formatInvoiceCurrency($amountDue),
                 'amount_due' => $this->formatInvoiceCurrency($amountDue),
@@ -164,13 +171,14 @@ class InvoiceDocumentService
             'items' => $itemRows,
             'totals' => [
                 'subtotal' => $this->formatInvoiceCurrency($subtotal),
-                'overdue_days' => $this->overdueDays($invoice),
                 'late_fee' => $this->formatInvoiceCurrency($lateFee),
                 'total' => $this->formatInvoiceCurrency($amountDue),
                 'amount_due' => $this->formatInvoiceCurrency($amountDue),
             ],
-            'notes' => $this->buildNotes($invoiceNumber, $dueDate),
-            'confidentialNotice' => 'This invoice is intended solely for the named recipient and may contain confidential information.',
+            'late_fee_policy' => $lateFeeNotes['rule'] ?? $policy['label'],
+            'late_fee_notes' => $lateFeeNotes,
+            'notes' => $this->buildNotes($invoiceNumber, $dueDate, $lateFeeNotes['rule'] ?? $policy['label']),
+            'confidentialNotice' => 'For the named recipient only.',
         ];
     }
 
@@ -184,30 +192,6 @@ class InvoiceDocumentService
             Invoice::STATUS_CANCELLED => 'Cancelled',
             default => $invoice->status ? ucfirst((string) $invoice->status) : '—',
         };
-    }
-
-    private function overdueDays(Invoice $invoice): int
-    {
-        if (! $invoice->due_date) {
-            return 0;
-        }
-
-        if (in_array($invoice->status, [
-            Invoice::STATUS_PAID,
-            Invoice::STATUS_CANCELLED,
-            Invoice::STATUS_DRAFT,
-        ], true)) {
-            return 0;
-        }
-
-        $due = $invoice->due_date->copy()->startOfDay();
-        $today = now()->startOfDay();
-
-        if ($today->lessThanOrEqualTo($due)) {
-            return 0;
-        }
-
-        return (int) $due->diffInDays($today);
     }
 
     /**
@@ -285,16 +269,20 @@ class InvoiceDocumentService
         return '—';
     }
 
-    private function buildNotes(string $invoiceNumber, string $dueDate): string
+    private function buildNotes(string $invoiceNumber, string $dueDate, ?string $lateFeePolicyLabel = null): string
     {
-        return "Please reference {$invoiceNumber} when making payment. Payment is due by {$dueDate}. Late fees may apply after the due date.";
+        $notes = "Please reference {$invoiceNumber} when making payment. Payment is due by {$dueDate}.";
+
+        if (! $lateFeePolicyLabel) {
+            $notes .= ' Late fees may apply after the due date.';
+        }
+
+        return $notes;
     }
 
     private function filename(Invoice $invoice): string
     {
-        $number = DocumentFilename::sanitizeSegment($invoice->invoice_number, 'INV-000000');
-
-        return $number.'.pdf';
+        return DocumentFilename::pdf($invoice->invoice_number, 'INV-000000');
     }
 
     private function htmlFilename(Invoice $invoice): string

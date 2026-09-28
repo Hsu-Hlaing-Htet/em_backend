@@ -121,7 +121,7 @@ body.invoice-doc-body {
 .invoice-doc__notes-title {
     width: fit-content;
     margin: 0 0 0.75rem;
-    color: var(--inv-accent);
+    color: var(--inv-accent, #7a3149);
     font-size: 8pt;
     font-weight: 600;
     letter-spacing: 0.12em;
@@ -278,13 +278,49 @@ body.invoice-doc-body {
     min-width: 0;
 }
 
-.invoice-doc__notes p {
+/*
+ * Body copy only. Do NOT target all descendant <p> — that selector (0,1,1)
+ * previously overrode Late Fee Rule / calc headings / NOTES heading color + weight.
+ */
+.invoice-doc__notes > p:not(.invoice-doc__notes-title):not(.invoice-doc__notes-policy) {
     max-width: 30rem;
     margin: 0;
-    color: var(--inv-muted);
+    color: var(--inv-muted, #6b6560);
     font-size: 8.75pt;
     font-weight: 400;
     line-height: 1.6;
+}
+
+.invoice-doc__notes-policy {
+    margin-top: 0.75rem !important;
+}
+
+/* Match BILL TO / PROPERTY / NOTES label accent (burgundy + semibold). */
+.invoice-doc__notes .invoice-doc__notes-title,
+.invoice-doc__notes .invoice-doc__notes-policy-label {
+    display: block;
+    width: fit-content;
+    color: var(--inv-accent, #7a3149);
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.invoice-doc__notes .invoice-doc__notes-policy-label {
+    margin: 0 0 0.25rem;
+}
+
+.invoice-doc__notes-policy-label--calc {
+    margin-top: 0.65rem;
+}
+
+.invoice-doc__notes-policy p:not(.invoice-doc__notes-policy-label) {
+    margin: 0.1rem 0;
+    color: var(--inv-muted, #6b6560);
+    font-size: 8.75pt;
+    font-weight: 400;
+    line-height: 1.55;
 }
 
 .invoice-doc__totals {
@@ -333,13 +369,13 @@ body.invoice-doc-body {
 
 .invoice-doc__foot {
     display: grid;
-    grid-template-columns: 1.35fr 1fr auto;
+    grid-template-columns: 1.35fr 1fr;
     gap: 1.25rem;
     align-items: start;
     margin-top: auto;
     padding-top: 1.25rem;
-    color: var(--inv-muted);
-    border-top: 1px solid var(--inv-line);
+    color: var(--inv-muted, #6b6560);
+    border-top: 1px solid var(--inv-line, rgba(28, 28, 28, 0.12));
     font-size: 7.5pt;
     font-weight: 400;
 }
@@ -352,32 +388,25 @@ body.invoice-doc-body {
 .invoice-doc__foot-company strong {
     display: block;
     margin-bottom: 0.2rem;
-    color: var(--inv-accent);
+    color: var(--inv-accent, #7a3149);
     font-size: 8.25pt;
     font-weight: 600;
 }
 
 .invoice-doc__foot-confidential {
     padding-left: 1.25rem;
-    border-left: 1px solid var(--inv-line);
+    border-left: 1px solid var(--inv-line, rgba(28, 28, 28, 0.12));
     line-height: 1.5;
 }
 
 .invoice-doc__foot-confidential-label {
     display: block;
     margin-bottom: 0.25rem;
-    color: var(--inv-accent);
+    color: var(--inv-accent, #7a3149);
     font-size: 7.5pt;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-}
-
-.invoice-doc__foot-page {
-    align-self: end;
-    color: var(--inv-muted);
-    text-align: right;
-    white-space: nowrap;
 }
 
 @media print {

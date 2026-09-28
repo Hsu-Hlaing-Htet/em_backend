@@ -306,6 +306,35 @@ body.receipt-doc-body {
     padding-top: 0.25rem;
 }
 
+.receipt-doc__late-fee {
+    margin: 0 0 0.9rem;
+    max-width: 30rem;
+}
+
+/* Explicit document-scoped heading so host-page <p> rules cannot mute these. */
+.receipt-doc .receipt-doc__late-fee-label {
+    display: block;
+    width: fit-content;
+    margin: 0 0 0.25rem;
+    color: var(--inv-accent, #7a3149);
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.receipt-doc .receipt-doc__late-fee-label--calc {
+    margin-top: 0.55rem;
+}
+
+.receipt-doc .receipt-doc__late-fee-line {
+    margin: 0.1rem 0;
+    color: var(--inv-muted, #6b6560);
+    font-size: 8.75pt;
+    font-weight: 400;
+    line-height: 1.55;
+}
+
 .receipt-doc__confirmation-title {
     margin: 0 0 0.3rem;
     color: var(--inv-ink);
@@ -324,23 +353,46 @@ body.receipt-doc-body {
 }
 
 .receipt-doc__foot {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
     gap: 1.25rem;
     align-items: start;
     margin-top: auto;
     padding-top: 1.25rem;
-    color: var(--inv-muted);
-    border-top: 1px solid var(--inv-line);
+    color: var(--inv-muted, #6b6560);
+    border-top: 1px solid var(--inv-line, rgba(28, 28, 28, 0.12));
     font-size: 7.5pt;
     font-weight: 400;
     line-height: 1.5;
 }
 
-.receipt-doc__foot span:first-child {
-    color: var(--inv-accent);
+.receipt-doc__foot-company {
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.receipt-doc .receipt-doc__foot-company strong {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--inv-accent, #7a3149);
     font-size: 8.25pt;
     font-weight: 600;
+}
+
+.receipt-doc__foot-confidential {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--inv-line, rgba(28, 28, 28, 0.12));
+    line-height: 1.5;
+}
+
+.receipt-doc .receipt-doc__foot-confidential-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--inv-accent, #7a3149);
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 @media print {

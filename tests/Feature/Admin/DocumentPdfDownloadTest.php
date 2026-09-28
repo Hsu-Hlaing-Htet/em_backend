@@ -141,11 +141,11 @@ HTML;
     $this->actingAs($admin, 'sanctum')
         ->postJson('/api/document-preview/pdf', [
             'html' => $html,
-            'filename' => 'Rosewood_Royale_Sale_Contract_S-000041.pdf',
+            'filename' => 'S-000041.pdf',
         ])
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf')
-        ->assertHeader('content-disposition', 'attachment; filename="Rosewood_Royale_Sale_Contract_S-000041.pdf"')
+        ->assertHeader('content-disposition', 'attachment; filename="S-000041.pdf"')
         ->assertSee('%PDF', false);
 
     expect($capturedHtml)
@@ -193,7 +193,7 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
         'amount' => 10000,
     ]);
 
-    $utilityFilename = DocumentFilename::utility($utility->billing_month, $room->room_number);
+    $utilityFilename = DocumentFilename::utility($utility->id);
 
     $this->actingAs($admin, 'sanctum')
         ->get("/api/utilities/{$utility->id}/document/download")
@@ -201,7 +201,7 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
         ->assertHeader('content-type', 'application/pdf')
         ->assertHeader('content-disposition', 'attachment; filename="'.$utilityFilename.'"');
 
-    expect($utilityFilename)->toBe('UTL-2027-07-E-316.pdf');
+    expect($utilityFilename)->toBe(sprintf('UTL-%06d.pdf', $utility->id));
 
     $rentCharge = ChargeType::query()->where('slug', 'monthly-rent')->firstOrFail();
     $invoice = Invoice::query()->create([
@@ -263,7 +263,7 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
         'approved_by' => $admin->id,
     ]);
 
-    $receiptFilename = DocumentFilename::receipt($receipt->created_at, $room->room_number, $receipt->receipt_number);
+    $receiptFilename = DocumentFilename::pdf($receipt->receipt_number, 'RCP-000000');
 
     $this->actingAs($admin, 'sanctum')
         ->get("/api/receipts/{$receipt->id}/document/download")
@@ -275,8 +275,7 @@ test('utility invoice and receipt downloads return named pdf attachments', funct
         ->get("/api/customer/receipts/{$receipt->id}/document/download")
         ->assertNotFound();
 
-    expect($receiptFilename)->toContain('RCP-')
-        ->and($receiptFilename)->toContain('E-316-000154.pdf');
+    expect($receiptFilename)->toBe('RCP-000154.pdf');
 
     $this->actingAs($admin, 'sanctum')
         ->postJson("/api/utilities/{$utility->id}/document/email")
@@ -415,13 +414,15 @@ test('invoice document html uses rosewood invoice template fields', function () 
         ->toContain('INV-000164')
         ->toContain('MMK ')
         ->toContain('Confidential')
-        ->toContain('Page 1 of 1')
+        ->toContain('For the named recipient only.')
         ->toContain('--inv-accent: #7a3149')
         ->toContain('background: #ffffff !important')
         ->not->toContain('Amount Due')
         ->not->toContain('Tax')
         ->not->toContain('Discount')
-        ->not->toContain('Payment History');
+        ->not->toContain('Payment History')
+        ->not->toContain('Page 1 of 1')
+        ->not->toContain('System-generated receipt');
 });
 
 test('invoice document preview matches export html', function () {
@@ -551,18 +552,22 @@ test('receipt document html uses rosewood receipt template fields', function () 
         ->toContain('PAYMENT RECEIPT')
         ->toContain('THANK YOU FOR YOUR PAYMENT')
         ->toContain('Customer Name')
-        ->toContain('Property / Room')
-        ->toContain('Receipt No.')
-        ->toContain('Receipt Date')
+        ->toContain('Building')
+        ->toContain('Room')
+        ->toContain('Paid By')
+        ->toContain('Invoice No.')
+        ->toContain('Approved By')
         ->toContain('Payment Method')
         ->toContain('Payment Date')
+        ->toContain('Receipt No.')
         ->toContain('Paid')
         ->toContain('Subtotal')
         ->toContain('Late Fee')
         ->toContain('Total')
         ->toContain('Balance')
         ->toContain('Payment received successfully.')
-        ->toContain('System-generated receipt')
+        ->toContain('Confidential')
+        ->toContain('System-generated receipt · No signature required')
         ->toContain('RCP-000154')
         ->toContain('INV-000164')
         ->toContain('MMK ')
@@ -570,11 +575,14 @@ test('receipt document html uses rosewood receipt template fields', function () 
         ->toContain('background: #ffffff !important')
         ->not->toContain('Bill To')
         ->not->toContain('Previous Unit')
-        ->not->toContain('Confidential')
         ->not->toContain('Page 1 of 1')
         ->not->toContain('Payment History')
         ->not->toContain('Amount Due')
         ->not->toContain('Amount Received')
         ->not->toContain('Remaining Balance')
-        ->not->toContain('Invoice Total');
+        ->not->toContain('Invoice Total')
+        ->not->toContain('Property / Room')
+        ->not->toContain('Payment For')
+        ->not->toContain('Receipt Date')
+        ->not->toContain('For the named recipient only.');
 });

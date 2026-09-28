@@ -9,6 +9,7 @@ use App\Services\Concerns\ServesHtmlDocument;
 use App\Support\CustomerPortalUrl;
 use App\Support\CustomerNotificationRecipients;
 use App\Support\DocumentFilename;
+use App\Support\InvoiceLateFeePolicy;
 use App\Support\PaymentFinancialSummary;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
@@ -31,6 +32,8 @@ class ReceiptDocumentService
                 'payment.invoice.utility.items.utilityType',
                 'payment.invoice.payments',
                 'payment.paymentMethod',
+                'payment.creator',
+                'payment.approver',
                 'creator',
                 'approver',
             ])
@@ -47,6 +50,8 @@ class ReceiptDocumentService
             'payment.invoice.utility.items.utilityType',
             'payment.invoice.payments',
             'payment.paymentMethod',
+            'payment.creator',
+            'payment.approver',
             'creator',
             'approver',
         ]);
@@ -142,11 +147,14 @@ class ReceiptDocumentService
         $receiptDate = $this->formatDisplayDate($receipt->issued_at ?? $receipt->created_at);
         $paymentDate = $this->formatDisplayDate($payment?->payment_date);
         $paymentMethod = $payment?->paymentMethod?->name ?: '—';
-        $building = $room?->building?->building_name ?: '';
-        $roomNumber = $room?->room_number ?: '';
-        $propertyRoom = ($building !== '' && $roomNumber !== '')
-            ? "{$building} / {$roomNumber}"
-            : ($building !== '' ? $building : ($roomNumber !== '' ? $roomNumber : '—'));
+        $building = $room?->building?->building_name ?: '—';
+        $roomNumber = $room?->room_number ?: '—';
+        $paidBy = $payment?->relationLoaded('creator')
+            ? ($payment->creator?->name ?: '—')
+            : '—';
+        $approvedBy = $payment?->relationLoaded('approver')
+            ? ($payment->approver?->name ?: '—')
+            : '—';
         $customerName = $contract
             ? $contract->partyDisplayName()
             : ($contract?->user?->name ?: '—');
@@ -165,6 +173,10 @@ class ReceiptDocumentService
                 : $this->formatReceiptCurrency((float) ($summary['balance'] ?? 0)),
         ];
 
+        $lateFeeNotes = $invoice
+            ? InvoiceLateFeePolicy::receiptDocumentNotes($invoice)
+            : null;
+
         return [
             'title' => 'PAYMENT RECEIPT',
             'subtitle' => 'THANK YOU FOR YOUR PAYMENT',
@@ -182,23 +194,23 @@ class ReceiptDocumentService
             ],
             'info' => [
                 'customer_name' => $customerName !== '' ? $customerName : '—',
-                'property_room' => $propertyRoom,
+                'building' => $building !== '' ? $building : '—',
+                'room' => $roomNumber !== '' ? $roomNumber : '—',
+                'paid_by' => $paidBy !== '' ? $paidBy : '—',
                 'invoice_number' => $invoiceNumber,
-                'payment_for' => $this->buildPaymentFor($invoice),
-                'receipt_number' => $receiptNumber,
-                'receipt_date' => $receiptDate,
+                'approved_by' => $approvedBy !== '' ? $approvedBy : '—',
                 'payment_method' => $paymentMethod,
                 'payment_date' => $paymentDate,
             ],
             'items' => $this->resolveChargeItems($invoice),
             'totals' => $totals,
+            'late_fee_notes' => $lateFeeNotes,
             'confirmation' => [
                 'title' => 'Payment received successfully.',
                 'message' => 'This receipt confirms that the payment has been recorded successfully.',
             ],
             'footer' => [
-                'left' => 'Rosewood Royale Residences',
-                'right' => 'System-generated receipt • No signature required',
+                'confidential_notice' => 'System-generated receipt · No signature required',
             ],
             'financial_summary' => $summary,
         ];
@@ -261,87 +273,6 @@ class ReceiptDocumentService
         return null;
     }
 
-    private function buildPaymentFor($invoice): string
-    {
-        if (! $invoice) {
-            return 'Charges';
-        }
-
-        $monthLabel = '';
-        if ($invoice->billing_month) {
-            $monthLabel = $invoice->billing_month instanceof CarbonInterface
-                ? $invoice->billing_month->format('F Y')
-                : \Carbon\Carbon::parse($invoice->billing_month)->format('F Y');
-        } elseif ($invoice->issued_date) {
-            $monthLabel = $invoice->issued_date instanceof CarbonInterface
-                ? $invoice->issued_date->format('F Y')
-                : '';
-        }
-
-        $hasRent = false;
-        $hasUtility = false;
-        $otherLabels = [];
-
-        if ($invoice->relationLoaded('items')) {
-            foreach ($invoice->items as $item) {
-                $slug = $item->relationLoaded('chargeType') ? $item->chargeType?->slug : null;
-
-                if ($slug === 'late-fee') {
-                    continue;
-                }
-
-                if ($slug === 'monthly-rent') {
-                    $hasRent = true;
-
-                    continue;
-                }
-
-                $description = (string) ($item->description ?? '');
-
-                if ($slug === 'utility-charges' || $this->extractUtilityType($description)) {
-                    $hasUtility = true;
-
-                    continue;
-                }
-
-                $label = $item->relationLoaded('chargeType')
-                    ? ($item->chargeType?->name ?: $description)
-                    : $description;
-
-                if ($label !== '') {
-                    $otherLabels[] = $label;
-                }
-            }
-        }
-
-        $parts = [];
-
-        if ($hasRent) {
-            $parts[] = 'Rent';
-        }
-
-        if ($hasUtility) {
-            $parts[] = 'Utility';
-        }
-
-        if ($parts === [] && $otherLabels !== []) {
-            $parts[] = $otherLabels[0];
-        }
-
-        if ($parts === []) {
-            $parts[] = match ($invoice->type) {
-                'sale' => 'Sale',
-                'utility' => 'Utility',
-                'rent' => 'Rent',
-                default => 'Charges',
-            };
-        }
-
-        $joined = implode(' & ', $parts);
-
-        return $monthLabel !== '' ? "{$monthLabel} {$joined}" : $joined;
-    }
-
     private function formatReceiptCurrency(float $amount, int $decimals = 0): string
     {
         return 'MMK '.number_format($amount, $decimals, '.', ',');
@@ -371,13 +302,7 @@ class ReceiptDocumentService
 
     private function filename(Receipt $receipt): string
     {
-        $receipt->loadMissing(['payment.invoice.contract.room']);
-
-        return DocumentFilename::receipt(
-            $receipt->issued_at ?? $receipt->created_at,
-            $receipt->payment?->invoice?->contract?->room?->room_number,
-            $receipt->receipt_number,
-        );
+        return DocumentFilename::pdf($receipt->receipt_number, 'RCP-000000');
     }
 
     private function htmlFilename(Receipt $receipt): string
