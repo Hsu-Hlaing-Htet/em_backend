@@ -29,41 +29,9 @@ class ChromeDocumentPdfConverter implements DocumentPdfConverter
                 throw new RuntimeException('Unable to write temporary HTML for PDF conversion.');
             }
 
-            $chromeArgs = [
-                $chromePath,
-                '--headless=new',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--disable-extensions',
-                '--disable-translate',
-                '--hide-scrollbars',
-                '--no-pdf-header-footer',
-                '--print-to-pdf-no-header',
-                '--print-to-pdf='.$pdfPath,
-                'file://'.$htmlPath,
-            ];
-
-            // Chromium in Docker/Render needs these flags; local macOS Chrome does not.
-            if ($this->shouldDisableSandbox()) {
-                array_splice($chromeArgs, 1, 0, [
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-setuid-sandbox',
-                ]);
-            }
-
-            $result = Process::timeout(120)->run($chromeArgs);
-
-            if ($result->failed()) {
-                throw new RuntimeException('Chrome PDF conversion failed: '.$result->errorOutput());
-            }
-
-            if (! is_file($pdfPath)) {
-                throw new RuntimeException('Chrome did not produce a PDF file.');
-            }
-
-            $pdf = file_get_contents($pdfPath);
+            $pdf = $this->shouldUseCdpPageNumbers($html)
+                ? $this->convertWithCdp($chromePath, $htmlPath, $pdfPath, $html)
+                : $this->convertWithCli($chromePath, $htmlPath, $pdfPath);
 
             if ($pdf === false || $pdf === '' || ! str_starts_with($pdf, '%PDF')) {
                 throw new RuntimeException('Chrome produced an invalid PDF file.');
@@ -77,6 +45,77 @@ class ChromeDocumentPdfConverter implements DocumentPdfConverter
         }
     }
 
+    private function shouldUseCdpPageNumbers(string $html): bool
+    {
+        return str_contains($html, 'pdf-sheet--list');
+    }
+
+    private function convertWithCdp(string $chromePath, string $htmlPath, string $pdfPath, string $html): string
+    {
+        $script = base_path('bin/chrome-print-pdf.mjs');
+        $node = $this->resolveNodePath();
+
+        if ($node === null || ! is_file($script)) {
+            return $this->convertWithCli($chromePath, $htmlPath, $pdfPath);
+        }
+
+        $landscape = ! str_contains($html, 'A4 portrait');
+
+        $result = Process::timeout(120)->run([
+            $node,
+            $script,
+            $chromePath,
+            $htmlPath,
+            $pdfPath,
+            $landscape ? '1' : '0',
+        ]);
+
+        if ($result->failed() || ! is_file($pdfPath)) {
+            // Fall back to CLI conversion so exports still work if CDP is unavailable.
+            return $this->convertWithCli($chromePath, $htmlPath, $pdfPath);
+        }
+
+        return (string) file_get_contents($pdfPath);
+    }
+
+    private function convertWithCli(string $chromePath, string $htmlPath, string $pdfPath): string
+    {
+        $chromeArgs = [
+            $chromePath,
+            '--headless=new',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-extensions',
+            '--disable-translate',
+            '--hide-scrollbars',
+            '--no-pdf-header-footer',
+            '--print-to-pdf-no-header',
+            '--print-to-pdf='.$pdfPath,
+            'file://'.$htmlPath,
+        ];
+
+        if ($this->shouldDisableSandbox()) {
+            array_splice($chromeArgs, 1, 0, [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-setuid-sandbox',
+            ]);
+        }
+
+        $result = Process::timeout(120)->run($chromeArgs);
+
+        if ($result->failed()) {
+            throw new RuntimeException('Chrome PDF conversion failed: '.$result->errorOutput());
+        }
+
+        if (! is_file($pdfPath)) {
+            throw new RuntimeException('Chrome did not produce a PDF file.');
+        }
+
+        return (string) file_get_contents($pdfPath);
+    }
+
     private function resolveChromePath(): ?string
     {
         $candidates = array_filter([
@@ -86,6 +125,24 @@ class ChromeDocumentPdfConverter implements DocumentPdfConverter
             '/usr/bin/google-chrome-stable',
             '/usr/bin/chromium',
             '/usr/bin/chromium-browser',
+        ]);
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && $candidate !== '' && is_file($candidate) && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveNodePath(): ?string
+    {
+        $candidates = array_filter([
+            (string) env('NODE_PATH_BIN', ''),
+            trim((string) shell_exec('command -v node 2>/dev/null')),
+            '/usr/local/bin/node',
+            '/opt/homebrew/bin/node',
         ]);
 
         foreach ($candidates as $candidate) {

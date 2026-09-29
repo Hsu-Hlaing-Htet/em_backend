@@ -6,49 +6,151 @@
     <style>
         {!! file_get_contents(resource_path('documents/contract-document.css')) !!}
 
+        /*
+         * List exports: fill the printable area.
+         * Do NOT set sheet width to full paper size while also using @page margins —
+         * Chrome scales the document down and the table looks artificially narrow.
+         *
+         * Page numbers come from Chrome CDP footerTemplate (see ChromeDocumentPdfConverter),
+         * not CSS counter(page), which renders as Page 0 on fixed/in-flow footers.
+         */
         @page {
             size: {{ $landscape ? 'A4 landscape' : 'A4 portrait' }};
-            margin: 12mm;
+            margin: 8mm 8mm 12mm 8mm;
         }
 
+        html,
         body {
-            background: #fff;
-            margin: 0;
+            background: #fff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+        }
+
+        @media print {
+            html {
+                counter-reset: none;
+            }
         }
 
         .pdf-sheet.pdf-sheet--list {
-            width: {{ $landscape ? '297mm' : '210mm' }};
-            max-width: {{ $landscape ? '297mm' : '210mm' }};
-            min-height: auto;
-            margin: 0 auto;
-            padding: 12mm;
-            box-shadow: none;
-            border: none;
+            --pdf-ink: #1c1c1c;
+            --pdf-muted: #6b6560;
+            --pdf-line: rgba(28, 28, 28, 0.12);
+            --pdf-accent: rgba(122, 49, 73, 0.55);
+
+            width: 100% !important;
+            max-width: none !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            overflow-wrap: break-word;
+            font-size: 10pt;
+            line-height: 1.35;
         }
 
-        .list-export-meta {
-            margin: 0 0 1rem;
+        .pdf-sheet--list .pdf-document-lead {
+            break-inside: avoid;
+        }
+
+        .pdf-sheet--list .pdf-head {
+            margin-bottom: 0.45rem;
+        }
+
+        .pdf-sheet--list .pdf-head-row {
+            gap: 0.75rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .pdf-sheet--list .pdf-logo {
+            width: 1.65rem;
+            height: 1.65rem;
+        }
+
+        .pdf-sheet--list .pdf-brand {
+            gap: 0.65rem;
+        }
+
+        .pdf-sheet--list .pdf-company {
             font-size: 9pt;
-            color: #6b6560;
+            letter-spacing: 0.1em;
+        }
+
+        .pdf-sheet--list .pdf-company-sub {
+            margin-top: 0.1rem;
+            font-size: 7pt;
+        }
+
+        .pdf-sheet--list .pdf-meta-item {
+            margin-bottom: 0.25rem;
+            gap: 0.05rem;
+        }
+
+        .pdf-sheet--list .pdf-meta-label {
+            font-size: 6pt;
+            letter-spacing: 0.12em;
+        }
+
+        .pdf-sheet--list .pdf-meta-value {
+            font-size: 8pt;
+        }
+
+        .pdf-sheet--list .pdf-doc-title {
+            margin: 0;
+            font-size: 12pt;
+            letter-spacing: 0.12em;
+        }
+
+        .pdf-sheet--list .pdf-rule--accent {
+            width: 3rem;
+            margin: 0.3rem auto 0;
         }
 
         .list-export-filters {
-            margin: 0 0 1.25rem;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            column-gap: 1.25rem;
+            row-gap: 0.15rem;
+            margin: 0.4rem 0 0.55rem;
             padding: 0;
             list-style: none;
-            font-size: 9pt;
-            color: #6b6560;
+            font-size: 7.5pt;
+            line-height: 1.3;
+            color: var(--pdf-muted);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
         .list-export-filters li {
-            margin: 0.15rem 0;
+            margin: 0;
+            min-width: 0;
+        }
+
+        .list-export-filters strong {
+            color: var(--pdf-ink);
+            font-weight: 600;
+        }
+
+        .pdf-sheet--list .pdf-block {
+            margin-bottom: 0;
+        }
+
+        .pdf-sheet--list .doc-table-wrap {
+            margin-top: 0;
+            overflow: visible;
         }
 
         .pdf-sheet--list .doc-table {
-            width: 100%;
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: none !important;
             border-collapse: collapse;
             table-layout: fixed;
-            font-size: 8.5pt;
+            font-size: 9pt;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
         .pdf-sheet--list .doc-table thead {
@@ -57,16 +159,26 @@
 
         .pdf-sheet--list .doc-table th,
         .pdf-sheet--list .doc-table td {
-            border: 1px solid rgba(28, 28, 28, 0.15);
-            padding: 4px 6px;
+            border: none;
+            border-bottom: 1px solid rgba(28, 28, 28, 0.12);
+            padding: 5px 9px;
             vertical-align: top;
             text-align: left;
             overflow-wrap: break-word;
+            word-break: normal;
+            box-sizing: border-box;
         }
 
         .pdf-sheet--list .doc-table th {
-            background: rgba(122, 49, 73, 0.08);
+            background: rgba(122, 49, 73, 0.07);
+            border-bottom: 1px solid rgba(122, 49, 73, 0.22);
+            font-size: 7.5pt;
             font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #5c3d47;
+            padding-top: 6px;
+            padding-bottom: 6px;
         }
 
         .pdf-sheet--list .doc-table tr {
@@ -74,48 +186,30 @@
             page-break-inside: avoid;
         }
 
-        .pdf-sheet--list .list-col--invoice_number {
-            width: 10%;
+        .pdf-sheet--list .list-col--nowrap {
             white-space: nowrap;
+            overflow-wrap: normal;
+            word-break: keep-all;
+            overflow: hidden;
         }
 
-        .pdf-sheet--list .list-col--customer_name {
-            width: 22%;
+        .pdf-sheet--list .list-col--align-center {
+            text-align: center;
         }
 
-        .pdf-sheet--list .list-col--building_name {
-            width: 20%;
-        }
-
-        .pdf-sheet--list .list-col--room_number {
-            width: 6%;
-            white-space: nowrap;
-        }
-
-        .pdf-sheet--list .list-col--invoice_total {
-            width: 14%;
-            white-space: nowrap;
+        .pdf-sheet--list .list-col--align-right {
+            text-align: right;
         }
 
         .pdf-sheet--list .list-col--issued_date,
-        .pdf-sheet--list .list-col--due_date {
-            width: 9%;
-            white-space: nowrap;
-        }
-
-        .pdf-sheet--list .list-col--payment_status {
-            width: 10%;
-            white-space: nowrap;
-        }
-
-        .pdf-sheet--list .pdf-foot-page::after {
-            content: 'Page ' counter(page);
-        }
-
-        @media print {
-            html {
-                counter-reset: none;
-            }
+        .pdf-sheet--list .list-col--due_date,
+        .pdf-sheet--list .list-col--payment_status,
+        .pdf-sheet--list .list-col--status,
+        .pdf-sheet--list .list-col--payment_date,
+        .pdf-sheet--list .list-col--date,
+        .pdf-sheet--list .list-col--created_at {
+            padding-left: 11px;
+            padding-right: 11px;
         }
     </style>
 </head>
@@ -170,9 +264,19 @@
                         <tr>
                             @foreach ($columns as $column)
                                 @php
-                                    $columnClass = 'list-col list-col--'.preg_replace('/[^a-z0-9_-]/i', '-', $column['field']);
+                                    $fieldSlug = preg_replace('/[^a-z0-9_-]/i', '-', $column['field']);
+                                    $align = $column['align'] ?? 'left';
+                                    $width = $column['width'] ?? null;
+                                    $nowrap = ! empty($column['nowrap']);
+                                    $classes = trim(implode(' ', array_filter([
+                                        'list-col',
+                                        'list-col--'.$fieldSlug,
+                                        in_array($align, ['center', 'right'], true) ? 'list-col--align-'.$align : null,
+                                        $nowrap ? 'list-col--nowrap' : null,
+                                    ])));
+                                    $style = $width ? 'width: '.$width.';' : null;
                                 @endphp
-                                <th class="{{ $columnClass }}">{{ $column['header'] }}</th>
+                                <th class="{{ $classes }}"@if ($style) style="{{ $style }}"@endif>{{ $column['header'] }}</th>
                             @endforeach
                         </tr>
                     </thead>
@@ -181,9 +285,17 @@
                             <tr>
                                 @foreach ($columns as $column)
                                     @php
-                                        $columnClass = 'list-col list-col--'.preg_replace('/[^a-z0-9_-]/i', '-', $column['field']);
+                                        $fieldSlug = preg_replace('/[^a-z0-9_-]/i', '-', $column['field']);
+                                        $align = $column['align'] ?? 'left';
+                                        $nowrap = ! empty($column['nowrap']);
+                                        $classes = trim(implode(' ', array_filter([
+                                            'list-col',
+                                            'list-col--'.$fieldSlug,
+                                            in_array($align, ['center', 'right'], true) ? 'list-col--align-'.$align : null,
+                                            $nowrap ? 'list-col--nowrap' : null,
+                                        ])));
                                     @endphp
-                                    <td class="{{ $columnClass }}">{{ $row[$column['field']] ?? '' }}</td>
+                                    <td class="{{ $classes }}">{{ $row[$column['field']] ?? '' }}</td>
                                 @endforeach
                             </tr>
                         @empty
@@ -195,14 +307,6 @@
                 </table>
             </div>
         </section>
-
-        <footer class="pdf-foot">
-            <div class="pdf-foot-row">
-                <span>Confidential</span>
-                <span class="pdf-foot-page"></span>
-                <span>{{ $title }}</span>
-            </div>
-        </footer>
     </article>
 </body>
 </html>
