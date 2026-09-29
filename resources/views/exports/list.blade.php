@@ -44,38 +44,78 @@
             margin: 0.15rem 0;
         }
 
-        .doc-table {
+        .pdf-sheet--list .doc-table {
             width: 100%;
             border-collapse: collapse;
-            table-layout: auto;
+            table-layout: fixed;
             font-size: 8.5pt;
         }
 
-        .doc-table thead {
+        .pdf-sheet--list .doc-table thead {
             display: table-header-group;
         }
 
-        .doc-table th,
-        .doc-table td {
+        .pdf-sheet--list .doc-table th,
+        .pdf-sheet--list .doc-table td {
             border: 1px solid rgba(28, 28, 28, 0.15);
             padding: 4px 6px;
             vertical-align: top;
             text-align: left;
-            overflow-wrap: anywhere;
+            overflow-wrap: break-word;
         }
 
-        .doc-table th {
+        .pdf-sheet--list .doc-table th {
             background: rgba(122, 49, 73, 0.08);
             font-weight: 600;
         }
 
-        .doc-table tr {
+        .pdf-sheet--list .doc-table tr {
             break-inside: avoid;
             page-break-inside: avoid;
         }
 
-        .pdf-foot-page::after {
-            content: counter(page);
+        .pdf-sheet--list .list-col--invoice_number {
+            width: 10%;
+            white-space: nowrap;
+        }
+
+        .pdf-sheet--list .list-col--customer_name {
+            width: 22%;
+        }
+
+        .pdf-sheet--list .list-col--building_name {
+            width: 20%;
+        }
+
+        .pdf-sheet--list .list-col--room_number {
+            width: 6%;
+            white-space: nowrap;
+        }
+
+        .pdf-sheet--list .list-col--invoice_total {
+            width: 14%;
+            white-space: nowrap;
+        }
+
+        .pdf-sheet--list .list-col--issued_date,
+        .pdf-sheet--list .list-col--due_date {
+            width: 9%;
+            white-space: nowrap;
+        }
+
+        .pdf-sheet--list .list-col--payment_status {
+            width: 10%;
+            white-space: nowrap;
+        }
+
+        .pdf-sheet--list .pdf-foot-page::after {
+            content: 'Page ' counter(page);
+        }
+
+        @media print {
+            html {
+                counter-reset: none;
+            }
         }
     </style>
 </head>
@@ -129,7 +169,10 @@
                     <thead>
                         <tr>
                             @foreach ($columns as $column)
-                                <th>{{ $column['header'] }}</th>
+                                @php
+                                    $columnClass = 'list-col list-col--'.preg_replace('/[^a-z0-9_-]/i', '-', $column['field']);
+                                @endphp
+                                <th class="{{ $columnClass }}">{{ $column['header'] }}</th>
                             @endforeach
                         </tr>
                     </thead>
@@ -137,7 +180,10 @@
                         @forelse ($rows as $row)
                             <tr>
                                 @foreach ($columns as $column)
-                                    <td>{{ $row[$column['field']] ?? '' }}</td>
+                                    @php
+                                        $columnClass = 'list-col list-col--'.preg_replace('/[^a-z0-9_-]/i', '-', $column['field']);
+                                    @endphp
+                                    <td class="{{ $columnClass }}">{{ $row[$column['field']] ?? '' }}</td>
                                 @endforeach
                             </tr>
                         @empty
@@ -153,7 +199,7 @@
         <footer class="pdf-foot">
             <div class="pdf-foot-row">
                 <span>Confidential</span>
-                <span class="pdf-foot-page">Page </span>
+                <span class="pdf-foot-page"></span>
                 <span>{{ $title }}</span>
             </div>
         </footer>
