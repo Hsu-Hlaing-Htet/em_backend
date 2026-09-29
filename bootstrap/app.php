@@ -25,4 +25,20 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], 409);
             }
         });
+
+        // API 404s: never leak "No query results for model [App\Models\…] {id}".
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $exception, \Illuminate\Http\Request $request) {
+            if (! ($request->is('api/*') || $request->expectsJson())) {
+                return null;
+            }
+
+            $previous = $exception->getPrevious();
+            $message = $previous instanceof \Illuminate\Database\Eloquent\ModelNotFoundException
+                ? \App\Support\ApiNotFoundMessage::fromModelNotFound($previous)
+                : \App\Support\ApiNotFoundMessage::generic();
+
+            return response()->json([
+                'message' => $message,
+            ], 404);
+        });
     })->create();
