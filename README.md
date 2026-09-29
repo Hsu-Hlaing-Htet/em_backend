@@ -1,100 +1,60 @@
-# Rosewood Royale Backend
+# Rosewood Royale — Backend
 
-Laravel API for the Rosewood Royale estate management platform. It serves admin operations, the customer portal, public property listings, authentication, and a server-side proxy to the FastAPI AI concierge service.
+Laravel API for Rosewood Royale Residences.
+
+This repository is the main application backend: authentication, business rules, MySQL data access, documents/email, and the server-side proxy to the FastAPI AI service. The Vue frontend and FastAPI AI service both talk to this API.
 
 Repository: [Hsu-Hlaing-Htet/em_backend](https://github.com/Hsu-Hlaing-Htet/em_backend)
 
 ---
 
-## Project Overview
+## Quick Start — Run Order
 
-This backend is a Laravel 12 application that exposes JSON APIs used by the Vue frontend and integrates with a separate AI service.
+Start the full system in this order:
 
-Core responsibilities:
+1. **MySQL** — create/use database `rosewood_royale`
+2. **Laravel Backend** — Terminal 1 (this repository)
+3. **FastAPI AI Service** — Terminal 2
+4. **Vue Frontend** — Terminal 3
 
-- Authenticate users with Laravel Sanctum
-- Manage buildings, rooms, contracts, utilities, invoices, payments, receipts, and maintenance
-- Expose public property listing and detail endpoints
-- Proxy public property and customer rent AI questions to the FastAPI AI service
-- Generate and deliver document PDFs and email notifications
+| Terminal | Service | Typical command | Local URL |
+| --- | --- | --- | --- |
+| — | MySQL | Start MySQL; ensure DB exists | `127.0.0.1:3306` |
+| 1 | Laravel Backend | `php artisan serve` | http://localhost:8000 |
+| 2 | FastAPI AI | `uvicorn app.main:app --reload --port 8001` (in `em_ai`) | http://localhost:8001 |
+| 3 | Vue Frontend | `npm run dev` (in `em_frontend`) | http://localhost:5173 |
 
----
-
-## Tech Stack
-
-Confirmed from `composer.json` and project config:
-
-| Layer | Technology |
-| --- | --- |
-| Language | PHP `^8.2` |
-| Framework | Laravel `^12.0` |
-| Auth | Laravel Sanctum `^4.3` |
-| Testing | Pest `^4.3` (with Pest Laravel plugin) |
-| Code style | Laravel Pint |
-| Default DB | SQLite (configurable via `DB_CONNECTION`) |
-| Queue default | `database` (`QUEUE_CONNECTION`) |
-| Container | Optional `Dockerfile` (PHP 8.2 CLI image) |
-
----
-
-## Main Features
-
-- **Authentication** — login, logout, current user, forgot/reset password, change password
-- **Role-based access** — `super_admin`, `admin`, and `customer` via `EnsureRole` middleware
-- **Property management** — buildings, rooms, room images
-- **Contracts** — sale and rent contract drafts, approval/rejection, active/approved views, document download/export/email
-- **Utilities & billing** — utility types/rates, utility records, invoices, payments, receipts, late fees, charge types, payment methods/plans
-- **Customer portal** — dashboard, profile, contracts, invoices, payments, receipts, notifications, maintenance requests
-- **Public property API** — list, featured, stats, and detail endpoints with search and pagination
-- **AI integration** — Laravel proxies questions to the FastAPI AI service (browser never calls AI directly)
-- **Admin extras** — dashboard charts, list PDF exports, document preview PDF
-
----
-
-## Project Structure
+Connection flow:
 
 ```text
-app/
-  Http/
-    Controllers/     # Admin, Auth, Customer, Public controllers
-    Middleware/      # EnsureRole and related middleware
-    Requests/        # Form request validation
-    Resources/       # API resources
-  Models/            # Eloquent models
-  Services/          # Domain services (billing, public property, AI proxy, documents)
-  Mail/              # Mailable classes
-  Notifications/     # Auth and account notifications
-  Policies/          # Authorization policies
-  Support/           # Shared helpers and profiles
-bootstrap/           # Application bootstrap and middleware aliases
-config/              # Laravel + app config (includes config/ai.php)
-database/
-  migrations/        # Schema migrations
-  seeders/           # Demo and reference data seeders
-  factories/         # Model factories for tests/seeders
-routes/
-  api.php            # Authenticated and public AI API routes
-  web.php            # Public property routes + SPA fallback view
-  console.php        # Console routes
-tests/
-  Feature/           # Feature tests (Admin, Auth, Customer, Public, Ai, Timebox*)
-  Unit/              # Unit tests
+Browser
+   |
+   v
+Vue Frontend (:5173)
+   |
+   v
+Laravel Backend (:8000)
+   | \
+   |  \--> FastAPI AI (:8001)
+   |
+   +-----> MySQL (:3306)
 ```
 
----
+Optional fourth process for async jobs (mail, queued work):
 
-## Requirements
+```bash
+php artisan queue:listen --tries=1 --timeout=0
+```
 
-- PHP 8.2+
-- Composer 2
-- SQLite (default) or MySQL/PostgreSQL if configured
-- Extensions commonly required by Laravel (e.g. `pdo`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`)
-- Optional: Redis if you switch cache/queue/session drivers
-- Optional: running FastAPI AI service for AI endpoints
+Default queue driver in `.env.example` is `database`.
 
 ---
 
-## Installation
+## First-Time Setup
+
+Do this once after cloning.
+
+### 1. Clone and install PHP dependencies
 
 ```bash
 git clone git@github.com:Hsu-Hlaing-Htet/em_backend.git
@@ -102,264 +62,368 @@ cd em_backend
 composer install
 ```
 
-Create a local `.env` file (see Environment Setup), then:
+Requirements:
+
+- PHP `^8.2` (see `composer.json`)
+- Composer 2
+- MySQL (project `.env.example` uses MySQL)
+- PHP extensions commonly required by Laravel (`pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, …)
+
+### 2. Environment file
 
 ```bash
+cp .env.example .env
 php artisan key:generate
 ```
 
-If using SQLite with the default path:
+### 3. Configure MySQL
+
+In `.env` (names from `.env.example`):
 
 ```bash
-touch database/database.sqlite
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=rosewood_royale
+DB_USERNAME=root
+DB_PASSWORD=
 ```
 
----
+Create the empty database in MySQL (example):
 
-## Environment Setup
+```sql
+CREATE DATABASE rosewood_royale CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
 
-Do **not** commit real secrets. Configure values in a local `.env` file only.
+Also set frontend / CORS / AI placeholders for local work:
 
-### Application
+```bash
+APP_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:5173
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+AI_SERVICE_BASE_URL=http://127.0.0.1:8001
+```
 
-| Variable | Purpose |
-| --- | --- |
-| `APP_NAME` | Application name |
-| `APP_ENV` | Environment (`local`, `production`, …) |
-| `APP_KEY` | Encryption key (`php artisan key:generate`) |
-| `APP_DEBUG` | Debug mode |
-| `APP_URL` | Backend base URL |
-| `FRONTEND_URL` | Frontend origin used for CORS fallback and links |
-| `APP_LOCALE` / `APP_FALLBACK_LOCALE` | Locale settings |
+Do not commit real secrets (`APP_KEY`, `RESEND_API_KEY`, DB passwords, `AI_SERVICE_INTERNAL_KEY`, …).
 
-### Database
-
-| Variable | Purpose |
-| --- | --- |
-| `DB_CONNECTION` | Driver (`sqlite`, `mysql`, …). Default config uses `sqlite` |
-| `DB_DATABASE` | Database name/path |
-| `DB_HOST` / `DB_PORT` / `DB_USERNAME` / `DB_PASSWORD` | Used when not on SQLite |
-
-### Auth / session / CORS
-
-| Variable | Purpose |
-| --- | --- |
-| `SANCTUM_STATEFUL_DOMAINS` | Stateful domains for Sanctum |
-| `SESSION_DRIVER` / `SESSION_DOMAIN` / `SESSION_LIFETIME` | Session settings |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated exact allowed origins |
-| `CORS_SUPPORTS_CREDENTIALS` | Credentialed CORS flag |
-
-### Queue / cache / mail (as needed)
-
-| Variable | Purpose |
-| --- | --- |
-| `QUEUE_CONNECTION` | Queue driver (default config: `database`) |
-| `CACHE_STORE` | Cache store |
-| `MAIL_MAILER` | Mail transport |
-| `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME` | From identity |
-| `MAIL_LOGO_URL` | Logo URL used in branded emails |
-| `RESEND_API_KEY` | Used when sending via Resend |
-
-### AI proxy (`config/ai.php`)
-
-| Variable | Purpose |
-| --- | --- |
-| `AI_SERVICE_BASE_URL` | FastAPI base URL (default in config: `http://127.0.0.1:8001`) |
-| `AI_SERVICE_TIMEOUT_SECONDS` | HTTP timeout in seconds (default: `60`) |
-| `AI_SERVICE_INTERNAL_KEY` | Optional shared secret sent as `X-Rosewood-AI-Internal-Key` |
-
-Never place real API keys, passwords, tokens, or database credentials in this README or in git.
-
----
-
-## Database Setup
+### 4. Migrate and seed (safe for first setup)
 
 ```bash
 php artisan migrate
 php artisan db:seed
 ```
 
-`DatabaseSeeder` loads roles, users, billing reference data, workflow/demo scenarios, and room images. Do not publish seeder credentials in documentation or source control.
+`DatabaseSeeder` loads roles, users, billing reference data, demo scenarios, and room images. Demo login credentials are printed in the terminal by the seeder — do not publish those passwords in documentation or commits.
 
-Fresh reset (destroys local data):
+**Do not use** `migrate:fresh`, `db:wipe`, or truncate commands for normal setup. They destroy existing data.
 
-```bash
-php artisan migrate:fresh --seed
-```
+### 5. Sibling services
+
+Set up and run:
+
+- Frontend: https://github.com/Hsu-Hlaing-Htet/em_frontend
+- AI: https://github.com/Hsu-Hlaing-Htet/em_ai
 
 ---
 
-## Running Locally
+## Daily Development
 
-Start the HTTP server:
+When returning to the project:
+
+1. Start MySQL
+2. Start Laravel:
 
 ```bash
 php artisan serve
 ```
 
-Health check route (from `bootstrap/app.php`):
-
-- `GET /up`
-
-API routes from `routes/api.php` are served under the `/api` prefix.
-
-Composer also defines a `dev` script that runs the Laravel server, queue listener, log watcher, and frontend Vite process together when the sibling frontend project is available. For backend-only work, `php artisan serve` plus a queue worker is enough.
-
----
-
-## Queue Worker
-
-Default queue connection is `database` (`config/queue.php`).
-
-Run a worker locally:
+3. Start FastAPI (in `em_ai`) if you need AI
+4. Start Vue (in `em_frontend`): `npm run dev`
+5. Optional queue worker if you need email / queued jobs:
 
 ```bash
 php artisan queue:listen --tries=1 --timeout=0
 ```
 
-Or:
+Health check: http://localhost:8000/up
+
+---
+
+## Running the Full Rosewood Royale System
+
+### Step 1 — Database
+
+Start MySQL and confirm `rosewood_royale` exists with credentials matching backend `.env`.
+
+### Step 2 — Laravel Backend
 
 ```bash
-php artisan queue:work
+cd em_backend
+php artisan serve
 ```
 
-Ensure migrations that create the `jobs` table have been applied when using the database queue driver.
+- App: http://localhost:8000  
+- Health: http://localhost:8000/up  
+- API: http://localhost:8000/api  
+
+`php artisan serve` defaults to port **8000**.
+
+### Step 3 — FastAPI AI
+
+```bash
+cd em_ai
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8001
+```
+
+URL: http://localhost:8001
+
+### Step 4 — Vue Frontend
+
+```bash
+cd em_frontend
+npm run dev
+```
+
+URL: http://localhost:5173  
+Frontend `.env` should use `VITE_API_BASE_URL=http://localhost:8000/api`.
 
 ---
 
-## Public Property API
+## Verify Everything Is Working
 
-Defined in `routes/web.php` under the `api/public` prefix:
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `GET` | `/api/public/properties` | Paginated listings |
-| `GET` | `/api/public/properties/featured` | Latest public sale listings (limit 6) |
-| `GET` | `/api/public/properties/stats` | Inventory stats (`total`, `available`) |
-| `GET` | `/api/public/properties/{property}` | Property detail |
-
-Query parameters supported by `PublicPropertyService`:
-
-- `purpose` — `sale` (default) or `rent`
-- `search` — matches room number, description, building name, or location
-- `per_page` — page size (default `12`)
-- standard Laravel `page` pagination
-
-Sale listings require an active sale contract. Rent listings require room type `rent`/`both` and status `available`.
+- [ ] `GET http://localhost:8000/up` returns OK
+- [ ] Frontend login hits `/api/auth/login` successfully
+- [ ] Admin/customer lists load (Laravel ↔ MySQL)
+- [ ] `GET http://localhost:8001/health` returns OK when AI is running
+- [ ] Property AI via Laravel: `POST /api/public/ai/property/ask` reaches FastAPI
+- [ ] Customer rent AI via Laravel: `POST /api/customer/ai/rent/ask` (authenticated) reaches FastAPI
 
 ---
 
-## Authentication
+## Architecture
 
-Auth routes in `routes/api.php` (under `/api`):
+```text
+Browser
+   |
+   v
+Vue Frontend
+   |
+   v
+Laravel Backend
+   | \
+   |  \--> FastAPI AI
+   |
+   +-----> MySQL
+```
 
-| Method | Path | Auth |
-| --- | --- | --- |
-| `POST` | `/api/auth/login` | Public |
-| `POST` | `/api/auth/forgot-password` | Public |
-| `POST` | `/api/auth/reset-password` | Public |
-| `POST` | `/api/auth/logout` | Sanctum |
-| `GET` | `/api/auth/me` | Sanctum |
-| `POST` | `/api/auth/change-password` | Sanctum |
+- **Vue** owns the user interface.
+- **Laravel** is the authoritative API, auth, and business/data layer.
+- **MySQL** stores application data.
+- **Laravel** calls FastAPI for AI answers (`config/ai.php`).
+- **FastAPI** reads Laravel APIs for grounding; it does not own the database or replace Laravel.
 
-Protected route groups use:
-
-- `auth:sanctum`
-- `role:...` middleware (`App\Http\Middleware\EnsureRole`)
-
-Roles seeded by `RoleSeeder`:
-
-- `super_admin`
-- `admin`
-- `customer`
-
-Admin APIs require `super_admin` or `admin`. Customer portal APIs require `customer`.
+Note: `config/database.php` falls back to `sqlite` if `DB_CONNECTION` is unset. The project’s `.env.example` documents **MySQL** (`rosewood_royale`) for local Rosewood Royale development. Prefer that setup.
 
 ---
 
-## AI Integration
+## Repository Responsibility
 
-Laravel proxies AI traffic through `App\Services\AiAssistantProxyService` using `config/ai.php`.
+This backend owns:
 
-### Public property assistant
+- Authentication / authorization (Laravel Sanctum + `role` middleware)
+- JSON APIs for admin, customer, public, and auth
+- Business rules and Eloquent models
+- MySQL access (buildings, rooms, contracts, utilities, invoices, payments, receipts, maintenance, notifications, contact inquiries, …)
+- Contract / invoice / receipt / utility document generation and PDF export
+- Email / notifications (mailer configured via env; queue when using database queue)
+- Server-side AI proxy to FastAPI (`AiAssistantProxyService`)
 
-| Method | Path | Auth |
-| --- | --- | --- |
-| `POST` | `/api/public/ai/property/ask` | Public (throttled: `ai-public`, 20/minute per IP) |
+It does **not** own the Vue UI or the LLM prompts inside FastAPI.
 
-Request body (`AskPropertyQuestionRequest`):
+---
 
-- `question` (required)
-- `property_id` (optional) — when present, Laravel preloads that public property for the AI payload
-- `purpose` (optional: `rent` or `sale`)
+## Environment Configuration
 
-Proxied to FastAPI: `POST {AI_SERVICE_BASE_URL}/api/v1/property/ask`
+Copy `.env.example` → `.env`. Important variable **names** (never commit real values):
 
-### Customer rent assistant
+### Application / frontend link
 
-| Method | Path | Auth |
-| --- | --- | --- |
-| `POST` | `/api/customer/ai/rent/ask` | Sanctum + `customer` role |
+| Variable | Purpose |
+| --- | --- |
+| `APP_URL` | Backend base URL |
+| `FRONTEND_URL` | Frontend origin (password-reset links, etc.) |
+| `APP_KEY` | Encryption key |
+| `APP_TIMEZONE` | Default `Asia/Yangon` in `.env.example` |
 
-Request body (`AskRentQuestionRequest`):
+### Laravel → MySQL
 
-- `question` (required)
+| Variable | Purpose |
+| --- | --- |
+| `DB_CONNECTION` | Driver (`mysql` in `.env.example`) |
+| `DB_HOST` / `DB_PORT` | MySQL host/port |
+| `DB_DATABASE` | Database name (`rosewood_royale`) |
+| `DB_USERNAME` / `DB_PASSWORD` | Credentials |
 
-Proxied to FastAPI: `POST {AI_SERVICE_BASE_URL}/api/v1/rent/ask` with the customer’s Bearer token forwarded.
+### CORS / Sanctum
 
-Optional header to the AI service when configured:
+| Variable | Purpose |
+| --- | --- |
+| `CORS_ALLOWED_ORIGINS` | Exact browser origins allowed |
+| `CORS_SUPPORTS_CREDENTIALS` | Keep `false` with Bearer-token SPA auth |
+| `SANCTUM_STATEFUL_DOMAINS` | Hosts for stateful Sanctum (if used) |
 
-- `X-Rosewood-AI-Internal-Key: {AI_SERVICE_INTERNAL_KEY}`
+### Laravel → FastAPI
+
+| Variable | Purpose |
+| --- | --- |
+| `AI_SERVICE_BASE_URL` | FastAPI base URL (default `http://127.0.0.1:8001`) |
+| `AI_SERVICE_TIMEOUT_SECONDS` | Proxy timeout (default `60`) |
+| `AI_SERVICE_INTERNAL_KEY` | Optional shared secret (`X-Rosewood-AI-Internal-Key`); must match AI `AI_INTERNAL_KEY` |
+
+### Mail / queue / documents (as needed)
+
+| Variable | Purpose |
+| --- | --- |
+| `MAIL_MAILER` / `RESEND_API_KEY` / `MAIL_FROM_*` | Outbound email |
+| `QUEUE_CONNECTION` | Default `database` in `.env.example` |
+| `DOCUMENTS_CHROME_PATH` / `CHROME_NO_SANDBOX` | Chrome/Chromium for PDF generation |
+
+---
+
+## Project Structure
+
+```text
+app/
+├── Http/Controllers/   # Admin, Auth, Customer, Public
+├── Http/Middleware/    # Role checks, …
+├── Models/             # Eloquent models
+├── Services/           # Billing, documents, AI proxy, public property, …
+├── Mail/               # Mailables
+├── Notifications/      # Notifications
+└── Policies/           # Authorization
+config/                 # Includes config/ai.php
+database/migrations/
+database/seeders/
+routes/api.php          # Main API (+ auth, admin, customer, public AI)
+routes/web.php          # Public property routes under /api/public, …
+tests/Feature/          # Pest feature suites
+tests/Unit/
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Language | PHP `^8.2` |
+| Framework | Laravel `^12` |
+| Auth | Laravel Sanctum `^4.3` |
+| Testing | Pest `^4.3` + Pest Laravel plugin |
+| Code style | Laravel Pint |
+| Local DB (documented) | MySQL via `.env.example` |
+| Queue / session / cache (example) | `database` drivers |
+| Container | Optional `Dockerfile` (PHP 8.2 Apache) + `render.yaml` |
+
+---
+
+## Common Commands
+
+| Command | Description |
+| --- | --- |
+| `composer install` | Install PHP dependencies |
+| `php artisan key:generate` | Generate `APP_KEY` |
+| `php artisan migrate` | Apply migrations (non-destructive) |
+| `php artisan db:seed` | Seed development/demo data |
+| `php artisan serve` | HTTP server on port 8000 |
+| `php artisan queue:listen --tries=1 --timeout=0` | Process queued jobs |
+| `php artisan test` | Run Pest suite |
+| `composer test` | Config clear + `php artisan test` |
+
+Composer also defines a `dev` script that can start Laravel, queue, logs, and a sibling `../frontend` Vite process together. That assumes a local sibling frontend checkout; for three separate repos, start each terminal manually as shown above.
 
 ---
 
 ## Testing
 
-This project uses Pest.
-
-Run the full suite:
-
 ```bash
 php artisan test
-```
-
-Or via Composer:
-
-```bash
+# or
 composer test
 ```
 
-Useful focused examples:
+Focused examples:
 
 ```bash
+php artisan test tests/Feature/Auth
 php artisan test tests/Feature/Ai
 php artisan test tests/Feature/Public
-php artisan test tests/Feature/Auth
+php artisan test tests/Feature/Admin/ListExportPdfTest.php
 ```
 
-Feature coverage includes Admin, Auth, Customer, Public, Ai, and Timebox workflow suites under `tests/Feature/`.
+Feature coverage includes Admin, Auth, Customer, Public, Ai, ContactInquiry, and Timebox suites under `tests/Feature/`.
 
 ---
 
-## Security
+## AI Integration (Laravel proxy)
 
-- Keep `.env` out of version control
-- Never commit API keys, tokens, passwords, or mail credentials
-- Use Sanctum tokens/session auth for protected endpoints
-- Enforce roles with the `role` middleware alias
-- Restrict browser origins with `CORS_ALLOWED_ORIGINS` / `FRONTEND_URL`
-- Keep `AI_SERVICE_INTERNAL_KEY` private and aligned with the AI service configuration
-- Public AI ask endpoint is rate-limited (`ai-public`)
+Browser → Laravel → FastAPI.
+
+| Method | Laravel path | Proxied FastAPI path |
+| --- | --- | --- |
+| `POST` | `/api/public/ai/property/ask` | `{AI_SERVICE_BASE_URL}/api/v1/property/ask` |
+| `POST` | `/api/customer/ai/rent/ask` | `{AI_SERVICE_BASE_URL}/api/v1/rent/ask` |
+
+Public property ask is throttled (`ai-public`). Customer rent ask requires Sanctum + `customer` role and forwards the Bearer token.
+
+---
+
+## Troubleshooting
+
+**Database connection refused**  
+→ Confirm MySQL is running  
+→ Confirm `DB_*` values and that `rosewood_royale` exists  
+→ Confirm `pdo_mysql` is installed
+
+**Frontend CORS errors**  
+→ Add the exact frontend origin to `CORS_ALLOWED_ORIGINS`  
+→ Confirm `FRONTEND_URL`  
+→ Restart `php artisan serve` after `.env` changes (`php artisan config:clear` if cached)
+
+**AI unavailable / 502 from AI routes**  
+→ Confirm FastAPI health: http://localhost:8001/health  
+→ Confirm `AI_SERVICE_BASE_URL`  
+→ Confirm optional `AI_SERVICE_INTERNAL_KEY` matches AI `AI_INTERNAL_KEY`  
+→ Confirm AI `OPENAI_API_KEY` and `BACKEND_BASE_URL`
+
+**Emails never arrive**  
+→ Confirm mail env (`MAIL_MAILER`, `RESEND_API_KEY`, …)  
+→ Run a queue worker when `QUEUE_CONNECTION=database`
+
+**PDF export fails**  
+→ Confirm Chrome/Chromium is available, or set `DOCUMENTS_CHROME_PATH`  
+→ On restricted environments, `CHROME_NO_SANDBOX=true` may be required (see Docker / Render config)
+
+---
+
+## Deployment
+
+Confirmed in-repo:
+
+- `Dockerfile` — PHP 8.2 Apache image with Chromium for PDFs
+- `render.yaml` — Render web service `rosewood-royale-backend`, health check `/up`, MySQL-oriented env keys, AI and mail env placeholders
+- `docker-compose.yml` — optional container run against an external database
+
+Do not put production credentials in git. Set secrets in the host/platform dashboard.
 
 ---
 
 ## Related Repositories
 
-| Project | Repository |
-| --- | --- |
-| Frontend | https://github.com/Hsu-Hlaing-Htet/em_frontend |
-| Backend | https://github.com/Hsu-Hlaing-Htet/em_backend |
-| AI | https://github.com/Hsu-Hlaing-Htet/em_ai |
+- Frontend: https://github.com/Hsu-Hlaing-Htet/em_frontend
+- Backend: https://github.com/Hsu-Hlaing-Htet/em_backend
+- AI: https://github.com/Hsu-Hlaing-Htet/em_ai
 
 ---
 
