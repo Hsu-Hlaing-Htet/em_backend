@@ -169,10 +169,41 @@ class InvoiceService
     }
 
     /**
-     * @param  array{late_fee_selection?: int|string|null, late_fee_rule_id?: int|null, late_fee_waived?: bool|null}  $data
+     * Confirm a pending draft invoice (review edits + Late Fee Rule + Issued transition).
+     *
+     * Alias for {@see issue()} used by the Invoice Approval Confirm flow.
+     *
+     * @param  array{
+     *     late_fee_selection?: int|string|null,
+     *     late_fee_rule_id?: int|null,
+     *     late_fee_waived?: bool|null,
+     *     due_date?: string,
+     *     items?: list<array{id: int, current_reading?: float|int|null, unit_price?: float|int|null}>
+     * }  $data
+     */
+    public function confirm(Invoice $invoice, array $data = []): Invoice
+    {
+        return $this->issue($invoice, $data);
+    }
+
+    /**
+     * Finalize a draft invoice to Issued (authoritative totals, Late Fee snapshot, approver).
+     *
+     * Source ownership fields (contract, utility) are not editable here.
+     * Safe line corrections (current unit / unit price) are recalculated server-side.
+     *
+     * @param  array{
+     *     late_fee_selection?: int|string|null,
+     *     late_fee_rule_id?: int|null,
+     *     late_fee_waived?: bool|null,
+     *     due_date?: string,
+     *     items?: list<array{id: int, current_reading?: float|int|null, unit_price?: float|int|null}>
+     * }  $data
      */
     public function issue(Invoice $invoice, array $data = []): Invoice
     {
+        $this->assertNoSourceOwnershipEditsOnConfirm($data);
+
         $issued = DB::transaction(function () use ($invoice, $data): Invoice {
             /** @var Invoice $locked */
             $locked = Invoice::query()
@@ -184,13 +215,24 @@ class InvoiceService
                 throw new ConcurrentConflictException('Only draft invoices can be issued.');
             }
 
+            $reviewData = $data;
+            unset($reviewData['items']);
+            $this->applyDraftReviewUpdates($locked, $reviewData);
+
+            if (! empty($data['items']) && is_array($data['items'])) {
+                $this->applyConfirmInvoiceItemCorrections($locked, $data['items']);
+                $this->recalculateInvoiceTotal($locked);
+            }
+
             $policySnapshot = $this->invoiceLateFeeService->approvalSnapshot($locked, $data);
+
+            $issuedDate = $locked->issued_date?->toDateString() ?? now()->toDateString();
 
             $locked->update([
                 ...$policySnapshot,
                 'status' => 'issued',
-                // Issue date is the approval/issue moment for this workflow.
-                'issued_date' => now()->toDateString(),
+                // Prefer existing draft issue date; otherwise confirmation moment.
+                'issued_date' => $issuedDate,
                 'approved_by' => Auth::id(),
                 'approved_at' => now(),
                 // Late fee amount stays 0 until due + grace (scheduler accrues later).
@@ -418,9 +460,246 @@ class InvoiceService
             throw new InvalidArgumentException('Only draft invoices can be updated.');
         }
 
-        $invoice->update($data);
+        return DB::transaction(function () use ($invoice, $data): Invoice {
+            /** @var Invoice $locked */
+            $locked = Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        return $invoice->fresh(BillingEagerLoads::invoice());
+            if ($locked->status !== 'draft') {
+                throw new InvalidArgumentException('Only draft invoices can be updated.');
+            }
+
+            $this->applyDraftReviewUpdates($locked, $data);
+
+            return $locked->fresh(BillingEagerLoads::invoice());
+        });
+    }
+
+    /**
+     * Apply allowed draft review edits (dates and optional update-path fields) and recalculate totals.
+     *
+     * Confirm/issue rejects source ownership keys before calling this; UpdateInvoice may still
+     * include contract/items when editing drafts through the dedicated update endpoint.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function applyDraftReviewUpdates(Invoice $invoice, array $data): void
+    {
+        $attributes = [];
+
+        if (array_key_exists('contract_id', $data) && $data['contract_id'] !== null) {
+            $attributes['contract_id'] = (int) $data['contract_id'];
+        }
+
+        if (array_key_exists('utility_id', $data)) {
+            $attributes['utility_id'] = $data['utility_id'];
+        }
+
+        if (array_key_exists('type', $data) && $data['type'] !== null) {
+            $attributes['type'] = $data['type'];
+        }
+
+        if (array_key_exists('due_date', $data) && $data['due_date'] !== null) {
+            $attributes['due_date'] = Carbon::parse($data['due_date'])->toDateString();
+        }
+
+        if (array_key_exists('issued_date', $data)) {
+            $attributes['issued_date'] = $data['issued_date']
+                ? Carbon::parse($data['issued_date'])->toDateString()
+                : null;
+        }
+
+        if (array_key_exists('billing_month', $data)) {
+            $attributes['billing_month'] = $data['billing_month']
+                ? Carbon::parse($data['billing_month'])->startOfMonth()->toDateString()
+                : null;
+        }
+
+        if (array_key_exists('late_fee', $data)) {
+            $attributes['late_fee'] = $data['late_fee'];
+        }
+
+        if ($attributes !== []) {
+            $invoice->update($attributes);
+        }
+
+        if (! empty($data['items']) && is_array($data['items'])) {
+            $this->syncDraftInvoiceItems($invoice, $data['items']);
+            $this->recalculateInvoiceTotal($invoice);
+        }
+    }
+
+    /**
+     * Confirm must not rewrite source ownership or submit calculated totals.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function assertNoSourceOwnershipEditsOnConfirm(array $data): void
+    {
+        $prohibited = [
+            'contract_id' => 'Invoice customer/contract cannot be changed during confirm.',
+            'utility_id' => 'Invoice utility source cannot be changed during confirm.',
+            'type' => 'Invoice type cannot be changed during confirm.',
+            'building_id' => 'Invoice building cannot be changed during confirm.',
+            'room_id' => 'Invoice room cannot be changed during confirm.',
+            'user_id' => 'Invoice customer ownership cannot be changed during confirm.',
+            'issued_date' => 'Issue date is system-controlled and cannot be changed during confirm.',
+            'billing_month' => 'Billing period cannot be changed during confirm.',
+            'late_fee' => 'Late fee amount is calculated and cannot be set during confirm.',
+            'total_amount' => 'Invoice total is calculated and cannot be set during confirm.',
+        ];
+
+        foreach ($prohibited as $key => $message) {
+            if (array_key_exists($key, $data)) {
+                throw new InvalidArgumentException($message);
+            }
+        }
+    }
+
+    /**
+     * Apply domain-safe confirm corrections and recalculate usage/line amounts server-side.
+     *
+     * Metered (utility) lines: current_reading + unit_price.
+     * Non-metered (rent/installment) lines: unit_price only (amount mirrors unit price).
+     *
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function applyConfirmInvoiceItemCorrections(Invoice $invoice, array $items): void
+    {
+        foreach ($items as $payload) {
+            $itemId = (int) ($payload['id'] ?? 0);
+
+            if ($itemId <= 0) {
+                continue;
+            }
+
+            /** @var InvoiceItem|null $item */
+            $item = InvoiceItem::query()
+                ->whereKey($itemId)
+                ->where('invoice_id', $invoice->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $item) {
+                throw new InvalidArgumentException('One or more invoice line items are invalid for this invoice.');
+            }
+
+            if ($item->isMetered()) {
+                $previous = $item->previous_reading;
+                $current = array_key_exists('current_reading', $payload)
+                    ? $payload['current_reading']
+                    : $item->current_reading;
+                $unitPrice = array_key_exists('unit_price', $payload)
+                    ? $payload['unit_price']
+                    : $item->unit_price;
+
+                if ($current !== null && $previous !== null && (float) $current < (float) $previous) {
+                    throw new InvalidArgumentException('Current unit cannot be less than previous unit.');
+                }
+
+                $usage = ($previous !== null && $current !== null)
+                    ? round((float) $current - (float) $previous, 2)
+                    : $item->usage;
+
+                $amount = ($usage !== null && $unitPrice !== null)
+                    ? round((float) $usage * (float) $unitPrice, 2)
+                    : (float) $item->amount;
+
+                $item->update([
+                    'current_reading' => $current,
+                    'usage' => $usage,
+                    'unit_price' => $unitPrice,
+                    'amount' => round((float) $amount, 2),
+                ]);
+
+                continue;
+            }
+
+            if (! array_key_exists('unit_price', $payload)) {
+                continue;
+            }
+
+            $unitPrice = $payload['unit_price'];
+
+            if ($unitPrice === null || (float) $unitPrice < 0) {
+                throw new InvalidArgumentException('Unit price must be zero or greater.');
+            }
+
+            $amount = round((float) $unitPrice, 2);
+
+            $item->update([
+                'unit_price' => $amount,
+                'amount' => $amount,
+            ]);
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     */
+    private function syncDraftInvoiceItems(Invoice $invoice, array $items): void
+    {
+        foreach ($items as $payload) {
+            $itemId = (int) ($payload['id'] ?? 0);
+
+            if ($itemId <= 0) {
+                continue;
+            }
+
+            /** @var InvoiceItem|null $item */
+            $item = InvoiceItem::query()
+                ->whereKey($itemId)
+                ->where('invoice_id', $invoice->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $item) {
+                throw new InvalidArgumentException('One or more invoice line items are invalid for this invoice.');
+            }
+
+            $previous = array_key_exists('previous_reading', $payload)
+                ? $payload['previous_reading']
+                : $item->previous_reading;
+            $current = array_key_exists('current_reading', $payload)
+                ? $payload['current_reading']
+                : $item->current_reading;
+            $unitPrice = array_key_exists('unit_price', $payload)
+                ? $payload['unit_price']
+                : $item->unit_price;
+
+            $isMetered = $previous !== null || $current !== null
+                || $item->previous_reading !== null
+                || $item->current_reading !== null
+                || $item->usage !== null;
+
+            $usage = array_key_exists('usage', $payload) ? $payload['usage'] : $item->usage;
+            $amount = array_key_exists('amount', $payload) ? $payload['amount'] : $item->amount;
+
+            if ($isMetered && $previous !== null && $current !== null) {
+                $usage = round((float) $current - (float) $previous, 2);
+                if ($unitPrice !== null) {
+                    $amount = round($usage * (float) $unitPrice, 2);
+                }
+            } elseif (! $isMetered && array_key_exists('unit_price', $payload) && ! array_key_exists('amount', $payload)) {
+                $amount = round((float) $unitPrice, 2);
+            }
+
+            $updates = [
+                'previous_reading' => $previous,
+                'current_reading' => $current,
+                'usage' => $usage,
+                'unit_price' => $unitPrice,
+                'amount' => round((float) $amount, 2),
+            ];
+
+            if (array_key_exists('description', $payload) && $payload['description'] !== null) {
+                $updates['description'] = $payload['description'];
+            }
+
+            $item->update($updates);
+        }
     }
 
     public function delete(Invoice $invoice): void
