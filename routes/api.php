@@ -165,7 +165,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('utilities', UtilityController::class);
 
     Route::post('invoices/generate-from-contract/{contract}', [InvoiceController::class, 'generateFromContract']);
-    Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue']);
+    Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'confirm']);
     Route::put('invoices/{invoice}/late-fee-policy', [InvoiceController::class, 'updateLateFeePolicy']);
     Route::get('invoices/{invoice}/document/download', [InvoiceController::class, 'downloadDocument']);
     Route::get('invoices/{invoice}/document/preview', [InvoiceController::class, 'previewDocument']);

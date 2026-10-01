@@ -67,13 +67,19 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function issue(
+    /**
+     * Confirm a pending (draft) invoice: persist review edits, snapshot Late Fee Rule,
+     * record confirming admin, and transition to Issued.
+     *
+     * Public route remains POST /invoices/{invoice}/issue for API compatibility.
+     */
+    public function confirm(
         IssueInvoiceRequest $request,
         Invoice $invoice,
         InvoiceService $invoiceService,
     ): JsonResponse {
         try {
-            $invoice = $invoiceService->issue($invoice, $request->validated());
+            $invoice = $invoiceService->confirm($invoice, $request->validated());
         } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
             $status = $exception instanceof ConcurrentConflictException ? 409 : 422;
 
@@ -81,7 +87,7 @@ class InvoiceController extends Controller
         }
 
         return response()->json([
-            'message' => 'Invoice issued and sent to customer successfully.',
+            'message' => 'Invoice confirmed successfully.',
             'data' => new InvoiceResource($invoice),
         ]);
     }

@@ -560,3 +560,213 @@ test('receipt document shows late fee notes only when invoice late fee accrued',
 
     Carbon::setTestNow();
 });
+
+test('confirm applies invoice-specific review edits atomically and leaves draft on failure', function (): void {
+    Carbon::setTestNow('2026-10-05 10:00:00');
+
+    $admin = lateFeeAdmin();
+    $customer = lateFeeCustomer();
+    $invoice = lateFeeDraftInvoice($admin, $customer);
+
+    $chargeTypeId = \App\Models\ChargeType::query()->where('slug', 'monthly-rent')->value('id')
+        ?? \App\Models\ChargeType::query()->value('id');
+
+    $item = \App\Models\InvoiceItem::query()->create([
+        'invoice_id' => $invoice->id,
+        'charge_type_id' => $chargeTypeId,
+        'description' => 'Rent',
+        'unit_price' => 500000,
+        'amount' => 500000,
+    ]);
+
+    $invoice->update(['total_amount' => 500000]);
+
+    $rule = LateFee::factory()->active()->create([
+        'name' => 'Review Late Fee',
+        'type' => 'fixed',
+        'value' => 15000,
+        'per' => 'day',
+        'grace_days' => 2,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => $rule->id,
+            'due_date' => '2026-10-15',
+            'items' => [
+                [
+                    'id' => $item->id,
+                    'unit_price' => 520000,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'issued')
+        ->assertJsonPath('data.due_date', '2026-10-15')
+        ->assertJsonPath('data.issued_date', '2026-10-05')
+        ->assertJsonPath('data.late_fee_rule_id', $rule->id);
+
+    expect((float) $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/invoices/{$invoice->id}")
+        ->json('data.total_amount'))->toBe(520000.0);
+
+    $invoice->refresh();
+    $item->refresh();
+
+    expect($invoice->status)->toBe('issued')
+        ->and($invoice->due_date->toDateString())->toBe('2026-10-15')
+        ->and((float) $invoice->total_amount)->toBe(520000.0)
+        ->and($item->description)->toBe('Rent')
+        ->and((float) $item->unit_price)->toBe(520000.0)
+        ->and((float) $item->amount)->toBe(520000.0);
+
+    $other = lateFeeDraftInvoice($admin, $customer);
+    $otherItem = \App\Models\InvoiceItem::query()->create([
+        'invoice_id' => $other->id,
+        'charge_type_id' => $chargeTypeId,
+        'description' => 'Rent',
+        'unit_price' => 400000,
+        'amount' => 400000,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$other->id}/issue", [
+            'late_fee_selection' => null,
+            'due_date' => '2026-11-01',
+        ])
+        ->assertStatus(422);
+
+    $other->refresh();
+    $otherItem->refresh();
+
+    expect($other->status)->toBe('draft')
+        ->and($other->due_date?->toDateString())->not->toBe('2026-11-01')
+        ->and($otherItem->description)->toBe('Rent')
+        ->and((float) $otherItem->amount)->toBe(400000.0);
+
+    Carbon::setTestNow();
+});
+
+test('confirm rejects source ownership and calculated field edits', function (): void {
+    $admin = lateFeeAdmin();
+    $customer = lateFeeCustomer();
+    $invoice = lateFeeDraftInvoice($admin, $customer);
+    $originalContractId = $invoice->contract_id;
+
+    $chargeTypeId = \App\Models\ChargeType::query()->where('slug', 'monthly-rent')->value('id')
+        ?? \App\Models\ChargeType::query()->value('id');
+
+    $item = \App\Models\InvoiceItem::query()->create([
+        'invoice_id' => $invoice->id,
+        'charge_type_id' => $chargeTypeId,
+        'description' => 'Rent',
+        'unit_price' => 500000,
+        'amount' => 500000,
+    ]);
+
+    $rule = LateFee::factory()->active()->create([
+        'name' => 'Blocked Source Edit Rule',
+        'type' => 'fixed',
+        'value' => 1000,
+        'per' => 'day',
+        'grace_days' => 1,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => $rule->id,
+            'contract_id' => $originalContractId,
+            'due_date' => '2026-10-15',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['contract_id']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => $rule->id,
+            'due_date' => '2026-10-15',
+            'issued_date' => '2026-10-01',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['issued_date']);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => $rule->id,
+            'due_date' => '2026-10-15',
+            'items' => [
+                [
+                    'id' => $item->id,
+                    'description' => 'Should Not Persist',
+                    'unit_price' => 1,
+                    'amount' => 1,
+                ],
+            ],
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['items.0.description', 'items.0.amount']);
+
+    $invoice->refresh();
+    $item->refresh();
+
+    expect($invoice->status)->toBe('draft')
+        ->and($invoice->contract_id)->toBe($originalContractId)
+        ->and($item->description)->toBe('Rent')
+        ->and((float) $item->amount)->toBe(500000.0);
+});
+
+test('confirm recalculates metered usage and line amount from current unit and unit price', function (): void {
+    $admin = lateFeeAdmin();
+    $customer = lateFeeCustomer();
+    $invoice = lateFeeDraftInvoice($admin, $customer);
+
+    $chargeTypeId = \App\Models\ChargeType::query()->where('slug', 'utility-charges')->value('id')
+        ?? \App\Models\ChargeType::query()->value('id');
+
+    $item = \App\Models\InvoiceItem::query()->create([
+        'invoice_id' => $invoice->id,
+        'charge_type_id' => $chargeTypeId,
+        'description' => 'Electricity',
+        'previous_reading' => 100,
+        'current_reading' => 150,
+        'usage' => 50,
+        'unit_price' => 200,
+        'amount' => 10000,
+    ]);
+
+    $invoice->update(['total_amount' => 10000]);
+
+    $rule = LateFee::factory()->active()->create([
+        'name' => 'Meter Confirm Rule',
+        'type' => 'fixed',
+        'value' => 5000,
+        'per' => 'day',
+        'grace_days' => 1,
+    ]);
+
+    $this->actingAs($admin, 'sanctum')
+        ->postJson("/api/invoices/{$invoice->id}/issue", [
+            'late_fee_selection' => $rule->id,
+            'due_date' => '2026-10-20',
+            'items' => [
+                [
+                    'id' => $item->id,
+                    'current_reading' => 180,
+                    'unit_price' => 250,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'issued');
+
+    $item->refresh();
+    $invoice->refresh();
+
+    expect((float) $item->previous_reading)->toBe(100.0)
+        ->and((float) $item->current_reading)->toBe(180.0)
+        ->and((float) $item->usage)->toBe(80.0)
+        ->and((float) $item->unit_price)->toBe(250.0)
+        ->and((float) $item->amount)->toBe(20000.0)
+        ->and((float) $invoice->total_amount)->toBe(20000.0)
+        ->and((float) $invoice->late_fee)->toBe(0.0);
+});
