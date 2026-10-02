@@ -120,7 +120,7 @@ function seedIssuedReceiptForMethod(User $admin, User $customer, PaymentMethod $
 
 test('receipt list payment_method_id filters by related payment method only', function () {
     $admin = receiptListFilterAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $cash = PaymentMethod::query()->where('slug', 'cash')->firstOrFail();
     $kbz = PaymentMethod::query()->where('slug', 'kbz-pay')->firstOrFail();

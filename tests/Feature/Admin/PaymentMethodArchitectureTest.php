@@ -24,7 +24,7 @@ function paymentMethodAdmin(): User
 
 function paymentMethodCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    return User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 }
 
 it('seeds wallet methods with shared phone and hides cash from customers', function (): void {

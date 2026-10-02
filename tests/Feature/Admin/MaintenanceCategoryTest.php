@@ -56,7 +56,7 @@ it('creates updates and toggles maintenance category status', function (): void 
 });
 
 it('returns only active categories to customers', function (): void {
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     MaintenanceCategory::query()->where('slug', 'hvac')->update(['status' => 'inactive']);
 
@@ -73,7 +73,7 @@ it('returns only active categories to customers', function (): void {
 
 it('rejects customer create with inactive or unknown category', function (): void {
     $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     MaintenanceCategory::query()->where('slug', 'hvac')->update(['status' => 'inactive']);
 
@@ -132,7 +132,7 @@ it('rejects customer create with inactive or unknown category', function (): voi
 
 it('keeps historical category readable after category is inactivated', function (): void {
     $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $category = MaintenanceCategory::query()->where('slug', 'hvac')->firstOrFail();
 
     $building = \App\Models\Building::query()->create([

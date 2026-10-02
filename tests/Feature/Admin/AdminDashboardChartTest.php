@@ -25,7 +25,7 @@ function dashboardAdmin(): User
 
 test('admin dashboard charts endpoint returns live chart metrics', function () {
     $admin = dashboardAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Rosewood Tower',
@@ -153,7 +153,7 @@ test('customer cannot access admin dashboard charts endpoint', function () {
     (new RoleSeeder)->run();
     (new UserSeeder)->run();
 
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $this->actingAs($customer, 'sanctum')
         ->getJson('/api/admin/dashboard/charts')
@@ -162,7 +162,7 @@ test('customer cannot access admin dashboard charts endpoint', function () {
 
 test('system alerts expose individual overdue invoices and high-priority maintenance', function () {
     $admin = dashboardAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Golden Hill Residence',
@@ -264,7 +264,7 @@ test('system alerts expose individual overdue invoices and high-priority mainten
 
 test('system alerts return at most five individual items', function () {
     $admin = dashboardAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Alert Cap Tower',
@@ -337,7 +337,7 @@ test('system alerts return at most five individual items', function () {
 
 test('pending approval latest returns newest five matching kpi definition', function () {
     $admin = dashboardAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $paymentMethod = PaymentMethod::query()->firstOrFail();
 
     $building = Building::query()->create([

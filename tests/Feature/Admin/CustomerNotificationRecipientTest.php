@@ -44,7 +44,7 @@ function recipientAuditAdmin(): User
 
 function recipientAuditStack(User $admin, ?User $second = null): array
 {
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Recipient Audit Tower',
@@ -93,7 +93,7 @@ test('authoritative customer email is users.email and send uses current value af
     ['customer' => $customer, 'contract' => $contract, 'room' => $room] = recipientAuditStack($admin);
 
     $oldEmail = $customer->email;
-    expect($oldEmail)->toBe('mgmg@gmail.com');
+    expect($oldEmail)->toBe('hsuhtet562@gmail.com');
 
     $invoice = Invoice::query()->create([
         'contract_id' => $contract->id,
@@ -212,7 +212,7 @@ test('sale contract send uses current users.email after customer email change', 
     Mail::fake();
 
     $admin = recipientAuditAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Sale Recipient Tower',

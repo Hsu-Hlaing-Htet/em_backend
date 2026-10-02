@@ -11,7 +11,7 @@ final class CustomerHistoryProfiles
     {
         return [
             'active_rent' => [
-                'mgmg@gmail.com',
+                'hsuhtet562@gmail.com',
                 'hlahla@gmail.com',
                 'koko@gmail.com',
             ],

@@ -22,7 +22,7 @@ function lifecycleActors(): array
 
     return [
         User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail(),
-        User::query()->where('email', 'mgmg@gmail.com')->firstOrFail(),
+        User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail(),
     ];
 }
 

@@ -88,7 +88,7 @@ class WorkflowScenarioSeeder extends Seeder
         $this->seedRentPending($admin, $customers->get('thandar@gmail.com'), $rooms['R-PENDING'], $fullPlan);
         $activeRent = $this->seedRentActive(
             $admin,
-            $customers->get('mgmg@gmail.com'),
+            $customers->get('hsuhtet562@gmail.com'),
             $rooms['R-ACTIVE'],
             $fullPlan,
             $chargeTypes,

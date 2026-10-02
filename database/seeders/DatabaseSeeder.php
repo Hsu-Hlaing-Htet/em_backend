@@ -52,7 +52,7 @@ class DatabaseSeeder extends Seeder
         $this->command?->table(
             ['Persona', 'Email'],
             [
-                ['Active rent (full billing matrix)', 'mgmg@gmail.com'],
+                ['Active rent (full billing matrix)', 'hsuhtet562@gmail.com'],
                 ['Active sale (approved/reserved)', 'susu@gmail.com'],
                 ['Former rent (completed)', 'zawzaw@gmail.com'],
                 ['Former sale (completed/sold)', 'nwenwe@gmail.com'],

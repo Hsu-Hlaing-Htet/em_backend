@@ -42,7 +42,7 @@ function seedSaleDocumentStack(): array
         'booking_deposit_price' => 85000000,
     ]);
 
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     return compact('building', 'room', 'customer');
 }
@@ -86,7 +86,7 @@ function seedActiveRentDocumentStack(): array
         'booking_deposit_price' => 0,
     ]);
 
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     return compact('building', 'room', 'customer');
 }

@@ -15,7 +15,7 @@ beforeEach(function (): void {
 
 function notificationCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    return User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 }
 
 it('marks a customer notification as read and persists read_at', function (): void {

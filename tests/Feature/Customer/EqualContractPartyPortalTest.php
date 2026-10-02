@@ -31,7 +31,7 @@ function equalPartyUsers(): array
 
     return [
         'admin' => User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail(),
-        'customer1' => User::query()->where('email', 'mgmg@gmail.com')->firstOrFail(),
+        'customer1' => User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail(),
         'customer2' => User::query()->where('email', 'hlahla@gmail.com')->firstOrFail(),
         'customer3' => User::query()->where('email', 'ko@gmail.com')->firstOrFail(),
     ];

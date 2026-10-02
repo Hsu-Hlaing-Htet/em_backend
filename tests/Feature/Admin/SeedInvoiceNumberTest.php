@@ -29,7 +29,7 @@ function seedInvoiceNumberFixtures(): array
     (new UserSeeder)->run();
 
     $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $second = User::query()->where('email', 'susu@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
@@ -320,7 +320,7 @@ test('legacy INV-CF numbers are normalized in place without changing money', fun
     seedInvoiceNumberFixtures();
 
     $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $contract = Contract::query()->where('contract_number', 'R-900001')->firstOrFail();
 
     $invoice = Invoice::query()->create([

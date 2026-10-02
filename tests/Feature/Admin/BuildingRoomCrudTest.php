@@ -265,7 +265,7 @@ test('bulk room delete rejects protected occupied sold and contracted rooms', fu
 
 test('customer cannot manage buildings or rooms', function () {
     $admin = propertyAdmin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Restricted Tower',

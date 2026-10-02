@@ -33,7 +33,7 @@ function paymentNotificationAdmin(): User
 
 function paymentNotificationCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    return User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 }
 
 function seedPaymentNotificationPayment(User $admin, User $customer): array
