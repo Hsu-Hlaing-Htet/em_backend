@@ -8,7 +8,7 @@ uses(RefreshDatabase::class);
 
 test('utility list filters by billing month date range', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     ['room' => $room, 'utilityType' => $utilityType, 'rate' => $rate] = tb3RentPeriodStack(
         $admin,
         $customer,

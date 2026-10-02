@@ -28,7 +28,7 @@ function tb3Admin(): User
 
 function tb3Customer(): User
 {
-    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    return User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 }
 
 function tb3OtherCustomer(): User

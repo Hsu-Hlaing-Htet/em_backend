@@ -66,7 +66,7 @@ final class MyanmarSampleData
     public static function customers(): array
     {
         $customers = [
-            ['name' => 'Mg Mg', 'phone' => '+95942011100', 'nrc' => '12/YaKaNa(N)111001', 'dob' => '1992-04-12', 'gender' => 'male', 'address' => 'No. 12, Pyay Road, Kamayut Township, Yangon'],
+            ['name' => 'Mg Mg', 'email' => 'hsuhtet562@gmail.com', 'phone' => '+95942011100', 'nrc' => '12/YaKaNa(N)111001', 'dob' => '1992-04-12', 'gender' => 'male', 'address' => 'No. 12, Pyay Road, Kamayut Township, Yangon'],
             ['name' => 'Ma Hla Hla', 'phone' => '+95942111100', 'nrc' => '12/BaKaTa(N)111002', 'dob' => '1994-08-03', 'gender' => 'female', 'address' => 'No. 45, Inya Road, Bahan Township, Yangon'],
             ['name' => 'Ko Ko', 'phone' => '+95942211100', 'nrc' => '12/LaKaNa(N)111003', 'dob' => '1990-11-21', 'gender' => 'male', 'address' => 'No. 78, Kabar Aye Pagoda Road, Mayangone Township, Yangon'],
             ['name' => 'Ma Su Su', 'phone' => '+95942311100', 'nrc' => '12/MaNyaTa(N)111004', 'dob' => '1996-01-15', 'gender' => 'female', 'address' => 'No. 19, University Avenue, Bahan Township, Yangon'],
@@ -91,9 +91,17 @@ final class MyanmarSampleData
         $usedEmails = [];
 
         return array_map(function (array $customer) use (&$usedEmails): array {
+            if (! empty($customer['email'])) {
+                $email = (string) $customer['email'];
+                $usedEmails[$email] = true;
+                $usedEmails[strtolower($email)] = true;
+            } else {
+                $email = self::uniqueEmailForName($customer['name'], $usedEmails);
+            }
+
             return [
                 ...$customer,
-                'email' => self::uniqueEmailForName($customer['name'], $usedEmails),
+                'email' => $email,
             ];
         }, $customers);
     }

@@ -22,7 +22,7 @@ function customerNotFoundUsers(): array
 
     return [
         'admin' => User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail(),
-        'customer' => User::query()->where('email', 'mgmg@gmail.com')->firstOrFail(),
+        'customer' => User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail(),
         'other' => User::query()->where('email', 'hlahla@gmail.com')->firstOrFail(),
         'joint' => User::query()->where('email', 'ko@gmail.com')->firstOrFail(),
     ];

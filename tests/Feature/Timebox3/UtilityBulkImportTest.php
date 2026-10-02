@@ -11,7 +11,7 @@ uses(RefreshDatabase::class);
 
 test('bulk utility import resolves previous reading from latest room meter history across contracts', function () {
     $admin = tb3Admin();
-    $customerA = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customerA = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $customerB = User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
 
     ['room' => $room, 'contract' => $contractA, 'utilityType' => $utilityType, 'rate' => $rate] = tb3RentPeriodStack(
@@ -113,7 +113,7 @@ test('bulk utility import resolves previous reading from latest room meter histo
 
 test('bulk utility import requires an active utility type', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     ['room' => $room] = tb3RentPeriodStack(
         $admin,
         $customer,
@@ -139,7 +139,7 @@ test('bulk utility import requires an active utility type', function () {
 
 test('bulk utility import accepts short Excel formatted billing month dates', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType] = tb3RentPeriodStack(
         $admin,
         $customer,
@@ -171,7 +171,7 @@ test('bulk utility import accepts short Excel formatted billing month dates', fu
 
 test('bulk utility import preview validates matched data without creating records', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $start = Carbon::parse('2025-08-01');
     ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType] = tb3RentPeriodStack(
         $admin,
@@ -238,7 +238,7 @@ test('bulk utility import preview validates matched data without creating record
 
 test('bulk utility import validates sequential months using valid earlier rows in the same file', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     ['room' => $room, 'utilityType' => $utilityType] = tb3RentPeriodStack(
         $admin,
         $customer,
@@ -355,7 +355,7 @@ test('bulk utility import validates sequential months using valid earlier rows i
 
 test('bulk utility import confirm is disabled server-side when any row is invalid', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     ['room' => $room, 'utilityType' => $utilityType] = tb3RentPeriodStack(
         $admin,
         $customer,

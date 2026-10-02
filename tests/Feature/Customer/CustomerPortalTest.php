@@ -17,7 +17,7 @@ function customerPortalUser(): User
     (new RoleSeeder)->run();
     (new UserSeeder)->run();
 
-    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    return User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 }
 
 function customerPortalAdmin(): User

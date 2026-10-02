@@ -35,7 +35,7 @@ function concurrencyAdmin(): User
 
 function concurrencyCustomer(): User
 {
-    return User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    return User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 }
 
 function concurrencyOtherCustomer(): User

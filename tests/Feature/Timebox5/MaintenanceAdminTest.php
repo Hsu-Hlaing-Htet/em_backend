@@ -20,7 +20,7 @@ function tb5Users(): array
 
     return [
         'admin' => User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail(),
-        'customer' => User::query()->where('email', 'mgmg@gmail.com')->firstOrFail(),
+        'customer' => User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail(),
         'otherCustomer' => User::query()->where('email', 'hlahla@gmail.com')->firstOrFail(),
     ];
 }

@@ -31,7 +31,7 @@ function seedInvoiceSourceMixStack(): array
     (new UserSeeder)->run();
 
     $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     Auth::login($admin);
 
     $building = Building::query()->create([
@@ -414,7 +414,7 @@ test('completed sale installments do not pre-generate future months past demo as
     (new UserSeeder)->run();
 
     $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     $building = Building::query()->create([
         'building_name' => 'Future Cap Tower',

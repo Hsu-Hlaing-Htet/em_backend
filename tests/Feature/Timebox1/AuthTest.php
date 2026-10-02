@@ -109,7 +109,7 @@ test('role middleware allows admin and blocks customer on admin routes', functio
     tb1SeedUsers();
 
     $admin = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     expect($admin->role?->name)->toBe(Role::ADMIN);
     expect($customer->role?->name)->toBe(Role::CUSTOMER);

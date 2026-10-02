@@ -10,7 +10,7 @@ uses(RefreshDatabase::class);
 
 test('utility records require consecutive billing months and reading dates', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $start = Carbon::parse('2025-08-01');
     ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType, 'rate' => $rate] = tb3RentPeriodStack(
         $admin,
@@ -114,7 +114,7 @@ test('utility records require consecutive billing months and reading dates', fun
 
 test('new contract starts a fresh utility sequence without transferring prior history', function () {
     $admin = tb3Admin();
-    $customerA = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customerA = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $customerB = User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
 
     ['room' => $room, 'contract' => $contractA, 'utilityType' => $utilityType, 'rate' => $rate] = tb3RentPeriodStack(
@@ -177,7 +177,7 @@ test('new contract starts a fresh utility sequence without transferring prior hi
 
 test('sale room utility billing continues for the owner after the sale contract end date', function () {
     $admin = tb3Admin();
-    $customer = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
 
     ['room' => $room, 'contract' => $contract, 'utilityType' => $utilityType, 'rate' => $rate] = tb3SalePeriodStack(
         $admin,
@@ -245,7 +245,7 @@ test('sale room utility billing continues for the owner after the sale contract 
 
 test('rent room utility billing remains bounded by the rental period and resolves a new valid rent contract', function () {
     $admin = tb3Admin();
-    $customerA = User::query()->where('email', 'mgmg@gmail.com')->firstOrFail();
+    $customerA = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
     $customerB = User::query()->where('email', 'hlahla@gmail.com')->firstOrFail();
 
     ['room' => $room, 'contract' => $contractA, 'utilityType' => $utilityType, 'rate' => $rate] = tb3RentPeriodStack(
