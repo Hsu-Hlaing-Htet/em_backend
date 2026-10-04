@@ -108,7 +108,7 @@ class MaintenanceRequestController extends Controller
         try {
             $maintenanceRequest = $maintenanceRequestService->complete(
                 $maintenanceRequest,
-                $request->validated('resolution_note'),
+                $request->validated(),
             );
         } catch (ConcurrentConflictException|InvalidArgumentException $exception) {
             $status = $exception instanceof ConcurrentConflictException ? 409 : 422;

@@ -15,6 +15,7 @@ use App\Models\UtilityItem;
 use App\Models\UtilityRate;
 use App\Models\UtilityType;
 use Database\Seeders\ChargeTypeSeeder;
+use Database\Seeders\MaintenanceCategorySeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
@@ -29,6 +30,7 @@ function concurrencyAdmin(): User
     (new UserSeeder)->run();
     (new ChargeTypeSeeder)->run();
     (new PaymentMethodSeeder)->run();
+    (new MaintenanceCategorySeeder)->run();
 
     return User::query()->where('email', 'admin@rosewoodroyale.com')->firstOrFail();
 }

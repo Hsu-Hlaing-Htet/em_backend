@@ -7,6 +7,7 @@ use App\Models\ChargeType;
 use App\Models\Contract;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\MaintenanceRequest;
 use App\Models\Payment;
 use App\Models\Receipt;
 use App\Models\Utility;
@@ -452,6 +453,74 @@ class InvoiceService
     }
 
     /**
+     * Append a maintenance fee line to the room's consolidated draft invoice for the current billing month.
+     * Does not issue the invoice — leaves it Pending/Draft for Invoice Approval.
+     */
+    public function addMaintenanceFeeFromRequest(
+        MaintenanceRequest $maintenanceRequest,
+        float $feeAmount,
+        string $chargeDescription,
+    ): Invoice {
+        if ($feeAmount <= 0) {
+            throw new InvalidArgumentException('Maintenance fee must be greater than zero to create an invoice charge.');
+        }
+
+        $chargeDescription = trim($chargeDescription);
+
+        if ($chargeDescription === '') {
+            throw new InvalidArgumentException('Charge description is required when a maintenance fee is charged.');
+        }
+
+        return DB::transaction(function () use ($maintenanceRequest, $feeAmount, $chargeDescription): Invoice {
+            /** @var MaintenanceRequest $lockedRequest */
+            $lockedRequest = MaintenanceRequest::query()
+                ->whereKey($maintenanceRequest->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Idempotent: already billed for this maintenance request.
+            if ($lockedRequest->invoice_id) {
+                $existingItem = InvoiceItem::query()
+                    ->where('maintenance_request_id', $lockedRequest->id)
+                    ->first();
+
+                if ($existingItem) {
+                    return $this->find((int) $lockedRequest->invoice_id);
+                }
+            }
+
+            $existingBySource = InvoiceItem::query()
+                ->where('maintenance_request_id', $lockedRequest->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existingBySource) {
+                $lockedRequest->update(['invoice_id' => $existingBySource->invoice_id]);
+
+                return $this->find((int) $existingBySource->invoice_id);
+            }
+
+            $contract = $this->resolveContractForRoom((int) $lockedRequest->room_id);
+            $period = $this->normalizeBillingMonth(now());
+
+            /** @var Contract $lockedContract */
+            $lockedContract = Contract::query()
+                ->whereKey($contract->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $invoice = $this->findOrCreateDraftInvoice($lockedContract, $period);
+            $this->ensureContractChargeItem($invoice, $lockedContract, $period);
+            $this->appendMaintenanceFeeItem($invoice, $lockedRequest, $feeAmount);
+            $this->recalculateInvoiceTotal($invoice);
+
+            $lockedRequest->update(['invoice_id' => $invoice->id]);
+
+            return $invoice->fresh(BillingEagerLoads::invoice());
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function update(Invoice $invoice, array $data): Invoice
@@ -751,8 +820,13 @@ class InvoiceService
             }
         }
 
+        return $this->resolveContractForRoom((int) $utility->room_id);
+    }
+
+    private function resolveContractForRoom(int $roomId): Contract
+    {
         $contract = Contract::query()
-            ->where('room_id', $utility->room_id)
+            ->where('room_id', $roomId)
             ->where('type', 'rent')
             ->whereIn('status', ['active', 'completed'])
             ->latest('id')
@@ -763,7 +837,7 @@ class InvoiceService
         }
 
         $contract = Contract::query()
-            ->where('room_id', $utility->room_id)
+            ->where('room_id', $roomId)
             ->where('type', 'sale')
             ->whereIn('status', ['approved', 'active', 'completed'])
             ->latest('id')
@@ -931,6 +1005,42 @@ class InvoiceService
         }
     }
 
+    private function appendMaintenanceFeeItem(
+        Invoice $invoice,
+        MaintenanceRequest $maintenanceRequest,
+        float $feeAmount,
+    ): void {
+        $existing = InvoiceItem::query()
+            ->where('maintenance_request_id', $maintenanceRequest->id)
+            ->exists();
+
+        if ($existing) {
+            return;
+        }
+
+        $chargeType = ChargeType::query()->where('slug', 'maintenance-fee')->first();
+
+        if (! $chargeType) {
+            throw new InvalidArgumentException('Maintenance fee charge type is not configured.');
+        }
+
+        try {
+            InvoiceItem::query()->create([
+                'invoice_id' => $invoice->id,
+                'charge_type_id' => $chargeType->id,
+                'maintenance_request_id' => $maintenanceRequest->id,
+                'description' => 'Maintenance Fee',
+                'amount' => round($feeAmount, 2),
+            ]);
+        } catch (QueryException $exception) {
+            if ($this->isUniqueMaintenanceRequestItemViolation($exception)) {
+                return;
+            }
+
+            throw $exception;
+        }
+    }
+
     private function recalculateInvoiceTotal(Invoice $invoice): void
     {
         $subtotal = (float) InvoiceItem::query()
@@ -958,5 +1068,14 @@ class InvoiceService
         return str_contains($message, 'invoices_contract_id_billing_month_unique')
             || (str_contains($message, 'UNIQUE constraint failed') && str_contains($message, 'billing_month'))
             || (str_contains($message, 'Duplicate entry') && str_contains($message, 'billing_month'));
+    }
+
+    private function isUniqueMaintenanceRequestItemViolation(QueryException $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'invoice_items_maintenance_request_id_unique')
+            || (str_contains($message, 'UNIQUE constraint failed') && str_contains($message, 'maintenance_request_id'))
+            || (str_contains($message, 'Duplicate entry') && str_contains($message, 'maintenance_request_id'));
     }
 }

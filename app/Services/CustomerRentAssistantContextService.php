@@ -44,6 +44,8 @@ class CustomerRentAssistantContextService
         'sender',
         'proof_image_path',
         'proof_image_url',
+        'attachment_path',
+        'attachment_url',
         'avatar_path',
         'password',
         'remember_token',

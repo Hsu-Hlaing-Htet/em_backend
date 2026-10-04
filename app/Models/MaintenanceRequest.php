@@ -21,14 +21,21 @@ class MaintenanceRequest extends Model
         'category',
         'priority',
         'description',
+        'attachment_path',
         'status',
         'rejection_reason',
         'resolution_note',
+        'maintenance_fee_amount',
+        'charge_description',
+        'invoice_id',
     ];
 
     protected function casts(): array
     {
-        return ['approved_at' => 'datetime'];
+        return [
+            'approved_at' => 'datetime',
+            'maintenance_fee_amount' => 'decimal:2',
+        ];
     }
 
     public function room(): BelongsTo { return $this->belongsTo(Room::class); }
@@ -38,5 +45,10 @@ class MaintenanceRequest extends Model
     public function maintenanceCategory(): BelongsTo
     {
         return $this->belongsTo(MaintenanceCategory::class);
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
     }
 }

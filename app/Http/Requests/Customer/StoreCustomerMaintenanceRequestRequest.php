@@ -35,6 +35,7 @@ class StoreCustomerMaintenanceRequestRequest extends FormRequest
             'category' => ['required', 'string', 'max:255', MaintenanceRequestOptions::activeCategoryRule()],
             'priority' => ['required', 'string', Rule::in(MaintenanceRequestOptions::PRIORITIES)],
             'description' => ['required', 'string', 'max:5000'],
+            'attachment' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'user_id' => ['prohibited'],
             'status' => ['prohibited'],
             'created_by' => ['prohibited'],
@@ -42,6 +43,7 @@ class StoreCustomerMaintenanceRequestRequest extends FormRequest
             'approved_at' => ['prohibited'],
             'rejection_reason' => ['prohibited'],
             'resolution_note' => ['prohibited'],
+            'attachment_path' => ['prohibited'],
         ];
     }
 

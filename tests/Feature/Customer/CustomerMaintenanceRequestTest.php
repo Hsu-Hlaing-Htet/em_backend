@@ -9,6 +9,8 @@ use Database\Seeders\MaintenanceCategorySeeder;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -268,4 +270,81 @@ it('returns eligible rooms from active approved contracts only', function (): vo
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $activeRoom->id);
+});
+
+it('stores an optional image attachment and returns it on detail', function (): void {
+    Storage::fake('public');
+    ['admin' => $admin, 'customer' => $customer] = maintenanceUsers();
+    $room = createOccupiedRoomFor($customer, $admin);
+
+    $create = $this->actingAs($customer, 'sanctum')
+        ->post('/api/customer/maintenance-requests', [
+            'room_id' => $room->id,
+            'title' => 'Leaking bathroom pipe',
+            'category' => 'plumbing',
+            'priority' => 'high',
+            'description' => 'Water is leaking under the sink.',
+            'attachment' => UploadedFile::fake()->image('leak.jpg'),
+        ], ['Accept' => 'application/json'])
+        ->assertCreated()
+        ->assertJsonPath('data.status', 'pending');
+
+    $requestId = $create->json('data.id');
+    $attachmentPath = $create->json('data.attachment_path');
+    $attachmentUrl = $create->json('data.attachment_url');
+
+    expect($attachmentPath)->not->toBeNull()
+        ->and($attachmentUrl)->not->toBeNull()
+        ->and($attachmentUrl)->toContain('/storage/');
+
+    Storage::disk('public')->assertExists($attachmentPath);
+
+    $this->assertDatabaseHas('maintenance_requests', [
+        'id' => $requestId,
+        'attachment_path' => $attachmentPath,
+    ]);
+
+    $this->actingAs($customer, 'sanctum')
+        ->getJson("/api/customer/maintenance-requests/{$requestId}")
+        ->assertOk()
+        ->assertJsonPath('data.attachment_path', $attachmentPath)
+        ->assertJsonPath('data.attachment_url', $attachmentUrl);
+});
+
+it('rejects invalid attachment types and keeps requests without attachments empty', function (): void {
+    Storage::fake('public');
+    ['admin' => $admin, 'customer' => $customer] = maintenanceUsers();
+    $room = createOccupiedRoomFor($customer, $admin);
+
+    $invalid = $this->actingAs($customer, 'sanctum')
+        ->post('/api/customer/maintenance-requests', [
+            'room_id' => $room->id,
+            'title' => 'Bad attachment',
+            'category' => 'general',
+            'priority' => 'low',
+            'description' => 'Should fail validation.',
+            'attachment' => UploadedFile::fake()->create('notes.txt', 20, 'text/plain'),
+        ], ['Accept' => 'application/json'])
+        ->assertStatus(422);
+
+    expect($invalid->json('data.attachment'))->toBeArray()->not->toBeEmpty();
+
+    $requestId = $this->actingAs($customer, 'sanctum')
+        ->postJson('/api/customer/maintenance-requests', [
+            'room_id' => $room->id,
+            'title' => 'No attachment request',
+            'category' => 'general',
+            'priority' => 'low',
+            'description' => 'Created without an image.',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.attachment_path', null)
+        ->assertJsonPath('data.attachment_url', null)
+        ->json('data.id');
+
+    $this->actingAs($customer, 'sanctum')
+        ->getJson("/api/customer/maintenance-requests/{$requestId}")
+        ->assertOk()
+        ->assertJsonPath('data.attachment_path', null)
+        ->assertJsonPath('data.attachment_url', null);
 });

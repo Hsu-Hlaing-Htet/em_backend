@@ -372,7 +372,8 @@ class CustomerPortalController extends Controller
         try {
             $maintenanceRequest = $customerPortalService->createMaintenanceRequest(
                 $request->user(),
-                $request->validated(),
+                $request->safe()->except(['attachment']),
+                $request->file('attachment'),
             );
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);

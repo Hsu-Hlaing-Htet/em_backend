@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Admin;
 
+use App\Support\PublicStorageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -27,9 +28,17 @@ class MaintenanceRequestResource extends JsonResource
             'category' => $this->category,
             'priority' => $this->priority,
             'description' => $this->description,
+            'attachment_path' => $this->attachment_path,
+            'attachment_url' => PublicStorageUrl::for($this->attachment_path),
             'status' => $this->status,
             'rejection_reason' => $this->rejection_reason,
             'resolution_note' => $this->resolution_note,
+            'maintenance_fee_amount' => $this->maintenance_fee_amount !== null
+                ? (float) $this->maintenance_fee_amount
+                : null,
+            'charge_description' => $this->charge_description,
+            'invoice_id' => $this->invoice_id,
+            'invoice_number' => $this->whenLoaded('invoice', fn () => $this->invoice?->invoice_number),
             'created_by_name' => $this->whenLoaded('creator', fn () => $this->creator?->name),
             'approved_by_name' => $this->whenLoaded('approver', fn () => $this->approver?->name),
             'approved_at' => $this->approved_at?->toDateTimeString(),
