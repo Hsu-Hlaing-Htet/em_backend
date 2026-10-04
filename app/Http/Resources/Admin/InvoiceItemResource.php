@@ -100,6 +100,10 @@ class InvoiceItemResource extends JsonResource
             return $this->chargeType?->name ?: 'Sale';
         }
 
+        if ($slug === 'maintenance-fee') {
+            return 'Maintenance Fee';
+        }
+
         $fromDescription = $this->extractUtilityTypeFromDescription();
 
         if ($fromDescription) {
@@ -108,7 +112,13 @@ class InvoiceItemResource extends JsonResource
 
         $invoice = $this->relationLoaded('invoice') ? $this->invoice : null;
 
-        if ($invoice && $invoice->type === 'rent' && ! $invoice->utility_id && ! $meter['is_metered']) {
+        if (
+            $invoice
+            && $invoice->type === 'rent'
+            && ! $invoice->utility_id
+            && ! $meter['is_metered']
+            && ($slug === null || $slug === 'monthly-rent')
+        ) {
             return 'Rent';
         }
 

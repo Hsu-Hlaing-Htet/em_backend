@@ -668,22 +668,42 @@ class CustomerPortalService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function createMaintenanceRequest(User $user, array $data): MaintenanceRequest
-    {
+    public function createMaintenanceRequest(
+        User $user,
+        array $data,
+        ?UploadedFile $attachment = null,
+    ): MaintenanceRequest {
         $roomIds = $this->eligibleMaintenanceRoomIds($user);
 
         if (! in_array((int) $data['room_id'], $roomIds, true)) {
             throw new InvalidArgumentException('Selected room is not linked to an active approved contract.');
         }
 
-        return $this->maintenanceRequestService->create([
-            'room_id' => (int) $data['room_id'],
-            'user_id' => $user->id,
-            'title' => $data['title'],
-            'category' => $data['category'],
-            'priority' => $data['priority'],
-            'description' => $data['description'] ?? null,
-        ])->load(['room.building', 'user', 'creator', 'approver', 'maintenanceCategory']);
+        return DB::transaction(function () use ($user, $data, $attachment): MaintenanceRequest {
+            unset($data['attachment'], $data['attachment_path'], $data['user_id'], $data['status']);
+
+            $maintenanceRequest = $this->maintenanceRequestService->create([
+                'room_id' => (int) $data['room_id'],
+                'user_id' => $user->id,
+                'title' => $data['title'],
+                'category' => $data['category'],
+                'priority' => $data['priority'],
+                'description' => $data['description'] ?? null,
+            ]);
+
+            if ($attachment) {
+                $path = $attachment->store('maintenance-attachments', 'public');
+                $maintenanceRequest->update(['attachment_path' => $path]);
+            }
+
+            return $maintenanceRequest->fresh([
+                'room.building',
+                'user',
+                'creator',
+                'approver',
+                'maintenanceCategory',
+            ]);
+        });
     }
 
     /**

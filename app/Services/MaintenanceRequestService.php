@@ -17,12 +17,16 @@ class MaintenanceRequestService
 {
     use AppliesListQuery;
 
+    public function __construct(
+        private readonly InvoiceService $invoiceService,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $params
      */
     public function paginate(array $params): LengthAwarePaginator
     {
-        $query = MaintenanceRequest::query()->with(['room.building', 'user', 'maintenanceCategory']);
+        $query = MaintenanceRequest::query()->with(['room.building', 'user', 'maintenanceCategory', 'invoice']);
 
         $this->applyStatusFilter($query, $params);
 
@@ -46,7 +50,7 @@ class MaintenanceRequestService
     public function find(int $id): MaintenanceRequest
     {
         return MaintenanceRequest::query()
-            ->with(['room.building', 'user.profile', 'creator', 'approver', 'maintenanceCategory'])
+            ->with(['room.building', 'user.profile', 'creator', 'approver', 'maintenanceCategory', 'invoice'])
             ->findOrFail($id);
     }
 
@@ -130,9 +134,12 @@ class MaintenanceRequestService
         });
     }
 
-    public function complete(MaintenanceRequest $maintenanceRequest, ?string $resolutionNote = null): MaintenanceRequest
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function complete(MaintenanceRequest $maintenanceRequest, array $data = []): MaintenanceRequest
     {
-        return DB::transaction(function () use ($maintenanceRequest, $resolutionNote): MaintenanceRequest {
+        return DB::transaction(function () use ($maintenanceRequest, $data): MaintenanceRequest {
             /** @var MaintenanceRequest $locked */
             $locked = MaintenanceRequest::query()
                 ->whereKey($maintenanceRequest->id)
@@ -143,15 +150,43 @@ class MaintenanceRequestService
                 throw new ConcurrentConflictException('Only in-progress maintenance requests can be completed.');
             }
 
+            $feeAmount = $this->resolveFeeAmount($data);
+            $chargeDescription = isset($data['charge_description'])
+                ? trim((string) $data['charge_description'])
+                : null;
+            $resolutionNote = array_key_exists('resolution_note', $data)
+                ? $data['resolution_note']
+                : null;
+
+            $invoiceId = null;
+
+            if ($feeAmount > 0) {
+                if ($chargeDescription === null || $chargeDescription === '') {
+                    throw new InvalidArgumentException(
+                        'Charge description is required when a maintenance fee is charged.'
+                    );
+                }
+
+                $invoice = $this->invoiceService->addMaintenanceFeeFromRequest(
+                    $locked,
+                    $feeAmount,
+                    $chargeDescription,
+                );
+                $invoiceId = $invoice->id;
+            }
+
             $locked->update([
                 'status' => 'completed',
                 'approved_by' => Auth::id(),
                 'approved_at' => now(),
                 'resolution_note' => $resolutionNote,
                 'rejection_reason' => null,
+                'maintenance_fee_amount' => $feeAmount > 0 ? $feeAmount : null,
+                'charge_description' => $feeAmount > 0 ? $chargeDescription : null,
+                'invoice_id' => $invoiceId,
             ]);
 
-            return $locked->fresh(['room.building', 'user', 'approver']);
+            return $locked->fresh(['room.building', 'user', 'approver', 'invoice', 'maintenanceCategory']);
         });
     }
 
@@ -178,6 +213,20 @@ class MaintenanceRequestService
 
             return $locked->fresh(['room.building', 'user', 'approver']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveFeeAmount(array $data): float
+    {
+        $raw = $data['maintenance_fee_amount'] ?? $data['maintenance_fee'] ?? null;
+
+        if ($raw === null || $raw === '') {
+            return 0.0;
+        }
+
+        return round((float) $raw, 2);
     }
 
     /**

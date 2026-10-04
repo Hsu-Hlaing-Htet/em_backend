@@ -13,6 +13,7 @@ class InvoiceItem extends Model
     protected $fillable = [
         'invoice_id',
         'charge_type_id',
+        'maintenance_request_id',
         'description',
         'previous_reading',
         'current_reading',
@@ -40,6 +41,11 @@ class InvoiceItem extends Model
     public function chargeType(): BelongsTo
     {
         return $this->belongsTo(ChargeType::class);
+    }
+
+    public function maintenanceRequest(): BelongsTo
+    {
+        return $this->belongsTo(MaintenanceRequest::class);
     }
 
     public function isMetered(): bool
