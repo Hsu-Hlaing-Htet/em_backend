@@ -134,6 +134,14 @@ test('completing maintenance with fee creates maintenance invoice item on draft 
     expect($invoiceId)->not->toBeNull();
 
     $invoice = Invoice::query()->with('items.chargeType')->findOrFail($invoiceId);
+    expect($response->json('data.invoice_number'))->toBe($invoice->invoice_number);
+
+    $this->actingAs($admin, 'sanctum')
+        ->getJson("/api/maintenance-requests/{$request->id}")
+        ->assertOk()
+        ->assertJsonPath('data.invoice_id', $invoiceId)
+        ->assertJsonPath('data.invoice_number', $invoice->invoice_number);
+
     expect($invoice->status)->toBe(Invoice::STATUS_DRAFT)
         ->and($invoice->contract_id)->toBe($contract->id);
 
