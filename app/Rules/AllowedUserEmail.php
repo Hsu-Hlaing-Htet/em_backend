@@ -10,8 +10,6 @@ class AllowedUserEmail implements ValidationRule
 {
     public function __construct(
         private readonly ?int $ignoreUserId = null,
-        private readonly ?string $currentEmail = null,
-        private readonly bool $isUpdate = false,
     ) {}
 
     public static function forCreate(): self
@@ -21,7 +19,7 @@ class AllowedUserEmail implements ValidationRule
 
     public static function forUpdate(int $userId, ?string $currentEmail): self
     {
-        return new self($userId, $currentEmail, true);
+        return new self($userId);
     }
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
@@ -32,10 +30,6 @@ class AllowedUserEmail implements ValidationRule
             return;
         }
 
-        $unchanged = $this->isUpdate
-            && $this->currentEmail !== null
-            && UserEmail::normalize($this->currentEmail) === $email;
-
         if (UserEmail::isReservedSuperAdminEmail($email)) {
             $ownerId = UserEmail::reservedSuperAdminUserId();
 
@@ -43,17 +37,7 @@ class AllowedUserEmail implements ValidationRule
                 return;
             }
 
-            $fail(UserEmail::MESSAGE_GMAIL);
-
-            return;
-        }
-
-        if ($unchanged) {
-            return;
-        }
-
-        if (! UserEmail::isGmailAddress($email)) {
-            $fail(UserEmail::MESSAGE_GMAIL);
+            $fail(UserEmail::MESSAGE_RESERVED);
         }
     }
 }

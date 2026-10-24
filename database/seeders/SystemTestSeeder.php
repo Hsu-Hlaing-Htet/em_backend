@@ -32,6 +32,7 @@ class SystemTestSeeder extends Seeder
             MaintenanceCategorySeeder::class,
             LateFeeSeeder::class,
             UtilityTypeSeeder::class,
+            UtilityRateSeeder::class,
         ]);
 
         $adminRole = Role::findByName(Role::SUPER_ADMIN);
@@ -81,6 +82,19 @@ class SystemTestSeeder extends Seeder
             'booking_deposit_price' => 0,
         ]);
 
+        Room::query()->create([
+            'building_id' => $building->id,
+            'room_number' => 'PW-R-201',
+            'floor_number' => 2,
+            'type' => 'rent',
+            'status' => 'available',
+            'area_sqft' => 900,
+            'sale_price' => 0,
+            'rent_price' => 500000,
+            'rent_deposit_price' => 500000,
+            'booking_deposit_price' => 0,
+        ]);
+
         $contract = Contract::query()->create([
             'contract_number' => 'PW-CONTRACT-001',
             'user_id' => $customer->id,
@@ -95,7 +109,7 @@ class SystemTestSeeder extends Seeder
             'created_by' => $admin->id,
             'approved_by' => $admin->id,
             'approved_at' => now(),
-            'start_date' => now()->subMonths(2)->toDateString(),
+            'start_date' => now()->subMonthsNoOverflow(2)->toDateString(),
             'end_date' => now()->addMonths(10)->toDateString(),
         ]);
 
@@ -108,7 +122,7 @@ class SystemTestSeeder extends Seeder
             'type' => 'rent',
             'issued_date' => now()->toDateString(),
             'due_date' => now()->addDays(7)->toDateString(),
-            'billing_month' => now()->startOfMonth()->toDateString(),
+            'billing_month' => now()->startOfMonth()->subMonth()->toDateString(),
             'late_fee' => 0,
             'total_amount' => 400000,
             'status' => Invoice::STATUS_ISSUED,

@@ -9,3 +9,7 @@
 /storage/logs
 /storage/framework
 /bootstrap/cache
+
+# Local PHPUnit/Pest runner metadata
+.phpunit.result.cache
+/.phpunit.cache/

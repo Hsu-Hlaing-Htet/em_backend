@@ -41,10 +41,31 @@ $_SERVER['FRONTEND_URL'] = 'http://localhost:5174';
 
 $root = dirname(__DIR__);
 $uri = urldecode(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
-$file = $root.'/public'.$uri;
+if (str_contains($uri, "\0") || in_array('..', explode('/', $uri), true)) {
+    http_response_code(404);
+    exit;
+}
 
-if ($uri !== '/' && is_file($file)) {
-    return false;
+$file = realpath($root.'/public'.$uri);
+
+if ($uri !== '/' && $uri !== '/index.php' && $file !== false && is_file($file)) {
+    $publicRoot = realpath($root.'/public');
+    $storageRoot = realpath($root.'/storage/app/public');
+    $isPublicFile = $publicRoot !== false && str_starts_with($file, $publicRoot.DIRECTORY_SEPARATOR);
+    $isPublicUpload = str_starts_with($uri, '/storage/')
+        && $storageRoot !== false
+        && str_starts_with($file, $storageRoot.DIRECTORY_SEPARATOR);
+
+    if ((! $isPublicFile && ! $isPublicUpload) || strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'php') {
+        http_response_code(404);
+        exit;
+    }
+
+    $mimeType = mime_content_type($file) ?: 'application/octet-stream';
+    header('Content-Type: '.$mimeType);
+    header('Content-Length: '.(string) filesize($file));
+    readfile($file);
+    exit;
 }
 
 require $root.'/public/index.php';

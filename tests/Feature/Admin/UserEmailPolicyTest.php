@@ -6,8 +6,13 @@ use App\Support\UserEmail;
 use Database\Seeders\RoleSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function (): void {
+    Mail::fake();
+});
 
 function userEmailAdmin(): User
 {
@@ -30,7 +35,7 @@ function userEmailResidentPayload(string $email): array
     ];
 }
 
-test('resident create requires a unique gmail address', function (): void {
+test('resident create accepts valid email addresses from different providers', function (): void {
     $admin = userEmailAdmin();
 
     $this->actingAs($admin, 'sanctum')
@@ -44,30 +49,30 @@ test('resident create requires a unique gmail address', function (): void {
         ->assertJsonPath('data.email.0', UserEmail::MESSAGE_INVALID);
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson('/api/residents', userEmailResidentPayload('user@yahoo.com'))
-        ->assertStatus(422)
-        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_GMAIL);
-
-    $this->actingAs($admin, 'sanctum')
         ->postJson('/api/residents', userEmailResidentPayload(UserEmail::SUPER_ADMIN_EMAIL))
         ->assertStatus(422)
-        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_GMAIL);
+        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_RESERVED);
 
-    $email = 'policy.'.uniqid().'@gmail.com';
+    $acceptedEmails = [];
+
+    foreach (['gmail.com', 'yahoo.com', 'outlook.com', 'example.org'] as $domain) {
+        $email = 'policy.'.uniqid().'@'.$domain;
+        $acceptedEmails[] = $email;
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/residents', userEmailResidentPayload($email))
+            ->assertCreated()
+            ->assertJsonPath('data.email', $email)
+            ->assertJsonPath('data.role_name', Role::CUSTOMER);
+    }
 
     $this->actingAs($admin, 'sanctum')
-        ->postJson('/api/residents', userEmailResidentPayload($email))
-        ->assertCreated()
-        ->assertJsonPath('data.email', $email)
-        ->assertJsonPath('data.role_name', Role::CUSTOMER);
-
-    $this->actingAs($admin, 'sanctum')
-        ->postJson('/api/residents', userEmailResidentPayload(strtoupper($email)))
+        ->postJson('/api/residents', userEmailResidentPayload(strtoupper($acceptedEmails[1])))
         ->assertStatus(422)
         ->assertJsonPath('data.email.0', UserEmail::MESSAGE_UNIQUE);
 });
 
-test('resident update allows keeping current email and rejects reserved or non-gmail changes', function (): void {
+test('resident update accepts non-gmail changes and rejects reserved addresses', function (): void {
     $admin = userEmailAdmin();
 
     $create = $this->actingAs($admin, 'sanctum')
@@ -87,19 +92,12 @@ test('resident update allows keeping current email and rejects reserved or non-g
 
     $this->actingAs($admin, 'sanctum')
         ->putJson("/api/residents/{$residentId}", [
-            ...userEmailResidentPayload('changed.'.uniqid().'@outlook.com'),
-        ])
-        ->assertStatus(422)
-        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_GMAIL);
-
-    $this->actingAs($admin, 'sanctum')
-        ->putJson("/api/residents/{$residentId}", [
             ...userEmailResidentPayload(UserEmail::SUPER_ADMIN_EMAIL),
         ])
         ->assertStatus(422)
-        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_GMAIL);
+        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_RESERVED);
 
-    $newEmail = 'changed.'.uniqid().'@gmail.com';
+    $newEmail = 'changed.'.uniqid().'@outlook.com';
 
     $this->actingAs($admin, 'sanctum')
         ->putJson("/api/residents/{$residentId}", [
@@ -107,6 +105,50 @@ test('resident update allows keeping current email and rejects reserved or non-g
         ])
         ->assertOk()
         ->assertJsonPath('data.email', $newEmail);
+});
+
+test('customer can update profile to a valid non-gmail address', function (): void {
+    userEmailAdmin();
+    $customer = User::query()->where('email', 'hsuhtet562@gmail.com')->firstOrFail();
+
+    $newEmail = 'customer.'.uniqid().'@yahoo.com';
+
+    $this->actingAs($customer, 'sanctum')
+        ->putJson('/api/customer/profile', [
+            'name' => $customer->name,
+            'email' => $newEmail,
+            'phone' => $customer->profile?->phone ?? '+95900000000',
+            'nrc' => $customer->profile?->nrc ?? '12/ABC(N)000000',
+            'dob' => $customer->profile?->dob?->toDateString() ?? '1990-01-01',
+            'gender' => $customer->profile?->gender ?? 'female',
+            'address' => $customer->profile?->address ?? 'Yangon',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.email', $newEmail);
+
+    expect($customer->fresh()->email)->toBe($newEmail);
+});
+
+test('staff update accepts a valid non-gmail address', function (): void {
+    $admin = userEmailAdmin();
+    $staff = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
+    $newEmail = 'staff.'.uniqid().'@outlook.com';
+
+    $this->actingAs($admin, 'sanctum')
+        ->putJson("/api/staff/{$staff->id}", [
+            'role_id' => $staff->role_id,
+            'name' => $staff->name,
+            'email' => $newEmail,
+            'phone' => $staff->profile?->phone ?? '+95900000000',
+            'nrc' => $staff->profile?->nrc ?? '12/ABC(N)000000',
+            'dob' => $staff->profile?->dob?->toDateString() ?? '1990-01-01',
+            'gender' => $staff->profile?->gender ?? 'female',
+            'address' => $staff->profile?->address ?? 'Yangon',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.email', $newEmail);
+
+    expect($staff->fresh()->email)->toBe($newEmail);
 });
 
 test('normal resident update rejects password changes', function (): void {
@@ -178,5 +220,5 @@ test('super admin can keep reserved email and other users cannot take it', funct
             'address' => $other->profile?->address ?? 'Yangon',
         ])
         ->assertStatus(422)
-        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_GMAIL);
+        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_RESERVED);
 });

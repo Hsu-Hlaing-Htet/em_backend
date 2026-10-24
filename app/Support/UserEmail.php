@@ -9,7 +9,7 @@ use Closure;
 /**
  * Account email policy:
  * - Super Admin reserved address: admin@rosewoodroyale.com
- * - All other accounts: unique @gmail.com addresses
+ * - All other accounts: unique, correctly formatted email addresses
  * Roles remain separate from email/domain rules.
  */
 final class UserEmail
@@ -20,7 +20,7 @@ final class UserEmail
 
     public const MESSAGE_INVALID = 'Please enter a valid email address.';
 
-    public const MESSAGE_GMAIL = 'Please use a Gmail address.';
+    public const MESSAGE_RESERVED = 'This email address is reserved.';
 
     public const MESSAGE_UNIQUE = 'This email is already in use.';
 
@@ -32,13 +32,6 @@ final class UserEmail
     public static function isReservedSuperAdminEmail(?string $email): bool
     {
         return self::normalize($email) === self::SUPER_ADMIN_EMAIL;
-    }
-
-    public static function isGmailAddress(?string $email): bool
-    {
-        $normalized = self::normalize($email);
-
-        return $normalized !== '' && str_ends_with($normalized, '@gmail.com');
     }
 
     public static function reservedSuperAdminUserId(): ?int

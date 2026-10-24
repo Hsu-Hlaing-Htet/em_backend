@@ -13,7 +13,7 @@
 
 pest()->extend(Tests\TestCase::class)
  // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
-    ->in('Feature');
+    ->in('Feature', 'Integration', 'Unit');
 
 /*
 |--------------------------------------------------------------------------
@@ -30,7 +30,7 @@ expect()->extend('toBeOne', function () {
     return $this->toBe(1);
 });
 
-require_once __DIR__.'/Feature/Timebox3/helpers.php';
+require_once __DIR__.'/Integration/Timebox3/helpers.php';
 
 /*
 |--------------------------------------------------------------------------

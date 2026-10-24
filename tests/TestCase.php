@@ -15,7 +15,7 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
-     * Hard stop if Feature/Unit tests are not bound to the dedicated local test DB.
+     * Hard stop if Feature/Integration/Unit tests are not bound to the dedicated local test DB.
      * Prevents RefreshDatabase / migrations from touching development or production data.
      */
     protected function assertSafeTestingDatabase(): void
