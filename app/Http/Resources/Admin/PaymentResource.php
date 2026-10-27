@@ -4,6 +4,7 @@ namespace App\Http\Resources\Admin;
 
 use App\Models\Payment;
 use App\Support\PaymentFinancialSummary;
+use App\Support\PublicStorageUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -62,9 +63,7 @@ class PaymentResource extends JsonResource
             'property_unit' => $this->resolvePropertyUnit($building?->building_name, $room?->room_number),
             'reference_number' => $invoice?->invoice_number,
             'proof_image_path' => $this->proof_image_path,
-            'proof_image_url' => $this->proof_image_path
-                ? Storage::disk('public')->url($this->proof_image_path)
-                : null,
+            'proof_image_url' => $this->resolveProofImageUrl(),
             'note' => $this->note,
             'rejection_reason' => $this->rejection_reason,
             'payment_date' => $this->payment_date?->toDateString(),
@@ -93,6 +92,21 @@ class PaymentResource extends JsonResource
             'receipt_number' => $this->relationLoaded('receipt') ? $this->receipt?->receipt_number : null,
             'receipt_status' => $this->relationLoaded('receipt') ? $this->receipt?->status : null,
         ];
+    }
+
+    private function resolveProofImageUrl(): ?string
+    {
+        $path = $this->proof_image_path;
+
+        if ($path === null || trim((string) $path) === '') {
+            return null;
+        }
+
+        if (! Storage::disk('public')->exists($path)) {
+            return null;
+        }
+
+        return PublicStorageUrl::for($path);
     }
 
     private function resolveRefundAmount(): ?float

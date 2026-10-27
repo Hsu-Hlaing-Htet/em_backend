@@ -113,7 +113,7 @@ php artisan migrate
 php artisan db:seed
 ```
 
-`DatabaseSeeder` loads roles, users, billing reference data, demo scenarios, and room images. Demo login credentials are printed in the terminal by the seeder — do not publish those passwords in documentation or commits.
+`DatabaseSeeder` is the single entry point for the demo dataset. It loads roles, users, billing reference data, workflows, buildings, rooms, images, utilities, financial records, maintenance requests, and contact inquiries through the existing domain seeders. Re-running `php artisan db:seed` preserves existing account passwords. Run it only against a database intended for demonstration; the seeders also update deterministic demo records. Ordinary staff cannot currently be seeded as non-login records because Staff Management uses login-enabled `users` and `profiles` rather than a separate employee record.
 
 **Do not use** `migrate:fresh`, `db:wipe`, or truncate commands for normal setup. They destroy existing data.
 
@@ -307,7 +307,7 @@ database/migrations/
 database/seeders/
 routes/api.php          # Main API (+ auth, admin, customer, public AI)
 routes/web.php          # Public property routes under /api/public, …
-tests/Feature/          # Pest feature suites
+tests/Integration/      # Laravel/API/database integration, Timebox1–Timebox5
 tests/Unit/
 ```
 
@@ -356,13 +356,22 @@ composer test
 Focused examples:
 
 ```bash
-php artisan test tests/Feature/Auth
-php artisan test tests/Feature/Ai
-php artisan test tests/Feature/Public
-php artisan test tests/Feature/Admin/ListExportPdfTest.php
+php artisan test --testsuite=Unit
+php artisan test --testsuite=Integration
+php artisan test tests/Integration/Timebox1
+php artisan test tests/Integration/Timebox5/ListExportPdfTest.php
 ```
 
-Feature coverage includes Admin, Auth, Customer, Public, Ai, ContactInquiry, and Timebox suites under `tests/Feature/`.
+Backend tests use exactly two categories, `tests/Unit/Timebox1`–`Timebox5` and `tests/Integration/Timebox1`–`Timebox5`. Unit checks run without Laravel/database bootstrapping; Integration checks exercise Laravel components and use the dedicated test database. Shared fixtures live in `tests/Support/`; `Pest.php` and `TestCase.php` remain at the test root.
+
+Integration tests use `RefreshDatabase`. The committed test configuration uses SQLite `:memory:`, so the normal direct commands below cannot connect to or modify the local MySQL database:
+
+```bash
+php artisan test tests/Integration/Timebox1
+php artisan test --testsuite=Integration
+```
+
+The test safety guard accepts only SQLite `:memory:` for direct execution. The existing `python3 scripts/verify_timebox_tests.py --group integration` command remains available when MySQL-specific verification is required; it independently verifies a disposable MySQL server before tests can use it. See [the UOG test reorganisation report](docs/testing/reorganisation-report.md) for the full file mapping, restored coverage, verification results and known gaps.
 
 ---
 

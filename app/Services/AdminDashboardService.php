@@ -692,10 +692,9 @@ class AdminDashboardService
 
         $definitions = [
             ['key' => 'available', 'label' => 'Available', 'color' => '#7a3149'],
-            ['key' => 'reserved', 'label' => 'Reserved', 'color' => '#552032'],
             ['key' => 'occupied', 'label' => 'Occupied', 'color' => '#9b4d66'],
             ['key' => 'sold', 'label' => 'Sold', 'color' => '#d6b8c1'],
-            ['key' => 'maintenance', 'label' => 'Maintenance', 'color' => '#8b6b74'],
+            ['key' => 'inactive', 'label' => 'Inactive', 'color' => '#8b6b74'],
         ];
 
         return array_map(

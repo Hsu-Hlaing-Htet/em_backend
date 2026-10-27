@@ -12,7 +12,6 @@ use App\Http\Controllers\Admin\MaintenanceCategoryController;
 use App\Http\Controllers\Admin\MaintenanceRequestController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\PaymentMethodController;
-use App\Http\Controllers\Admin\PaymentPlanController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ReceiptController;
 use App\Http\Controllers\Admin\RentContractDraftController;
@@ -123,8 +122,6 @@ Route::middleware(['auth:sanctum', 'role:super_admin,admin'])->group(function ()
     Route::apiResource('payment-methods', PaymentMethodController::class);
     // Multipart updates (QR upload) — PHP does not reliably parse files on PUT.
     Route::post('payment-methods/{payment_method}', [PaymentMethodController::class, 'update']);
-    Route::apiResource('payment-plans', PaymentPlanController::class);
-
     Route::get('sale-contract-drafts/{sale_contract_draft}/document/download', [SaleContractDraftController::class, 'downloadDocument']);
     Route::get('sale-contract-drafts/{sale_contract_draft}/document/export', [SaleContractDraftController::class, 'exportDocument']);
     Route::post('sale-contract-drafts/{sale_contract_draft}/document/email', [SaleContractDraftController::class, 'sendDocumentEmail']);

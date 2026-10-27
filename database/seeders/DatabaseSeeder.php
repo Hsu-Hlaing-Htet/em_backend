@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Building;
 use App\Models\Contract;
+use App\Models\ContactInquiry;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\MaintenanceRequest;
@@ -40,20 +41,17 @@ class DatabaseSeeder extends Seeder
             WorkflowScenarioSeeder::class,
             LargeDemoSeeder::class,
             RoomImageSeeder::class,
+            ContactInquirySeeder::class,
         ]);
 
-        $this->command?->info('Seeded login credentials:');
-        $this->command?->table(
-            ['Role', 'Name', 'Email', 'Password'],
-            collect(UserSeeder::credentials())->take(5)->all()
-        );
+        $this->command?->info('Demo accounts were ensured without changing existing passwords.');
 
-        $this->command?->info('Customer history personas (password: p@ssword for all):');
+        $this->command?->info('Customer history personas:');
         $this->command?->table(
             ['Persona', 'Email'],
             [
                 ['Active rent (full billing matrix)', 'hsuhtet562@gmail.com'],
-                ['Active sale (approved/reserved)', 'susu@gmail.com'],
+                ['Active sale (approved/settling)', 'susu@gmail.com'],
                 ['Former rent (completed)', 'zawzaw@gmail.com'],
                 ['Former sale (completed/sold)', 'nwenwe@gmail.com'],
                 ['Registered only (no contract/maintenance)', 'tuntun@gmail.com'],
@@ -82,6 +80,7 @@ class DatabaseSeeder extends Seeder
             'payments' => Payment::query()->count(),
             'receipts' => Receipt::query()->count(),
             'maintenance_requests' => MaintenanceRequest::query()->count(),
+            'contact_inquiries' => ContactInquiry::query()->count(),
             'notification_reads' => \App\Models\CustomerNotificationRead::query()->count(),
         ];
 
@@ -99,12 +98,11 @@ class DatabaseSeeder extends Seeder
             ['Metric', 'Count'],
             [
                 ['Customers', User::query()->whereHas('role', fn ($q) => $q->where('name', 'customer'))->count()],
-                ['Rooms available/reserved/occupied/sold/maintenance',
+                ['Rooms available/occupied/sold/inactive',
                     Room::query()->where('status', 'available')->count().'/'
-                    .Room::query()->where('status', 'reserved')->count().'/'
                     .Room::query()->where('status', 'occupied')->count().'/'
                     .Room::query()->where('status', 'sold')->count().'/'
-                    .Room::query()->where('status', 'maintenance')->count()],
+                    .Room::query()->where('status', 'inactive')->count()],
                 ['Contracts pending/active/completed/terminated/rejected',
                     Contract::query()->where('status', 'pending')->count().'/'
                     .Contract::query()->where('status', 'active')->count().'/'
@@ -129,6 +127,9 @@ class DatabaseSeeder extends Seeder
                     .MaintenanceRequest::query()->where('status', 'in_progress')->count().'/'
                     .MaintenanceRequest::query()->where('status', 'completed')->count().'/'
                     .MaintenanceRequest::query()->where('status', 'rejected')->count()],
+                ['Contact inquiries new/read',
+                    ContactInquiry::query()->where('status', ContactInquiry::STATUS_NEW)->count().'/'
+                    .ContactInquiry::query()->where('status', ContactInquiry::STATUS_READ)->count()],
                 ['Contracts expiring within 60 days',
                     Contract::query()->where('status', 'active')
                         ->whereBetween('end_date', [now()->toDateString(), now()->addDays(60)->toDateString()])

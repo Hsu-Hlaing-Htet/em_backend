@@ -49,6 +49,23 @@ class UserSeeder extends Seeder
             ]
         );
 
+        // Keep the established super-admin fixture used by application tests,
+        // and add the required named UOG demonstration login without changing
+        // any existing account or resetting its password on repeat seeding.
+        $this->createUserWithProfile(
+            $superAdminRole->id,
+            'U Kyaw Swar',
+            'superadmin@rosewood.com',
+            $password,
+            [
+                'phone' => '+95942012346',
+                'nrc' => 'DEMO-UOG-SUPERADMIN',
+                'dob' => '1985-03-15',
+                'gender' => 'male',
+                'address' => 'Demonstration address, Yangon',
+            ]
+        );
+
         $this->createUserWithProfile(
             $adminRole->id,
             'Aung Aung',
@@ -58,10 +75,13 @@ class UserSeeder extends Seeder
                 'phone' => '+95942123456',
                 'nrc' => '12/BaKaTa(N)234567',
                 'dob' => '1990-07-22',
-                'gender' => 'female',
+                'gender' => 'male',
                 'address' => 'No. 25, Inya Road, Bahan Township, Yangon',
             ]
         );
+
+        // Ordinary employees cannot be represented without login access in the current Staff model.
+        // Keep authentication roles limited to super_admin, admin, and customer.
 
         foreach (MyanmarSampleData::customers() as $customer) {
             $this->createUserWithProfile(

@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Room;
+
 final class ContractDraftProfile
 {
     /**
@@ -25,7 +27,7 @@ final class ContractDraftProfile
             type: 'sale',
             numberPrefix: 'S-',
             activeStatus: 'active',
-            roomStatusOnApprove: 'reserved',
+            roomStatusOnApprove: Room::STATUS_SOLD,
             roomTypes: ['sale', 'both'],
             priceColumn: 'sale_price',
             depositColumn: 'booking_deposit_price',

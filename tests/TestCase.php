@@ -4,69 +4,65 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use RuntimeException;
+use Tests\Support\TestDatabaseSafety;
 
 abstract class TestCase extends BaseTestCase
 {
-    protected function setUp(): void
+    public function createApplication()
     {
-        parent::setUp();
-
-        $this->assertSafeTestingDatabase();
-    }
-
-    /**
-     * Hard stop if Feature/Unit tests are not bound to the dedicated local test DB.
-     * Prevents RefreshDatabase / migrations from touching development or production data.
-     */
-    protected function assertSafeTestingDatabase(): void
-    {
-        if (! app()->environment('testing')) {
-            throw new RuntimeException(
-                'Integration tests aborted: APP_ENV must be testing (got '.app()->environment().').'
-            );
-        }
-
-        $connection = (string) config('database.default');
-        $database = (string) config("database.connections.{$connection}.database");
-        $host = (string) config("database.connections.{$connection}.host");
-
-        $allowedHosts = ['127.0.0.1', 'localhost', '::1'];
-        $blockedNameFragments = [
-            'railway',
-            'render',
-            'supabase',
-            'planetscale',
-            'aws',
-            'azure',
-            'production',
-            'prod',
-        ];
-
-        if ($database !== 'rosewood_test') {
-            throw new RuntimeException(
-                "Integration tests aborted: DB_DATABASE must be rosewood_test (got {$database})."
-            );
-        }
-
-        if ($connection !== 'mysql') {
-            throw new RuntimeException(
-                "Integration tests aborted: DB_CONNECTION must be mysql (got {$connection})."
-            );
-        }
-
-        if (! in_array($host, $allowedHosts, true)) {
-            throw new RuntimeException(
-                "Integration tests aborted: DB_HOST must be local (got {$host})."
-            );
-        }
-
-        $haystack = strtolower($database.' '.$host);
-        foreach ($blockedNameFragments as $fragment) {
-            if (str_contains($haystack, $fragment)) {
-                throw new RuntimeException(
-                    "Integration tests aborted: refused non-local/production-looking database target ({$fragment})."
-                );
+        $app = parent::createApplication();
+        $connection = $app['db']->connection();
+        TestDatabaseSafety::assertConfiguration(
+            $connection->getConfig(),
+            $app->environment(),
+            filter_var(env('TEST_DATABASE_DISPOSABLE', false), FILTER_VALIDATE_BOOLEAN),
+        );
+        if ($connection->getDriverName() === 'mysql') {
+            $identity = $connection->selectOne('SELECT DATABASE() AS db, @@port AS port');
+            if ($identity->db !== 'rosewood_test'
+                || (int) $identity->port !== (int) $connection->getConfig('port')) {
+                throw new RuntimeException('The connected test database does not match the isolated configuration.');
             }
         }
+
+        // This runs before Laravel setUpTraits(), including RefreshDatabase.
+        $this->isolateTestFiles($app);
+
+        return $app;
+    }
+
+    private function isolateTestFiles(\Illuminate\Foundation\Application $app): void
+    {
+        $base = realpath($app->basePath());
+        $root = (string) env('TEST_STORAGE_ROOT', $base.'/storage/framework/testing/isolated-'.getmypid());
+        $allowed = str_starts_with($root, $base.'/.test-verification/')
+            || str_starts_with($root, $base.'/storage/framework/testing/');
+        if (! $allowed || str_contains($root, '..') || is_link($root)) {
+            throw new RuntimeException('Test storage must be isolated inside the backend test runtime.');
+        }
+        foreach (['app/public', 'app/private', 'framework/cache/data', 'framework/sessions',
+            'framework/views', 'logs', 'public/images'] as $directory) {
+            if (! is_dir($root.'/'.$directory)) {
+                mkdir($root.'/'.$directory, 0755, true);
+            }
+        }
+        $sourceImages = $app->publicPath('images');
+        foreach (glob($sourceImages.'/*') ?: [] as $source) {
+            if (is_file($source) && ! is_link($source)) {
+                copy($source, $root.'/public/images/'.basename($source));
+            }
+        }
+        $app->useStoragePath($root);
+        $app->usePublicPath($root.'/public');
+        $app['config']->set([
+            'filesystems.disks.local.root' => $root.'/app/private',
+            'filesystems.disks.public.root' => $root.'/app/public',
+            'filesystems.links' => [$root.'/public/storage' => $root.'/app/public'],
+            'view.compiled' => $root.'/framework/views',
+            'cache.stores.file.path' => $root.'/framework/cache/data',
+            'session.files' => $root.'/framework/sessions',
+            'logging.channels.single.path' => $root.'/logs/laravel.log',
+            'logging.channels.daily.path' => $root.'/logs/laravel.log',
+        ]);
     }
 }

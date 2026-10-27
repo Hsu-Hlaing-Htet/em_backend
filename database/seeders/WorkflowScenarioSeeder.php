@@ -29,7 +29,7 @@ use Illuminate\Database\Seeder;
  * Idempotent end-to-end workflow scenarios using only project-supported statuses.
  *
  * Contract: draft | pending | active | approved | completed | rejected
- * Room: available | reserved | occupied | sold | maintenance
+ * Room: available | occupied | sold | inactive
  * Invoice: draft | issued | partial | paid | overdue
  * Payment: pending | approved | rejected
  * Receipt status: draft | issued ; approval: pending | approved | rejected
@@ -38,7 +38,8 @@ use Illuminate\Database\Seeder;
  */
 class WorkflowScenarioSeeder extends Seeder
 {
-    private const BULK_IMPORT_READY_THROUGH = '2026-09-01';
+    // August is the last seeded utility month; September remains empty for import.
+    private const BULK_IMPORT_READY_THROUGH = '2026-08-01';
 
     /** @var array<string, array<string, mixed>> */
     private array $matrix = [];
@@ -129,11 +130,12 @@ class WorkflowScenarioSeeder extends Seeder
             'maintenance' => 'none',
         ];
 
-        // Maintenance room (status maintenance, no active billing)
-        $rooms['MAINTENANCE']->update(['status' => 'maintenance']);
+        // Rooms temporarily inactive while maintenance is performed; neither has a contract.
+        $rooms['MAINTENANCE']->update(['status' => 'inactive']);
+        $rooms['EXTRA-AVAIL']->update(['status' => 'inactive']);
         $this->matrix['room-maintenance'] = [
             'demo_account' => '—',
-            'room' => $rooms['MAINTENANCE']->room_number.' (maintenance)',
+            'room' => $rooms['MAINTENANCE']->room_number.' (inactive for maintenance)',
             'contract' => '—',
             'invoice' => '—',
             'payment' => '—',
@@ -279,7 +281,7 @@ class WorkflowScenarioSeeder extends Seeder
             'duration_months' => null,
             'remark' => 'Submitted for management approval.',
         ]);
-        $room->update(['status' => 'reserved']);
+        $room->update(['status' => 'available']);
 
         $this->matrix['sale-pending'] = $this->row($customer->email, $room, $contract, '—', '—', '—', '—');
     }
@@ -307,9 +309,9 @@ class WorkflowScenarioSeeder extends Seeder
             'end_date' => $useInstallment ? now()->addMonths(10)->toDateString() : null,
             'billing_day' => $useInstallment ? 5 : null,
             'status' => Contract::STATUS_ACTIVE,
-            'remark' => 'Approved sale contract. Unit reserved pending completion.',
+            'remark' => 'Approved sale contract with settlement in progress.',
         ]);
-        $room->update(['status' => 'reserved']);
+        $room->update(['status' => 'sold']);
 
         $deposit = (float) $room->booking_deposit_price;
         $depositInvoice = BillingSeederSupport::upsertInvoice(
@@ -545,7 +547,8 @@ class WorkflowScenarioSeeder extends Seeder
             return null;
         }
 
-        $start = now()->subMonths(6)->startOfMonth();
+        // Six illustrated billing periods finish in August, before the import month.
+        $start = \Illuminate\Support\Carbon::parse(self::BULK_IMPORT_READY_THROUGH)->subMonths(5)->startOfMonth();
         $contract = $this->upsertContract('R-000003', [
             'user_id' => $customer->id,
             'room_id' => $room->id,

@@ -12,13 +12,14 @@ use Illuminate\Database\Seeder;
 /**
  * Idempotent bulk BL-* maintenance tickets (demo volume).
  *
- * Keys on unique title (BL-001 …). updateOrCreate only — no truncate of
- * non-BL rows beyond removing obsolete BL-* titles from earlier cycles.
+ * Keys on unique title (BL-001 …). firstOrCreate preserves later edits to
+ * non-BL rows. Existing seeded rows outside the current volume target are
+ * preserved rather than removed from an established database.
  * Does not create or modify contracts, invoices, payments, or receipts.
  */
 class BulkMaintenanceSeeder extends Seeder
 {
-    private const BULK_MAINTENANCE_COUNT = 200;
+    private const BULK_MAINTENANCE_COUNT = 96;
 
     public function run(): void
     {
@@ -58,7 +59,6 @@ class BulkMaintenanceSeeder extends Seeder
         $catalog = $this->bulkMaintenanceCatalog();
         $jointContract = $eligible->first(fn (Contract $contract) => filled($contract->second_user_id));
 
-        $expectedTitles = [];
         $synced = 0;
 
         for ($i = 0; $i < self::BULK_MAINTENANCE_COUNT; $i++) {
@@ -71,7 +71,6 @@ class BulkMaintenanceSeeder extends Seeder
 
             $reference = sprintf('BL-%03d', $i + 1);
             $title = $reference.' '.$scenario['title'];
-            $expectedTitles[] = $title;
 
             $contract = ($i === 0 && $jointContract)
                 ? $jointContract
@@ -90,7 +89,7 @@ class BulkMaintenanceSeeder extends Seeder
                 ? $createdAt->copy()->addDays(1 + ($i % 3))
                 : null;
 
-            MaintenanceRequest::query()->updateOrCreate(
+            MaintenanceRequest::query()->firstOrCreate(
                 ['title' => $title],
                 [
                     'room_id' => $contract->room_id,
@@ -117,18 +116,10 @@ class BulkMaintenanceSeeder extends Seeder
             $synced++;
         }
 
-        $removed = MaintenanceRequest::query()
-            ->where('title', 'like', 'BL-%')
-            ->when(
-                $expectedTitles !== [],
-                fn ($query) => $query->whereNotIn('title', $expectedTitles),
-            )
-            ->delete();
-
         $this->command?->info(
             "Bulk maintenance ensured/synced: {$synced} (BL-001…BL-"
             .str_pad((string) self::BULK_MAINTENANCE_COUNT, 3, '0', STR_PAD_LEFT)
-            .'); obsolete BL rows removed: '.$removed
+            .').'
         );
     }
 

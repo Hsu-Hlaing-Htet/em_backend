@@ -27,7 +27,6 @@ class LargeDemoSeeder extends Seeder
 
         $this->call([
             ContractFinancialConsistencySeeder::class,
-            UtilityInvoiceConsistencySeeder::class,
             CustomerNotificationReadSeeder::class,
         ]);
 

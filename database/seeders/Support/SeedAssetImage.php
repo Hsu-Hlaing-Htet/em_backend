@@ -2,6 +2,8 @@
 
 namespace Database\Seeders\Support;
 
+use App\Models\Payment;
+use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
@@ -208,28 +210,174 @@ final class SeedAssetImage
             || $relativePath === RoomImageSeederSupport::FALLBACK_PATH;
     }
 
-    public static function paymentProofSourceForPath(string $destinationRelativePath): string
+    /**
+     * Customer-uploaded evidence lives under payment-proofs/ and must never be
+     * replaced with demonstration screenshots.
+     */
+    public static function isUploadedPaymentProofPath(?string $relativePath): bool
     {
-        if (str_contains($destinationRelativePath, 'pending')) {
-            return 'proof-kbz-pay.jpg';
+        if ($relativePath === null || trim($relativePath) === '') {
+            return false;
         }
 
-        if (str_contains($destinationRelativePath, 'rejected')) {
-            return 'proof-bank-transfer.jpg';
-        }
-
-        return 'proof-cash.jpg';
+        return str_starts_with(ltrim(str_replace('\\', '/', $relativePath), '/'), 'payment-proofs/');
     }
 
-    public static function storePaymentProof(string $relativePath): string
+    public static function isSeededPaymentProofPath(?string $relativePath): bool
     {
-        $source = self::paymentProofSourceForPath($relativePath);
+        if ($relativePath === null || trim($relativePath) === '') {
+            return false;
+        }
+
+        $path = ltrim(str_replace('\\', '/', $relativePath), '/');
+
+        return str_starts_with($path, 'payments/') && ! self::isUploadedPaymentProofPath($path);
+    }
+
+    /**
+     * Demonstration screenshot for a payment method, or null when proof is not used
+     * (Cash, uab Pay, AYA Bank Transfer, Cheque, and other unsupported methods).
+     */
+    public static function sourceFilenameForPaymentMethod(?PaymentMethod $paymentMethod): ?string
+    {
+        if ($paymentMethod === null) {
+            return null;
+        }
+
+        $slug = strtolower(trim((string) $paymentMethod->slug));
+        $name = strtolower(trim((string) $paymentMethod->name));
+
+        return match (true) {
+            $slug === 'kbz-bank-transfer' || str_contains($name, 'kbz bank') => 'proof-kbz-bank.jpg',
+            $slug === 'kbz-pay' || str_contains($name, 'kbz pay') => 'proof-kbz.jpg',
+            $slug === 'aya-pay' || str_contains($name, 'aya pay') => 'proof-aya-pay.jpg',
+            $slug === 'wave-pay' || str_contains($name, 'wave pay') => 'proof-wave-pay.jpg',
+            default => null,
+        };
+    }
+
+    public static function paymentProofForMethod(?PaymentMethod $paymentMethod): ?string
+    {
+        $filename = self::sourceFilenameForPaymentMethod($paymentMethod);
+
+        if ($filename === null) {
+            return null;
+        }
+
+        return self::copyPaymentAssetToPublic(
+            $filename,
+            'payments/proofs/'.$filename,
+            force: true,
+        );
+    }
+
+    /**
+     * Resolve a demonstration source file from an explicit asset filename only.
+     * Status tokens such as pending/rejected must not pick another method's image.
+     */
+    public static function sourceFilenameFromRequestedPath(string $relativePath): ?string
+    {
+        $base = strtolower(basename(str_replace('\\', '/', $relativePath)));
+
+        return match (true) {
+            str_contains($base, 'proof-kbz-bank') => 'proof-kbz-bank.jpg',
+            str_contains($base, 'proof-aya-pay') => 'proof-aya-pay.jpg',
+            str_contains($base, 'proof-wave-pay') => 'proof-wave-pay.jpg',
+            $base === 'proof-kbz.jpg' || str_starts_with($base, 'proof-kbz.') => 'proof-kbz.jpg',
+            default => null,
+        };
+    }
+
+    public static function storePaymentProof(string $relativePath, ?PaymentMethod $paymentMethod = null): ?string
+    {
+        $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
+
+        if (self::isUploadedPaymentProofPath($relativePath)) {
+            return $relativePath;
+        }
+
+        $source = self::sourceFilenameForPaymentMethod($paymentMethod)
+            ?? self::sourceFilenameFromRequestedPath($relativePath);
+
+        if ($source === null) {
+            return null;
+        }
+
         $extension = pathinfo($source, PATHINFO_EXTENSION) ?: 'jpg';
-        $normalized = preg_replace('/\.(jpg|jpeg|png|webp)$/i', '.'.$extension, ltrim($relativePath, '/')) ?? ltrim($relativePath, '/');
+        $normalized = preg_replace(
+            '/\.(jpg|jpeg|png|webp)$/i',
+            '.'.$extension,
+            $relativePath,
+        ) ?? $relativePath;
 
-        return self::copyPaymentAssetToPublic($source, $normalized, force: true);
+        if ($normalized === '' || self::isUploadedPaymentProofPath($normalized)) {
+            $normalized = 'payments/proofs/'.$source;
+        }
+
+        return self::copyPaymentAssetToPublic(
+            $source,
+            $normalized,
+            force: true,
+        );
     }
 
+    /**
+     * Copy the method-matching demonstration image for a seeded payment.
+     * Returns null when the method does not use proof. Never overwrites uploads.
+     */
+    public static function materializeProofForPayment(Payment $payment): ?string
+    {
+        if (self::isUploadedPaymentProofPath($payment->proof_image_path)) {
+            return $payment->proof_image_path;
+        }
+
+        $method = $payment->relationLoaded('paymentMethod')
+            ? $payment->paymentMethod
+            : $payment->paymentMethod()->first();
+
+        $source = self::sourceFilenameForPaymentMethod($method);
+
+        if ($source === null) {
+            return null;
+        }
+
+        $destination = self::isSeededPaymentProofPath($payment->proof_image_path)
+            ? ltrim((string) $payment->proof_image_path, '/')
+            : 'payments/proofs/'.$source;
+
+        return self::storePaymentProof($destination, $method);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function requiredPaymentAssets(): array
+    {
+        return [
+            'proof-kbz.jpg',
+            'proof-kbz-bank.jpg',
+            'proof-aya-pay.jpg',
+            'proof-wave-pay.jpg',
+        ];
+    }
+
+    public static function assertPaymentAssetLibraryPresent(): void
+    {
+        foreach (self::requiredPaymentAssets() as $filename) {
+            $path = self::paymentAssetPath($filename);
+
+            if (! is_file($path)) {
+                throw new RuntimeException("Missing required payment seed asset: {$path}");
+            }
+
+            $info = self::inspect($path);
+            self::assertMimeMatchesExtension($path, $info);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
     public static function requiredRoomAssets(): array
     {
         $assets = [];
@@ -257,14 +405,6 @@ final class SeedAssetImage
             self::assertValidRoomAsset($path);
         }
 
-        foreach (['proof-kbz-pay.jpg', 'proof-cash.jpg', 'proof-bank-transfer.jpg'] as $filename) {
-            $path = self::paymentAssetPath($filename);
-
-            if (! is_file($path)) {
-                throw new RuntimeException("Missing required payment seed asset: {$path}");
-            }
-
-            self::inspect($path);
-        }
+        self::assertPaymentAssetLibraryPresent();
     }
 }

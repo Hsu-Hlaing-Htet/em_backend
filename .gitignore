@@ -8,4 +8,4 @@
 /storage/*.key
 /storage/logs
 /storage/framework
-/bootstrap/cache
+/bootstrap/cache/.test-verification

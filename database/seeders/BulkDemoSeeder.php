@@ -29,7 +29,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 
 /**
- * Idempotent volume expansion toward ~1000 demo records.
+ * Idempotent volume expansion for the standard Rosewood demonstration data.
  *
  * Uses deterministic unique keys (emails, building names, room numbers,
  * contract/invoice/receipt numbers, payment note keys) so repeated seeds
@@ -37,27 +37,27 @@ use Illuminate\Support\Collection;
  */
 class BulkDemoSeeder extends Seeder
 {
-    private const BULK_IMPORT_READY_THROUGH = '2026-09-01';
+    // August is the last seeded utility month; September remains empty for import.
+    private const BULK_IMPORT_READY_THROUGH = '2026-08-01';
 
-    /** Target ~180 customers for pagination and portal variety. */
-    private const CUSTOMER_TARGET = 180;
+    /** Twenty workflow personas plus twenty additional customer accounts. */
+    private const CUSTOMER_TARGET = 40;
 
-    /** Enough rooms for ~230 contracts without active-room conflicts. */
-    private const ROOM_TARGET = 320;
+    private const ROOM_TARGET = 60;
 
-    private const CONTRACT_TARGET = 230;
+    private const CONTRACT_TARGET = 100;
 
     /** Legacy volume knobs (financial history now drives invoice/payment counts). */
     private const INVOICE_TARGET = 1000;
 
     private const PAYMENT_TARGET = 700;
 
-    private const UTILITY_TARGET = 420;
+    private const UTILITY_TARGET = 100;
 
-    private const MAINTENANCE_TARGET = 200;
+    private const MAINTENANCE_TARGET = 100;
 
     /** Bulk BL-### demo tickets (workflow WF-* rows are seeded separately). */
-    private const BULK_MAINTENANCE_COUNT = 200;
+    private const BULK_MAINTENANCE_COUNT = 96;
 
     private User $admin;
 
@@ -81,7 +81,7 @@ class BulkDemoSeeder extends Seeder
     {
         $started = microtime(true);
 
-        $admin = User::query()->where('email', 'admin@rosewoodroyale.com')->first();
+        $admin = User::query()->whereHas('role', fn ($query) => $query->where('name', Role::ADMIN))->first();
         if (! $admin) {
             $this->command?->warn('BulkDemoSeeder skipped: admin user missing.');
 
@@ -111,11 +111,11 @@ class BulkDemoSeeder extends Seeder
         $buildings = $this->seedBuildings();
         $rooms = $this->seedRooms($buildings);
         $contracts = $this->seedContracts($customers, $rooms);
+        $utilityCountBefore = Utility::query()->count();
         $this->seedUtilities($contracts, $rooms);
-        $this->normalizeUtilityHistories();
-        $this->seedInvoicesPaymentsReceipts($contracts);
-        $this->normalizeUtilityHistories();
-        (new UtilityInvoiceConsistencySeeder)->run();
+        if (Utility::query()->count() > $utilityCountBefore) {
+            $this->normalizeUtilityHistories();
+        }
         $this->call(BulkMaintenanceSeeder::class);
         $this->syncBulkRoomStatuses();
 
@@ -187,7 +187,7 @@ class BulkDemoSeeder extends Seeder
      */
     private function seedBuildings(): Collection
     {
-        foreach (MyanmarSampleData::bulkBuildings() as $building) {
+        foreach (array_slice(MyanmarSampleData::buildings(), 0, 10) as $building) {
             Building::query()->firstOrCreate(
                 ['building_name' => $building['building_name']],
                 [
@@ -213,7 +213,7 @@ class BulkDemoSeeder extends Seeder
         }
 
         // Prefer bulk buildings for new rooms; fall back to all buildings.
-        $bulkNames = collect(MyanmarSampleData::bulkBuildings())->pluck('building_name');
+        $bulkNames = collect(array_slice(MyanmarSampleData::buildings(), 4, 6))->pluck('building_name');
         $targetBuildings = $buildings->filter(fn (Building $b) => $bulkNames->contains($b->building_name))->values();
         if ($targetBuildings->isEmpty()) {
             $targetBuildings = $buildings->values();
@@ -312,11 +312,11 @@ class BulkDemoSeeder extends Seeder
         $availableRooms = $rooms
             ->reject(fn (Room $room) => in_array($room->id, $busyRoomIds, true)
                 || in_array($room->id, $workflowRoomIds, true)
-                || $room->status === 'maintenance')
+                || $room->status === 'inactive')
             ->values();
         if ($availableRooms->isEmpty()) {
             $availableRooms = $rooms
-                ->reject(fn (Room $room) => in_array($room->id, $workflowRoomIds, true) || $room->status === 'maintenance')
+                ->reject(fn (Room $room) => in_array($room->id, $workflowRoomIds, true) || $room->status === 'inactive')
                 ->values();
         }
 
@@ -333,21 +333,37 @@ class BulkDemoSeeder extends Seeder
             ['type' => 'sale', 'status' => 'pending'],
             ['type' => 'sale', 'status' => 'completed'],
             ['type' => 'sale', 'status' => 'rejected'],
+            ['type' => 'rent', 'status' => 'terminated'],
         ];
 
         $created = 0;
         $usedRoomIds = [];
+        $historicalRooms = null;
+        $historicalIndex = 0;
 
         for ($i = 0; $i < $needed; $i++) {
             $spec = $statusCycle[$i % count($statusCycle)];
             $customer = $customers[$i % $customers->count()];
 
             $candidates = $availableRooms->reject(fn (Room $room) => in_array($room->id, $usedRoomIds, true))->values();
+            $historical = $candidates->isEmpty();
             if ($candidates->isEmpty()) {
-                $candidates = $availableRooms->values();
+                $historicalRooms ??= Room::query()
+                    ->whereIn('id', $availableRooms->pluck('id'))
+                    ->whereIn('type', ['rent', 'both'])
+                    ->whereDoesntHave('contracts', fn ($query) => $query
+                        ->whereIn('status', [Contract::STATUS_ACTIVE, Contract::STATUS_PENDING])
+                        ->orWhere(fn ($sale) => $sale->where('type', 'sale')->where('status', Contract::STATUS_COMPLETED)))
+                    ->orderBy('id')->get()->values();
+                if ($historicalRooms->isEmpty()) {
+                    $this->command?->warn('No conflict-free rental rooms remain for historical contracts.');
+                    break;
+                }
+                $candidates = $historicalRooms;
+                $spec = ['type' => 'rent', 'status' => $historicalIndex % 8 === 0 ? 'rejected' : 'completed'];
             }
 
-            $room = $candidates[$i % $candidates->count()];
+            $room = $candidates[$historical ? $historicalIndex % $candidates->count() : $i % $candidates->count()];
 
             // Match room type preference when possible.
             if ($spec['type'] === 'rent' && ! in_array($room->type, ['rent', 'both'], true)) {
@@ -374,14 +390,21 @@ class BulkDemoSeeder extends Seeder
             // Spread start dates across 18 months relative to stable demo as-of date.
             $asOf = Carbon::parse(ContractFinancialHistorySeederSupport::DEMO_AS_OF)->startOfDay();
             $monthsAgo = 2 + ($i % 16);
-            $start = $asOf->copy()->subMonths($monthsAgo)->startOfMonth()->addDays($i % 28);
+            $start = $historical
+                ? Carbon::parse('2024-01-01')->addMonths(2 * intdiv($historicalIndex, $candidates->count()))
+                : ($spec['status'] === Contract::STATUS_COMPLETED && $spec['type'] === 'rent'
+                    ? $asOf->copy()->subMonths(6 + ($i % 9))->startOfMonth()
+                    : $asOf->copy()->subMonths($monthsAgo)->startOfMonth()->addDays($i % 28));
             $isExpiringSoon = $spec['status'] === 'active' && $i % 5 === 0;
-            $duration = $spec['type'] === 'rent' ? 12 : null;
+            $duration = $spec['type'] === 'rent'
+                ? ($historical ? 1 : ($spec['status'] === Contract::STATUS_COMPLETED ? 3 : ($spec['status'] === Contract::STATUS_ACTIVE ? 24 : 12)))
+                : null;
             $end = match (true) {
-                $spec['status'] === 'completed' && $spec['type'] === 'rent' => $start->copy()->addMonths(12)->min($asOf),
+                $historical && $spec['status'] === 'completed' => $start->copy()->addDays(29),
+                $spec['status'] === 'completed' && $spec['type'] === 'rent' => $start->copy()->addMonths(3),
                 $spec['status'] === 'completed' && $spec['type'] === 'sale' => $start->copy()->addMonths(6)->min($asOf),
                 $isExpiringSoon => $asOf->copy()->addDays(15 + ($i % 45)),
-                $spec['type'] === 'rent' => $start->copy()->addMonths(12),
+                $spec['type'] === 'rent' => $start->copy()->addMonths($duration),
                 $spec['type'] === 'sale' && $spec['status'] === 'approved' => $start->copy()->addMonths(18),
                 default => null,
             };
@@ -389,7 +412,7 @@ class BulkDemoSeeder extends Seeder
             $rent = (float) $room->rent_price;
             $sale = (float) $room->sale_price;
             $total = $spec['type'] === 'rent'
-                ? round(max($rent, 300000) * 12, 2)
+                ? round(max($rent, 300000) * $duration, 2)
                 : round(max($sale, 100000000), 2);
             $deposit = $spec['type'] === 'rent'
                 ? (float) ($room->rent_deposit_price ?: $rent * 2)
@@ -401,7 +424,7 @@ class BulkDemoSeeder extends Seeder
                     in_array($spec['status'], ['approved', 'pending'], true)
                     || (in_array($spec['status'], ['active', 'completed'], true) && ($i % 2 === 0))
                 );
-            $approvedStatuses = ['active', 'approved', 'completed', 'rejected'];
+            $approvedStatuses = ['active', 'approved', 'completed', 'rejected', 'terminated'];
 
             $secondCustomer = null;
             if (
@@ -433,22 +456,26 @@ class BulkDemoSeeder extends Seeder
                 'end_date' => $end?->toDateString(),
                 'billing_day' => $spec['type'] === 'rent' || $useInstallment ? 5 : null,
                 'status' => $spec['status'],
+                'termination_date' => $spec['status'] === Contract::STATUS_TERMINATED ? $start->copy()->addDays(15)->toDateString() : null,
+                'termination_reason' => $spec['status'] === Contract::STATUS_TERMINATED ? 'Customer withdrew before occupancy.' : null,
                 'remark' => sprintf('Bulk demo %s contract (%s).', $spec['type'], $spec['status']),
                 'created_at' => $start->copy()->subDays(3 + ($i % 5)),
                 'updated_at' => $start->copy()->addDay(),
             ]);
 
             $roomStatus = match ($spec['status']) {
-                'pending' => $spec['type'] === 'sale' ? 'reserved' : 'available',
-                'active' => 'occupied',
-                'approved' => 'reserved',
+                'pending' => 'available',
+                'active' => $spec['type'] === 'rent' ? 'occupied' : 'sold',
+                'approved' => 'sold',
                 'completed' => $spec['type'] === 'sale' ? 'sold' : 'available',
                 'rejected', 'draft' => 'available',
                 default => 'available',
             };
             $room->update(['status' => $roomStatus]);
-            if (in_array($spec['status'], ['active', 'approved', 'pending'], true)) {
+            if (! $historical) {
                 $usedRoomIds[] = $room->id;
+            } else {
+                $historicalIndex++;
             }
             $created++;
         }
@@ -472,7 +499,11 @@ class BulkDemoSeeder extends Seeder
 
         $statuses = ['pending', 'approved', 'approved', 'draft', 'rejected'];
         $created = 0;
-        $activeContracts = $contracts->where('status', Contract::STATUS_ACTIVE)->values();
+        $activeContracts = $contracts
+            ->where('status', Contract::STATUS_ACTIVE)
+            ->where('type', 'rent')
+            ->filter(fn (Contract $contract) => str_starts_with((string) $contract->remark, 'Bulk demo'))
+            ->values();
         $candidates = collect();
 
         foreach ($activeContracts as $contractIndex => $contract) {
@@ -499,6 +530,9 @@ class BulkDemoSeeder extends Seeder
         ])->values();
 
         foreach ($candidates as $candidate) {
+            if ($created >= $needed) {
+                break;
+            }
             $contract = $candidate['contract'];
             $room = $candidate['room'];
             $month = $candidate['month'];
@@ -590,8 +624,7 @@ class BulkDemoSeeder extends Seeder
 
     private function latestSeedableUtilityMonth(): Carbon
     {
-        // Include the demo as-of month so current-cycle Rent invoices can carry
-        // Utility charges (previously capped at now()-1 month → always August).
+        // Stop before the September 2026 import month.
         return Carbon::parse(ContractFinancialHistorySeederSupport::DEMO_AS_OF)
             ->startOfMonth()
             ->min(Carbon::parse(self::BULK_IMPORT_READY_THROUGH)->startOfMonth());
@@ -656,9 +689,9 @@ class BulkDemoSeeder extends Seeder
             }
 
             $status = match ($primary->status) {
-                'pending' => $primary->type === 'sale' ? 'reserved' : 'available',
-                'active' => 'occupied',
-                'approved' => 'reserved',
+                'pending' => 'available',
+                'active' => $primary->type === 'rent' ? 'occupied' : 'sold',
+                'approved' => 'sold',
                 'completed' => $primary->type === 'sale' ? 'sold' : 'available',
                 default => 'available',
             };
@@ -673,7 +706,7 @@ class BulkDemoSeeder extends Seeder
             ->where('room_number', 'A-104')
             ->whereHas('building', fn ($query) => $query->where('building_name', MyanmarSampleData::buildingNameForIndex(0)))
             ->whereDoesntHave('contracts')
-            ->update(['status' => 'maintenance']);
+            ->update(['status' => 'inactive']);
     }
 
     private function findOrCreateBulkUtility(Contract $contract, Carbon $billingMonth, int $seed): ?Utility
@@ -945,8 +978,14 @@ class BulkDemoSeeder extends Seeder
             return null;
         }
 
-        if (! empty($attributes['proof_image_path'])) {
-            $attributes['proof_image_path'] = BillingSeederSupport::storePaymentProof((string) $attributes['proof_image_path']);
+        if (array_key_exists('proof_image_path', $attributes)) {
+            $method = isset($attributes['payment_method_id'])
+                ? PaymentMethod::query()->find($attributes['payment_method_id'])
+                : null;
+            $attributes['proof_image_path'] = BillingSeederSupport::resolveSeedProofPath(
+                $method,
+                $attributes['proof_image_path'],
+            );
         }
 
         return Payment::query()->create([
@@ -981,12 +1020,12 @@ class BulkDemoSeeder extends Seeder
             'created_by' => $this->admin->id,
             'approved_by' => in_array($approvalStatus, ['approved', 'rejected'], true) ? $this->admin->id : null,
             'approved_at' => in_array($approvalStatus, ['approved', 'rejected'], true) ? ($issuedAt ?? now()) : null,
-            'receipt_pdf_path' => $status === Receipt::STATUS_ISSUED ? 'receipts/'.$number.'.pdf' : null,
+            'receipt_pdf_path' => null,
             'status' => $status,
             'approval_status' => $approvalStatus,
             'issued_at' => $status === Receipt::STATUS_ISSUED ? ($issuedAt ?? now()) : null,
-            'sent_at' => $status === Receipt::STATUS_ISSUED ? ($issuedAt ?? now()) : null,
-            'sent_by' => $status === Receipt::STATUS_ISSUED ? $this->admin->id : null,
+            'sent_at' => null,
+            'sent_by' => null,
         ]);
     }
 }

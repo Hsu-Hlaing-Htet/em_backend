@@ -40,11 +40,28 @@ $_ENV['FRONTEND_URL'] = 'http://localhost:5174';
 $_SERVER['FRONTEND_URL'] = 'http://localhost:5174';
 
 $root = dirname(__DIR__);
-$uri = urldecode(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
-$file = $root.'/public'.$uri;
+$uri = rawurldecode(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
+$segments = explode('/', str_replace('\\', '/', $uri));
+if (str_contains($uri, "\0") || in_array('..', $segments, true)) {
+    http_response_code(404);
+    return;
+}
 
-if ($uri !== '/' && is_file($file)) {
-    return false;
+if ($uri !== '/' && $uri !== '/index.php') {
+    $public = realpath($root.'/public');
+    $uploads = realpath($root.'/storage/app/public');
+    $file = realpath($root.'/public/'.ltrim($uri, '/'));
+    if ($file !== false && is_file($file)) {
+        $allowed = ($public !== false && str_starts_with($file, $public.DIRECTORY_SEPARATOR))
+            || ($uploads !== false && str_starts_with($file, $uploads.DIRECTORY_SEPARATOR));
+        if (! $allowed || preg_match('/\.(?:php\d*|phtml|phar)$/i', $file)) {
+            http_response_code(404);
+            return;
+        }
+        header('Content-Type: '.((new finfo(FILEINFO_MIME_TYPE))->file($file) ?: 'application/octet-stream'));
+        readfile($file);
+        return;
+    }
 }
 
 require $root.'/public/index.php';

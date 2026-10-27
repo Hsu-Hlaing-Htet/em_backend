@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Receipt;
 use App\Models\User;
+use App\Models\Utility;
 use App\Services\ContractLifecycleService;
 use App\Support\ContractInvoiceSchedule;
 use Illuminate\Support\Carbon;
@@ -317,19 +318,33 @@ final class ContractFinancialHistorySeederSupport
                 $periodCount,
             );
 
+            $utility = Utility::query()
+                ->where('contract_id', $contract->id)
+                ->whereDate('billing_month', $billingMonth->toDateString())
+                ->where('status', 'approved')
+                ->first();
+            $items = $utility
+                ? ConsolidatedBillingSeederSupport::buildRentConsolidatedItems(
+                    $contract, $utility, $this->chargeTypes, $billingMonth, false
+                )
+                : [[
+                    'charge_type_id' => $this->chargeTypes->get('monthly-rent')?->id,
+                    'description' => 'Monthly rent — '.$billingMonth->format('F Y'),
+                    'amount' => $rent,
+                ]];
+
             $invoice = $this->upsertChargeInvoice(
                 $contract,
                 'RENT-'.$billingMonth->format('Ym'),
                 $issued,
                 $dueDate,
-                [[
-                    'charge_type_id' => $this->chargeTypes->get('monthly-rent')?->id,
-                    'description' => 'Monthly rent — '.$billingMonth->format('F Y'),
-                    'amount' => $rent,
-                ]],
+                $items,
                 $status,
                 $billingMonth,
             );
+            if ($utility) {
+                $utility->update(['invoice_id' => $invoice->id]);
+            }
             $stats['invoices']++;
             $paymentStats = $this->applyInvoicePaymentPattern($invoice, $status, $contract, 'rent-'.$billingMonth->format('Ym'));
             $stats['payments'] += $paymentStats['payments'];

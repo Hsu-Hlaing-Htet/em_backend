@@ -43,7 +43,7 @@ class AllowedUserEmail implements ValidationRule
                 return;
             }
 
-            $fail(UserEmail::MESSAGE_GMAIL);
+            $fail(UserEmail::MESSAGE_RESERVED);
 
             return;
         }
@@ -52,8 +52,6 @@ class AllowedUserEmail implements ValidationRule
             return;
         }
 
-        if (! UserEmail::isGmailAddress($email)) {
-            $fail(UserEmail::MESSAGE_GMAIL);
-        }
+        // Laravel's email rule validates format; provider domains are unrestricted.
     }
 }

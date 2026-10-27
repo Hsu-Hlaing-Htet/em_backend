@@ -45,7 +45,7 @@ class ContractSeeder extends Seeder
         $profiles = CustomerHistoryProfiles::emailsByPersona();
 
         $occupiedRentNumbers = ['A-501', 'D-402', 'D-403', 'C-501', 'A-801', 'D-601'];
-        $reservedSaleNumbers = ['C-301', 'C-302', 'F-102'];
+        $activeSaleNumbers = ['C-301', 'C-302', 'F-102'];
         $soldSaleNumbers = ['E-701', 'E-702', 'E-203'];
         $keepAvailableNumbers = ['A-101', 'A-102', 'B-201', 'B-202', 'B-305'];
 
@@ -97,7 +97,7 @@ class ContractSeeder extends Seeder
         }
 
         $pendingSaleCustomer = $customers->get($profiles['pipeline'][0] ?? '') ?? $customers->first();
-        $pendingSaleRoom = $takeSale($reservedSaleNumbers);
+        $pendingSaleRoom = $takeSale($activeSaleNumbers);
         if ($pendingSaleCustomer && $pendingSaleRoom) {
             $this->createSaleContract(
                 admin: $admin,
@@ -109,13 +109,13 @@ class ContractSeeder extends Seeder
                 startDate: now()->subWeeks(2),
                 endDate: null,
                 remark: 'Sale application pending management approval.',
-                roomStatus: 'reserved',
+                roomStatus: Room::STATUS_AVAILABLE,
             );
         }
 
         foreach ($profiles['active_sale'] as $index => $email) {
             $customer = $customers->get($email);
-            $room = $takeSale($reservedSaleNumbers);
+            $room = $takeSale($activeSaleNumbers);
 
             if (! $customer || ! $room) {
                 continue;
@@ -130,8 +130,8 @@ class ContractSeeder extends Seeder
                 installmentPlan: $index === 0 ? $installmentPlan : null,
                 startDate: now()->subMonths(2),
                 endDate: $index === 0 ? now()->addMonths(10) : null,
-                remark: 'Approved sale contract. Unit reserved pending completion.',
-                roomStatus: 'reserved',
+                remark: 'Approved sale contract with settlement in progress.',
+                roomStatus: Room::STATUS_SOLD,
             );
         }
 

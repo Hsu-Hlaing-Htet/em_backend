@@ -15,7 +15,8 @@ use Illuminate\Support\Collection;
 
 class UtilitySeeder extends Seeder
 {
-    private const BULK_IMPORT_READY_THROUGH = '2026-09-01';
+    // August is the last seeded utility month; September remains empty for import.
+    private const BULK_IMPORT_READY_THROUGH = '2026-08-01';
 
     public function run(): void
     {

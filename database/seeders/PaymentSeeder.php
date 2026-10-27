@@ -45,7 +45,11 @@ class PaymentSeeder extends Seeder
         foreach ($invoices as $invoice) {
             $paymentMethod = $paymentMethods[$methodIndex % $paymentMethods->count()];
             $methodIndex++;
-            $issuedDate = Carbon::parse($invoice->issued_date ?? now()->toDateString());
+
+            $issuedDate = Carbon::parse(
+                $invoice->issued_date ?? now()->toDateString()
+            );
+
             $customer = $invoice->contract?->user;
 
             if ($invoice->status === 'paid') {
@@ -61,35 +65,50 @@ class PaymentSeeder extends Seeder
             }
 
             if ($invoice->status === 'partial') {
-                $partialAmount = round(((float) $invoice->total_amount) * 0.45, 2);
+                $partialAmount = round(
+                    ((float) $invoice->total_amount) * 0.45,
+                    2
+                );
+
                 $payment = BillingSeederSupport::createApprovedPayment(
                     $admin,
                     $invoice,
                     $paymentMethod,
                     $partialAmount,
                     $issuedDate->copy()->addDays(5),
-                    note: 'Partial MMK payment received via KBZ Pay.',
+                    note: 'Partial MMK payment received via '.$paymentMethod->name.'.',
                     createdBy: $customer,
                 );
+
                 BillingSeederSupport::createIssuedReceipt(
                     $admin,
                     $payment,
                     $issuedDate->copy()->addDays(6),
                 );
+
                 $invoice->update(['status' => 'partial']);
 
                 continue;
             }
 
             // First open issued invoice without payments = unpaid scenario
-            if ($invoice->status === 'issued' && ! $unpaidLeftAlone && $invoice->type === 'rent') {
+            if (
+                $invoice->status === 'issued'
+                && ! $unpaidLeftAlone
+                && $invoice->type === 'rent'
+            ) {
                 $unpaidLeftAlone = true;
 
                 continue;
             }
 
-            // Next open issued rent invoice gets a rejected payment attempt
-            if ($invoice->status === 'issued' && ! $rejectedCreated && $customer && $invoice->type === 'rent') {
+            // Next issued rent invoice = rejected payment
+            if (
+                $invoice->status === 'issued'
+                && ! $rejectedCreated
+                && $customer
+                && $invoice->type === 'rent'
+            ) {
                 BillingSeederSupport::createRejectedPayment(
                     $admin,
                     $customer,
@@ -98,6 +117,7 @@ class PaymentSeeder extends Seeder
                     now()->subDays(2),
                     'Bank transfer proof is unclear. Please resubmit a clearer screenshot showing the full amount in MMK.',
                 );
+
                 $rejectedCreated = true;
 
                 continue;
@@ -105,7 +125,8 @@ class PaymentSeeder extends Seeder
 
             if ($invoice->status === 'issued') {
                 $pendingAmount = round(
-                    (float) $invoice->total_amount + (float) ($invoice->late_fee ?? 0),
+                    (float) $invoice->total_amount
+                    + (float) ($invoice->late_fee ?? 0),
                     2,
                 );
 

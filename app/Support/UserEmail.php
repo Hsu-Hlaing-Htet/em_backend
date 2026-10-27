@@ -9,7 +9,7 @@ use Closure;
 /**
  * Account email policy:
  * - Super Admin reserved address: admin@rosewoodroyale.com
- * - All other accounts: unique @gmail.com addresses
+ * - All other accounts: unique valid email addresses, regardless of provider
  * Roles remain separate from email/domain rules.
  */
 final class UserEmail
@@ -20,7 +20,9 @@ final class UserEmail
 
     public const MESSAGE_INVALID = 'Please enter a valid email address.';
 
-    public const MESSAGE_GMAIL = 'Please use a Gmail address.';
+    public const MESSAGE_GMAIL = 'Please use a Gmail address.'; // Legacy message; no domain restriction is applied.
+
+    public const MESSAGE_RESERVED = 'This email address is reserved for the system administrator.';
 
     public const MESSAGE_UNIQUE = 'This email is already in use.';
 

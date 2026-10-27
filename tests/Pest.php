@@ -11,9 +11,8 @@
 |
 */
 
-pest()->extend(Tests\TestCase::class)
- // ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
-    ->in('Feature');
+pest()->extend(Tests\UnitTestCase::class)->in(__DIR__.'/Unit');
+pest()->extend(Tests\TestCase::class)->in(__DIR__.'/Integration');
 
 /*
 |--------------------------------------------------------------------------
@@ -30,7 +29,7 @@ expect()->extend('toBeOne', function () {
     return $this->toBe(1);
 });
 
-require_once __DIR__.'/Feature/Timebox3/helpers.php';
+require_once __DIR__.'/Support/UtilityFixtures.php';
 
 /*
 |--------------------------------------------------------------------------

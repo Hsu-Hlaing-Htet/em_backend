@@ -158,11 +158,32 @@ final class BillingSeederSupport
         return SeedNumberGenerator::nextRentContractNumber();
     }
 
-    public static function storePaymentProof(string $relativePath): string
+    public static function storePaymentProof(string $relativePath, ?PaymentMethod $paymentMethod = null): ?string
     {
-        SeedAssetImage::assertRoomAssetLibraryPresent();
+        SeedAssetImage::assertPaymentAssetLibraryPresent();
 
-        return SeedAssetImage::storePaymentProof($relativePath);
+        return SeedAssetImage::storePaymentProof($relativePath, $paymentMethod);
+    }
+
+    public static function resolveSeedProofPath(
+        ?PaymentMethod $paymentMethod,
+        ?string $requestedPath = null,
+    ): ?string {
+        if (SeedAssetImage::isUploadedPaymentProofPath($requestedPath)) {
+            return $requestedPath;
+        }
+
+        $source = SeedAssetImage::sourceFilenameForPaymentMethod($paymentMethod);
+
+        if ($source === null) {
+            return null;
+        }
+
+        $destination = ($requestedPath !== null && trim($requestedPath) !== '')
+            ? ltrim(str_replace('\\', '/', $requestedPath), '/')
+            : 'payments/proofs/'.$source;
+
+        return self::storePaymentProof($destination, $paymentMethod);
     }
 
     /**
@@ -311,8 +332,15 @@ final class BillingSeederSupport
             ? $noteBody
             : $noteKey.($noteBody !== '' ? ' '.$noteBody : '');
 
-        if (! empty($attributes['proof_image_path'])) {
-            $attributes['proof_image_path'] = self::storePaymentProof((string) $attributes['proof_image_path']);
+        if ($existing && SeedAssetImage::isUploadedPaymentProofPath($existing->proof_image_path)) {
+            unset($attributes['proof_image_path']);
+        } elseif (array_key_exists('proof_image_path', $attributes) || array_key_exists('payment_method_id', $attributes)) {
+            $methodId = $attributes['payment_method_id'] ?? $existing?->payment_method_id;
+            $method = $methodId
+                ? PaymentMethod::query()->find($methodId)
+                : null;
+            $requested = $attributes['proof_image_path'] ?? $existing?->proof_image_path;
+            $attributes['proof_image_path'] = self::resolveSeedProofPath($method, $requested);
         }
 
         if ($existing) {
@@ -345,17 +373,15 @@ final class BillingSeederSupport
         if (! $receipt->exists) {
             $receipt->receipt_number = self::nextReceiptNumber();
             $receipt->created_by = $admin->id;
+            $receipt->receipt_pdf_path = null;
+            $receipt->sent_at = null;
+            $receipt->sent_by = null;
         }
 
         $receipt->fill([
-            'receipt_pdf_path' => $status === Receipt::STATUS_ISSUED
-                ? 'receipts/'.$receipt->receipt_number.'.pdf'
-                : null,
             'status' => $status,
             'approval_status' => $approvalStatus,
             'issued_at' => $issuedAt,
-            'sent_at' => $status === Receipt::STATUS_ISSUED ? ($issuedAt ?? now()) : null,
-            'sent_by' => $status === Receipt::STATUS_ISSUED ? $admin->id : null,
             'approved_by' => in_array($approvalStatus, ['approved', 'rejected'], true) ? $admin->id : null,
             'approved_at' => in_array($approvalStatus, ['approved', 'rejected'], true) ? ($issuedAt ?? now()) : null,
         ]);
@@ -380,7 +406,10 @@ final class BillingSeederSupport
             'approved_by' => $admin->id,
             'approved_at' => $paymentDate->copy()->addDay(),
             'amount' => round($amount, 2),
-            'proof_image_path' => 'payments/proof-'.$invoice->invoice_number.'.jpg',
+            'proof_image_path' => self::resolveSeedProofPath(
+                $paymentMethod,
+                'payments/proof-'.$invoice->invoice_number.'.jpg',
+            ),
             'note' => $note ?? 'Payment verified and approved.',
             'rejection_reason' => null,
             'payment_date' => $paymentDate->toDateString(),
@@ -403,7 +432,10 @@ final class BillingSeederSupport
             'approved_by' => null,
             'approved_at' => null,
             'amount' => $amount !== null ? round($amount, 2) : null,
-            'proof_image_path' => 'payments/pending-'.$invoice->invoice_number.'.jpg',
+            'proof_image_path' => self::resolveSeedProofPath(
+                $paymentMethod,
+                'payments/pending-'.$invoice->invoice_number.'.jpg',
+            ),
             'note' => $note ?? 'Payment submitted and awaiting verification.',
             'rejection_reason' => null,
             'payment_date' => $paymentDate->toDateString(),
@@ -431,7 +463,10 @@ final class BillingSeederSupport
             'approved_by' => $admin->id,
             'approved_at' => $paymentDate->copy()->addDay(),
             'amount' => $amount,
-            'proof_image_path' => 'payments/rejected-'.$invoice->invoice_number.'.jpg',
+            'proof_image_path' => self::resolveSeedProofPath(
+                $paymentMethod,
+                'payments/rejected-'.$invoice->invoice_number.'.jpg',
+            ),
             'note' => 'Customer submitted proof for verification.',
             'rejection_reason' => $rejectionReason,
             'payment_date' => $paymentDate->toDateString(),

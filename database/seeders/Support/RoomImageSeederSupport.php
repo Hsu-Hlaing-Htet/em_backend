@@ -11,7 +11,7 @@ final class RoomImageSeederSupport
     public const FALLBACK_PATH = 'rooms/fallback-room.jpg';
 
     /**
-     * @return list<array{slug: string, label: string}>
+     * Return 2–4 gallery definitions for a room.
      */
     public static function galleryDefinitions(Room $room): array
     {
@@ -25,7 +25,10 @@ final class RoomImageSeederSupport
         $count = 2 + ($room->id % 3);
 
         if ($count === 4 && $room->id % 2 === 0) {
-            $all[3] = ['slug' => 'balcony', 'label' => 'Balcony'];
+            $all[3] = [
+                'slug' => 'balcony',
+                'label' => 'Balcony',
+            ];
         }
 
         return array_slice($all, 0, $count);
@@ -33,13 +36,19 @@ final class RoomImageSeederSupport
 
     public static function pathFor(Room $room, string $slug): string
     {
-        return 'rooms/room-'.$room->id.'-'.$slug.'.jpg';
+        return "rooms/room-{$room->id}-{$slug}.jpg";
     }
 
-    public static function sourceAssetFor(Room $room, string $slug, int $sortOrder): string
-    {
+    public static function sourceAssetFor(
+        Room $room,
+        string $slug,
+        int $sortOrder
+    ): string {
         $variants = ['01', '02', '03'];
-        $variant = $variants[($room->id + $sortOrder) % count($variants)];
+
+        $variant = $variants[
+            ($room->id + $sortOrder) % count($variants)
+        ];
 
         return "{$slug}-{$variant}.jpg";
     }
@@ -48,165 +57,207 @@ final class RoomImageSeederSupport
     {
         SeedAssetImage::assertRoomAssetLibraryPresent();
 
-        return SeedAssetImage::copyRoomAssetToPublic('fallback-room.jpg', self::FALLBACK_PATH, force: true);
+        $disk = Storage::disk('public');
+
+        if (! $disk->exists(self::FALLBACK_PATH)) {
+            return SeedAssetImage::copyRoomAssetToPublic(
+                'fallback-room.jpg',
+                self::FALLBACK_PATH,
+                force: false
+            );
+        }
+
+        return self::FALLBACK_PATH;
     }
 
+    /**
+     * Identify paths owned by the room image seeder.
+     */
+    public static function isCanonicalSeedPath(
+        Room $room,
+        string $path
+    ): bool {
+        $prefix = preg_quote(
+            "rooms/room-{$room->id}-",
+            '#'
+        );
+
+        return (bool) preg_match(
+            "#^{$prefix}(living-room|bedroom|kitchen|bathroom|balcony)\.jpg$#",
+            ltrim($path, '/')
+        );
+    }
+
+    /**
+     * Seed images without deleting manually uploaded files.
+     */
     public static function seedRoom(Room $room): int
     {
-        self::ensureFallbackImage();
         SeedAssetImage::assertRoomAssetLibraryPresent();
-        $created = 0;
 
-        foreach (self::galleryDefinitions($room) as $index => $definition) {
-            $path = self::pathFor($room, $definition['slug']);
-            $source = self::sourceAssetFor($room, $definition['slug'], $index);
-            SeedAssetImage::copyRoomAssetToPublic($source, $path, force: true);
-
-            RoomImage::query()->updateOrCreate(
-                [
-                    'room_id' => $room->id,
-                    'image_path' => $path,
-                ],
-                [
-                    'description' => $definition['label'],
-                    'sort_order' => $index,
-                    'is_primary' => $index === 0,
-                ],
-            );
-            $created++;
-        }
-
-        self::repairBrokenImages($room->fresh('roomImages'));
-        self::cleanupStaleSeededImages($room->fresh('roomImages'));
-        self::cleanupObsoleteCanonicalImages($room->fresh('roomImages'));
-        self::ensureSinglePrimaryImage($room->id);
-
-        return $created;
-    }
-
-    public static function isManualUploadPath(string $path): bool
-    {
-        return (bool) preg_match('#^buildings/.+/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$#i', ltrim($path, '/'));
-    }
-
-    public static function isLegacySeededBuildingPath(string $path): bool
-    {
-        return (bool) preg_match('#^buildings/.+/(living-room|master-bedroom|bedroom|kitchen|bathroom)\.jpg$#i', ltrim($path, '/'));
-    }
-
-    public static function cleanupStaleSeededImages(Room $room): void
-    {
-        $disk = Storage::disk('public');
-        $canonicalPaths = collect(self::galleryDefinitions($room))
-            ->map(fn (array $definition): string => self::pathFor($room, $definition['slug']))
-            ->all();
-
-        foreach ($room->roomImages as $image) {
-            $path = ltrim((string) $image->image_path, '/');
-
-            if ($path === '' || in_array($path, $canonicalPaths, true) || self::isManualUploadPath($path)) {
-                continue;
-            }
-
-            $absolutePath = $disk->path($path);
-            $shouldRemove = self::isLegacySeededBuildingPath($path)
-                || ($disk->exists($path) && SeedAssetImage::isPlaceholderFile($absolutePath));
-
-            if (! $shouldRemove) {
-                continue;
-            }
-
-            if ($disk->exists($path)) {
-                $disk->delete($path);
-            }
-
-            $image->forceDelete();
-        }
-    }
-
-    public static function cleanupObsoleteCanonicalImages(Room $room): void
-    {
-        $disk = Storage::disk('public');
-        $allowedPaths = collect(self::galleryDefinitions($room))
-            ->map(fn (array $definition): string => self::pathFor($room, $definition['slug']))
-            ->all();
-
-        foreach ($room->roomImages as $image) {
-            $path = ltrim((string) $image->image_path, '/');
-
-            if (! preg_match('#^rooms/room-'.$room->id.'-(living-room|bedroom|kitchen|bathroom|balcony)\\.jpg$#', $path)) {
-                continue;
-            }
-
-            if (in_array($path, $allowedPaths, true)) {
-                continue;
-            }
-
-            if ($disk->exists($path)) {
-                $disk->delete($path);
-            }
-
-            $image->forceDelete();
-        }
-    }
-
-    public static function ensureSinglePrimaryImage(int $roomId): void
-    {
-        RoomImage::withTrashed()
-            ->where('room_id', $roomId)
-            ->update(['is_primary' => false]);
-
-        $primaryId = RoomImage::query()
-            ->where('room_id', $roomId)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->value('id');
-
-        if ($primaryId) {
-            RoomImage::query()->where('id', $primaryId)->update(['is_primary' => true]);
-        }
-    }
-
-    public static function repairBrokenImages(Room $room): void
-    {
         $disk = Storage::disk('public');
         $definitions = self::galleryDefinitions($room);
 
-        foreach ($room->roomImages as $image) {
-            $path = ltrim((string) $image->image_path, '/');
+        $canonicalPaths = [];
+        $filled = 0;
 
-            if ($path !== '' && $disk->exists($path)) {
-                continue;
+        foreach ($definitions as $index => $definition) {
+            $slug = $definition['slug'];
+
+            $path = self::pathFor($room, $slug);
+
+            $source = self::sourceAssetFor(
+                $room,
+                $slug,
+                $index
+            );
+
+            $canonicalPaths[] = $path;
+
+            // Copy only if the destination is missing or
+            // is a known placeholder belonging to the seeder.
+            $needsCopy = ! $disk->exists($path);
+
+            if (! $needsCopy) {
+                $needsCopy = SeedAssetImage::isPlaceholderFile(
+                    $disk->path($path)
+                );
             }
 
-            $sortOrder = (int) $image->sort_order;
-
-            if (! isset($definitions[$sortOrder])) {
-                continue;
+            if ($needsCopy) {
+                SeedAssetImage::copyRoomAssetToPublic(
+                    $source,
+                    $path,
+                    force: true
+                );
             }
 
-            $canonical = self::pathFor($room, $definitions[$sortOrder]['slug']);
-            $source = self::sourceAssetFor($room, $definitions[$sortOrder]['slug'], $sortOrder);
-            SeedAssetImage::copyRoomAssetToPublic($source, $canonical, force: true);
+            // Reuse or restore a previously seeded image row.
+            $image = RoomImage::withTrashed()
+                ->where('room_id', $room->id)
+                ->where('image_path', $path)
+                ->first();
 
-            $image->update([
-                'image_path' => $canonical,
-                'description' => $definitions[$sortOrder]['label'],
-            ]);
+            if ($image) {
+                if ($image->trashed()) {
+                    $image->restore();
+                }
+
+                $image->update([
+                    'description' => $definition['label'],
+                    'sort_order' => $index,
+                ]);
+            } else {
+                RoomImage::create([
+                    'room_id' => $room->id,
+                    'image_path' => $path,
+                    'description' => $definition['label'],
+                    'sort_order' => $index,
+                    'is_primary' => false,
+                ]);
+            }
+
+            $filled++;
+        }
+
+        // Soft-delete only obsolete canonical seeded rows.
+        // Never delete the physical image files here.
+        RoomImage::query()
+            ->where('room_id', $room->id)
+            ->get()
+            ->each(function ($image) use ($room, $canonicalPaths) {
+                $path = ltrim(
+                    (string) $image->image_path,
+                    '/'
+                );
+
+                if (
+                    self::isCanonicalSeedPath($room, $path)
+                    && ! in_array($path, $canonicalPaths, true)
+                ) {
+                    $image->delete();
+                }
+            });
+
+        self::ensureSinglePrimaryImage($room->id);
+
+        return $filled;
+    }
+
+    /**
+     * Maintain exactly one primary image.
+     * Prefer an existing manually uploaded primary.
+     */
+    public static function ensureSinglePrimaryImage(int $roomId): void
+    {
+        $room = Room::find($roomId);
+
+        if (! $room) {
+            return;
+        }
+
+        $images = RoomImage::query()
+            ->where('room_id', $roomId)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        if ($images->isEmpty()) {
+            return;
+        }
+
+        // Preserve a manually selected primary where possible.
+        $primary = $images->first(function ($image) use ($room) {
+            return $image->is_primary
+                && ! self::isCanonicalSeedPath(
+                    $room,
+                    (string) $image->image_path
+                );
+        });
+
+        // Otherwise prefer the first canonical seeded image.
+        if (! $primary) {
+            $primary = $images->first(function ($image) use ($room) {
+                return self::isCanonicalSeedPath(
+                    $room,
+                    (string) $image->image_path
+                );
+            });
+        }
+
+        $primary ??= $images->first();
+
+        RoomImage::query()
+            ->where('room_id', $roomId)
+            ->where('is_primary', true)
+            ->where('id', '!=', $primary->id)
+            ->update(['is_primary' => false]);
+
+        if (! $primary->is_primary) {
+            $primary->update(['is_primary' => true]);
         }
     }
 
+    /**
+     * Seed existing rooms without modifying other modules.
+     */
     public static function seedAllRooms(): int
     {
+        SeedAssetImage::assertRoomAssetLibraryPresent();
+
+        self::ensureFallbackImage();
+
         $total = 0;
 
-        Room::query()->with('roomImages')->orderBy('id')->chunkById(50, function ($rooms) use (&$total): void {
-            foreach ($rooms as $room) {
-                $total += self::seedRoom($room);
-            }
-        });
+        Room::query()
+            ->orderBy('id')
+            ->chunkById(50, function ($rooms) use (&$total): void {
+                foreach ($rooms as $room) {
+                    $total += self::seedRoom($room);
+                }
+            });
 
-        RoomImage::onlyTrashed()->forceDelete();
+        // Do not globally force-delete soft-deleted images.
 
         return $total;
     }

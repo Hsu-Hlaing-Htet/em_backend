@@ -156,6 +156,11 @@ class UtilityInvoiceConsistencySeeder extends Seeder
     private function ensureDemoMonthUtilities(User $admin): int
     {
         $month = Carbon::parse(ContractFinancialHistorySeederSupport::DEMO_AS_OF)->startOfMonth();
+        if ($month->gte(Carbon::parse('2026-09-01'))) {
+            // The September demo month is reserved for the utility import workflow.
+            return 0;
+        }
+
         $types = UtilityType::query()->where('status', 'active')->orderBy('id')->get();
 
         if ($types->isEmpty()) {
