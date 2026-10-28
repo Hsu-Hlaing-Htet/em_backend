@@ -45,7 +45,7 @@ test('seeded fake data uses readable emails phones buildings and rooms', functio
     expect(User::query()->where('email', 'superadmin@rosewood.com')->whereHas('role',
         fn ($query) => $query->where('name', Role::SUPER_ADMIN))->exists())->toBeTrue();
     expect(Role::query()->pluck('name')->sort()->values()->all())
-        ->toBe([Role::ADMIN, Role::CUSTOMER, Role::SUPER_ADMIN]);
+        ->toBe(collect([Role::ADMIN, Role::CUSTOMER, Role::SUPER_ADMIN, ...Role::staffRoleNames()])->sort()->values()->all());
 
     $users = User::query()
         ->with('profile')

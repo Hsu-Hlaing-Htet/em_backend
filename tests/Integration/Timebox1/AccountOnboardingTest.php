@@ -122,11 +122,11 @@ test('creating a resident uses the fixed temporary password and requires first-l
         ->assertJsonPath('user.must_change_password', false);
 });
 
-test('creating staff rejects client-supplied passwords and emails a temporary password', function (): void {
+test('creating staff rejects client-supplied passwords and keeps the employee inactive', function (): void {
     Notification::fake();
 
     $admin = accountOnboardingAdmin();
-    $roleId = Role::query()->where('name', Role::ADMIN)->value('id');
+    $roleId = Role::query()->where('name', Role::MANAGER)->value('id');
     $email = 'staff.onboard.'.uniqid().'@gmail.com';
 
     $this->actingAs($admin, 'sanctum')
@@ -159,22 +159,11 @@ test('creating staff rejects client-supplied passwords and emails a temporary pa
 
     $user = User::query()->where('email', $email)->firstOrFail();
 
-    expect($user->must_change_password)->toBeTrue()
-        ->and($user->password)->not->toBe(TemporaryPassword::VALUE)
-        ->and(Hash::check(TemporaryPassword::VALUE, $user->password))->toBeTrue();
+    expect($user->role?->name)->toBe(Role::MANAGER)
+        ->and($user->status)->toBe(User::STATUS_INACTIVE)
+        ->and($user->must_change_password)->toBeFalse();
 
-    Notification::assertSentTo(
-        $user,
-        WelcomeAccountNotification::class,
-        function (WelcomeAccountNotification $notification) use ($user): bool {
-            $property = (new \ReflectionClass($notification))->getProperty('temporaryPassword');
-            $property->setAccessible(true);
-            $mail = $notification->toMail($user);
-
-            return $property->getValue($notification) === TemporaryPassword::VALUE
-                && str_ends_with((string) $mail->actionUrl, '/login');
-        },
-    );
+    Notification::assertNothingSent();
 });
 
 test('seeded super admin does not require a password change', function (): void {

@@ -13,6 +13,7 @@ class RoleSeeder extends Seeder
             Role::SUPER_ADMIN,
             Role::ADMIN,
             Role::CUSTOMER,
+            ...Role::staffRoleNames(),
         ];
 
         foreach ($roles as $roleName) {

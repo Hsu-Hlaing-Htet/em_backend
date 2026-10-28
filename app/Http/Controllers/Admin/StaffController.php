@@ -23,7 +23,7 @@ class StaffController extends Controller
      */
     private function allowedRoles(): array
     {
-        return [Role::ADMIN, Role::SUPER_ADMIN];
+        return Role::staffRoleNames();
     }
 
     /**
@@ -66,10 +66,11 @@ class StaffController extends Controller
             (int) $validated['role_id'],
             $userService,
             $profileService,
+            false,
         );
 
         return response()->json([
-            'message' => 'Staff member created successfully. A welcome email with a temporary password was sent.',
+            'message' => 'Staff member created successfully. Staff records do not have login access.',
             'data' => new AccountResource($user),
         ], 201);
     }

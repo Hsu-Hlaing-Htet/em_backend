@@ -91,7 +91,7 @@ test('normal resident update rejects password changes', function (): void {
 
 test('normal staff update rejects password changes', function (): void {
     $admin = userEmailAdmin();
-    $staff = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
+    $staff = User::query()->where('email', 'may.thazin.win@rosewoodroyale.test')->firstOrFail();
 
     $this->actingAs($admin, 'sanctum')
         ->putJson("/api/staff/{$staff->id}", [
@@ -109,46 +109,19 @@ test('normal staff update rejects password changes', function (): void {
         ->assertJsonValidationErrors(['password'], 'data');
 });
 
-test('super admin can keep reserved email and other users cannot take it', function (): void {
+test('staff endpoints do not expose privileged accounts', function (): void {
     $admin = userEmailAdmin();
 
     $this->actingAs($admin, 'sanctum')
-        ->putJson("/api/staff/{$admin->id}", [
-            'role_id' => $admin->role_id,
-            'name' => $admin->name,
-            'email' => UserEmail::SUPER_ADMIN_EMAIL,
-            'phone' => $admin->profile?->phone ?? '+95900000000',
-            'nrc' => $admin->profile?->nrc ?? '12/ABC(N)000000',
-            'dob' => $admin->profile?->dob?->toDateString() ?? '1985-01-01',
-            'gender' => $admin->profile?->gender ?? 'male',
-            'address' => $admin->profile?->address ?? 'Yangon',
-        ])
-        ->assertOk()
-        ->assertJsonPath('data.email', UserEmail::SUPER_ADMIN_EMAIL);
-
-    $other = User::query()->where('email', 'aungaung@gmail.com')->firstOrFail();
-
-    $this->actingAs($admin, 'sanctum')
-        ->putJson("/api/staff/{$other->id}", [
-            'role_id' => $other->role_id,
-            'name' => $other->name,
-            'email' => UserEmail::SUPER_ADMIN_EMAIL,
-            'phone' => $other->profile?->phone ?? '+95900000000',
-            'nrc' => $other->profile?->nrc ?? '12/ABC(N)000000',
-            'dob' => $other->profile?->dob?->toDateString() ?? '1990-01-01',
-            'gender' => $other->profile?->gender ?? 'female',
-            'address' => $other->profile?->address ?? 'Yangon',
-        ])
-        ->assertStatus(422)
-        ->assertJsonPath('data.email.0', UserEmail::MESSAGE_RESERVED);
+        ->getJson("/api/staff/{$admin->id}")
+        ->assertNotFound();
 });
 
 
 test('staff account creation accepts non-Gmail email and preserves uniqueness', function (): void {
     $admin = userEmailAdmin();
     \Illuminate\Support\Facades\Mail::fake();
-    $payload = [...userEmailResidentPayload(' STAFF@ESTATE.EXAMPLE.ORG '),
-        'role_id' => Role::query()->where('name', Role::ADMIN)->value('id')];
+    $payload = [...userEmailResidentPayload(' STAFF@ESTATE.EXAMPLE.ORG '), 'role_id' => Role::query()->where('name', Role::ACCOUNTANT)->value('id')];
     $this->actingAs($admin, 'sanctum')->postJson('/api/staff', $payload)
         ->assertCreated()->assertJsonPath('data.email', 'staff@estate.example.org');
     $this->actingAs($admin, 'sanctum')->postJson('/api/staff', $payload)

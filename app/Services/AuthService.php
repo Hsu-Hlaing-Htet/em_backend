@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\Role;
 use App\Notifications\ResetPasswordNotification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -34,6 +35,14 @@ class AuthService
         if ($user->status !== User::STATUS_ACTIVE) {
             throw ValidationException::withMessages([
                 'email' => ['This account is inactive.'],
+            ]);
+        }
+
+        $user->loadMissing('role');
+
+        if (! in_array($user->role?->name, Role::loginRoleNames(), true)) {
+            throw ValidationException::withMessages([
+                'email' => ['This account is not permitted to log in.'],
             ]);
         }
 

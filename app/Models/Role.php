@@ -17,6 +17,22 @@ class Role extends Model
 
     public const CUSTOMER = 'customer';
 
+    public const MANAGER = 'manager';
+
+    public const ACCOUNTANT = 'accountant';
+
+    public const RECEPTIONIST = 'receptionist';
+
+    public const SECURITY_GUARD = 'security_guard';
+
+    public const CLEANER = 'cleaner';
+
+    public const MAINTENANCE_STAFF = 'maintenance_staff';
+
+    public const ELECTRICIAN = 'electrician';
+
+    public const PLUMBER = 'plumber';
+
     /**
      * @var list<string>
      */
@@ -32,5 +48,30 @@ class Role extends Model
     public static function findByName(string $name): ?self
     {
         return static::query()->where('name', $name)->first();
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function staffRoleNames(): array
+    {
+        return [
+            self::MANAGER,
+            self::ACCOUNTANT,
+            self::RECEPTIONIST,
+            self::SECURITY_GUARD,
+            self::CLEANER,
+            self::MAINTENANCE_STAFF,
+            self::ELECTRICIAN,
+            self::PLUMBER,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function loginRoleNames(): array
+    {
+        return [self::SUPER_ADMIN, self::ADMIN, self::CUSTOMER];
     }
 }

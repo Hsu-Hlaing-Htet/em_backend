@@ -10,6 +10,7 @@ use App\Support\TemporaryPassword;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AccountService
 {
@@ -58,18 +59,19 @@ class AccountService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function create(array $data, int $roleId, UserService $userService, ProfileService $profileService): User
+    public function create(array $data, int $roleId, UserService $userService, ProfileService $profileService, bool $createLoginAccount = true): User
     {
-        $temporaryPassword = TemporaryPassword::generate();
+        $temporaryPassword = $createLoginAccount ? TemporaryPassword::generate() : Str::password(64);
 
-        $user = DB::transaction(function () use ($data, $roleId, $userService, $profileService, $temporaryPassword): User {
+        $user = DB::transaction(function () use ($data, $roleId, $userService, $profileService, $temporaryPassword, $createLoginAccount): User {
             unset($data['password']);
 
             $user = $userService->create([
                 ...$this->splitUserData($data),
                 'role_id' => $roleId,
                 'password' => $temporaryPassword,
-                'must_change_password' => true,
+                'must_change_password' => $createLoginAccount,
+                'status' => $createLoginAccount ? User::STATUS_ACTIVE : User::STATUS_INACTIVE,
             ]);
 
             $profileService->create([
@@ -80,10 +82,12 @@ class AccountService
             return $user->fresh(['role', 'profile']);
         });
 
-        try {
-            $user->notify(new WelcomeAccountNotification($temporaryPassword));
-        } catch (\Throwable $exception) {
-            report($exception);
+        if ($createLoginAccount) {
+            try {
+                $user->notify(new WelcomeAccountNotification($temporaryPassword));
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
         }
 
         return $user;
@@ -146,7 +150,7 @@ class AccountService
      */
     private function splitUserData(array $data): array
     {
-        return array_intersect_key($data, array_flip(['name', 'email', 'password', 'role_id', 'must_change_password']));
+        return array_intersect_key($data, array_flip(['name', 'email', 'password', 'role_id', 'status', 'must_change_password']));
     }
 
     /**

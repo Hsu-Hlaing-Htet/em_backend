@@ -61,10 +61,8 @@ test('resident phone validation accepts only plus 95 and exactly 9 local digits'
 
 test('staff phone validation reuses the same plus 95 rule', function (): void {
     $admin = phoneValidationAdmin();
-    $roleId = Role::query()->where('name', Role::ADMIN)->value('id');
-
     $payload = [
-        'role_id' => $roleId,
+        'role_id' => Role::query()->where('name', Role::RECEPTIONIST)->value('id'),
         'name' => 'Phone Validation Staff',
         'email' => 'staff.phone.validation.'.uniqid().'@gmail.com',
         'phone' => '+9591234567',
