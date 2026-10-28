@@ -113,7 +113,9 @@ php artisan migrate
 php artisan db:seed
 ```
 
-`DatabaseSeeder` is the single entry point for the demo dataset. It loads roles, users, billing reference data, workflows, buildings, rooms, images, utilities, financial records, maintenance requests, and contact inquiries through the existing domain seeders. Re-running `php artisan db:seed` preserves existing account passwords. Run it only against a database intended for demonstration; the seeders also update deterministic demo records. Ordinary staff cannot currently be seeded as non-login records because Staff Management uses login-enabled `users` and `profiles` rather than a separate employee record.
+`DatabaseSeeder` is the single entry point for the demo dataset. It loads roles, users, billing reference data, workflows, buildings, rooms, images, utilities, financial records, maintenance requests, and contact inquiries through the existing domain seeders. Run it only against a database intended for demonstration; the seeders also update deterministic demo records.
+
+Staff are ordinary `users` with a `role_id` from the staff employment-role set: `manager`, `accountant`, `receptionist`, `security_guard`, `cleaner`, `maintenance_staff`, `electrician`, or `plumber`. The standard staff seed creates 25 inactive staff records across those roles. Re-running it preserves existing staff identities, profiles, and passwords while reconciling their role assignment. Staff roles are not login roles: only `super_admin`, `admin`, and `customer` can authenticate.
 
 **Do not use** `migrate:fresh`, `db:wipe`, or truncate commands for normal setup. They destroy existing data.
 
@@ -238,6 +240,8 @@ This backend owns:
 - Contract / invoice / receipt / utility document generation and PDF export
 - Email / notifications (mailer configured via env; queue when using database queue)
 - Server-side AI proxy to FastAPI (`AiAssistantProxyService`)
+
+Implemented API areas include administration of users, staff, roles, buildings, rooms, contracts, invoices, payments, receipts, utilities, maintenance requests, contact inquiries, and dashboard/list exports; customer portal APIs; public property/contact APIs; and authentication/password flows.
 
 It does **not** own the Vue UI or the LLM prompts inside FastAPI.
 
@@ -372,6 +376,14 @@ php artisan test --testsuite=Integration
 ```
 
 The test safety guard accepts only SQLite `:memory:` for direct execution. The existing `python3 scripts/verify_timebox_tests.py --group integration` command remains available when MySQL-specific verification is required; it independently verifies a disposable MySQL server before tests can use it. See [the UOG test reorganisation report](docs/testing/reorganisation-report.md) for the full file mapping, restored coverage, verification results and known gaps.
+
+For the isolated MySQL integration verification workflow, use:
+
+```bash
+python3 scripts/verify_timebox_tests.py --group integration
+```
+
+The runner creates a newly initialized disposable MySQL instance under `.test-verification/`, points the test process at it, and shuts it down after the run. It does not use the normal development database. `mysqld`, `mysql`, and `php` must be available locally.
 
 ---
 

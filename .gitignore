@@ -6,6 +6,17 @@
 /vendor
 /node_modules
 /storage/*.key
+/public/storage
 /storage/logs
 /storage/framework
 /bootstrap/cache/.test-verification
+
+# Local verification runs create disposable databases, cached framework files,
+# generated fixtures, and machine-specific test reports.
+/.test-verification/
+
+# Generated test result reports; retain authored testing documentation.
+/docs/testing/*-results.xml
+/docs/testing/coverage-audit.json
+/docs/testing/unit-summary.json
+/docs/testing/verification-results.json
