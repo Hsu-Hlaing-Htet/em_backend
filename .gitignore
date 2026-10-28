@@ -2,7 +2,7 @@
 .DS_Store
 .env
 .env.testing
-.env.example
+!.env.example
 /vendor
 /node_modules
 /storage/*.key
