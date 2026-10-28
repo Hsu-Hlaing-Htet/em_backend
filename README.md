@@ -1,455 +1,248 @@
 # Rosewood Royale — Backend
 
-Laravel API for Rosewood Royale Residences.
+Laravel API for Rosewood Royale Residences. This service owns authentication, authorization, property and customer records, contracts, billing, payments, maintenance, documents, and email. MySQL stores application data. The Vue frontend calls this API; Laravel proxies assistant requests to the FastAPI AI service.
 
-This repository is the main application backend: authentication, business rules, MySQL data access, documents/email, and the server-side proxy to the FastAPI AI service. The Vue frontend and FastAPI AI service both talk to this API.
+Repository: [em_backend](https://github.com/Hsu-Hlaing-Htet/em_backend).
 
-Repository: [Hsu-Hlaing-Htet/em_backend](https://github.com/Hsu-Hlaing-Htet/em_backend)
+## Technology Stack
 
----
+- PHP, Laravel 12, and Laravel Sanctum 4 for Bearer-token authentication.
+- MySQL for documented local development; database-backed sessions, cache, and queues.
+- Pest 4 / PHPUnit 12 for tests; Laravel Pint for PHP formatting.
+- Chrome/Chromium for server-side PDF conversion.
 
-## Quick Start — Run Order
+Dependency constraints are in [composer.json](composer.json); exact installed versions are recorded in [composer.lock](composer.lock).
 
-Start the full system in this order:
+## Prerequisites
 
-1. **MySQL** — create/use database `rosewood_royale`
-2. **Laravel Backend** — Terminal 1 (this repository)
-3. **FastAPI AI Service** — Terminal 2
-4. **Vue Frontend** — Terminal 3
+- **PHP 8.3–8.5 for development with the current lockfile.** The application declares `^8.2`, but the locked Pest/PHPUnit development dependencies require PHP 8.3 or later. The production Dockerfile uses PHP 8.2 and installs without development dependencies.
+- Composer 2. Run `composer check-platform-reqs --lock` to check the lockfile's PHP and extension requirements. Also enable `pdo_mysql` for application data, `pdo_sqlite` for default integration tests, and GD for image-generating seed helpers.
+- A running MySQL server and credentials permitted to create/use a local development database. No MySQL version constraint is declared in the repository.
+- Git. The shell examples use Bash-compatible syntax on macOS/Linux; Windows users can use WSL.
+- Optional Chrome/Chromium for PDF downloads. The enhanced list-PDF path also uses Node with built-in `fetch` and `WebSocket` support (for example, the frontend's Node 22.12+ environment); it falls back to Chrome CLI conversion when unavailable.
 
-| Terminal | Service | Typical command | Local URL |
-| --- | --- | --- | --- |
-| — | MySQL | Start MySQL; ensure DB exists | `127.0.0.1:3306` |
-| 1 | Laravel Backend | `php artisan serve` | http://localhost:8000 |
-| 2 | FastAPI AI | `uvicorn app.main:app --reload --port 8001` (in `em_ai`) | http://localhost:8001 |
-| 3 | Vue Frontend | `npm run dev` (in `em_frontend`) | http://localhost:5173 |
+The core API does not require FastAPI, an OpenAI key, Redis, or a separate Node build. Start MySQL → backend → AI (when needed) → frontend. Each service runs in its own terminal.
 
-Connection flow:
+## Quick Start
 
-```text
-Browser
-   |
-   v
-Vue Frontend (:5173)
-   |
-   v
-Laravel Backend (:8000)
-   | \
-   |  \--> FastAPI AI (:8001)
-   |
-   +-----> MySQL (:3306)
-```
-
-Optional fourth process for async jobs (mail, queued work):
+From this repository's root, with MySQL running and the prerequisites installed:
 
 ```bash
-php artisan queue:listen --tries=1 --timeout=0
-```
-
-Default queue driver in `.env.example` is `database`.
-
----
-
-## First-Time Setup
-
-Do this once after cloning.
-
-### 1. Clone and install PHP dependencies
-
-```bash
-git clone git@github.com:Hsu-Hlaing-Htet/em_backend.git
-cd em_backend
 composer install
-```
-
-Requirements:
-
-- PHP `^8.2` (see `composer.json`)
-- Composer 2
-- MySQL (project `.env.example` uses MySQL)
-- PHP extensions commonly required by Laravel (`pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, …)
-
-### 2. Environment file
-
-```bash
 cp .env.example .env
 php artisan key:generate
 ```
 
-### 3. Configure MySQL
-
-In `.env` (names from `.env.example`):
+Edit `.env`: set `DB_*` for your local MySQL account and a **development-only** database named `rosewood_royale`. Set `MAIL_MAILER=log` to develop without email credentials. Create the database if it does not exist (see [Detailed Local Setup](#detailed-local-setup)), then run:
 
 ```bash
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=rosewood_royale
-DB_USERNAME=root
-DB_PASSWORD=
+php artisan migrate
+php artisan db:seed
+php artisan storage:link
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Create the empty database in MySQL (example):
+In another terminal:
+
+```bash
+curl --fail http://127.0.0.1:8000/up
+curl --fail -H 'Accept: application/json' http://127.0.0.1:8000/api/public/properties
+```
+
+Expect HTTP 200 from both; the second request should return property JSON after demo seeding. `/up` checks application boot, not database or AI connectivity. Seeding writes demo records and files; use only a database intended for development or demonstration.
+
+## Detailed Local Setup
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/Hsu-Hlaing-Htet/em_backend.git
+cd em_backend
+composer install
+composer check-platform-reqs --lock
+cp .env.example .env
+php artisan key:generate
+```
+
+Skip steps already completed in Quick Start. Keep `composer.lock`; use `composer install` rather than updating dependency versions during onboarding. PHP must be able to write to `storage/` and `bootstrap/cache/`.
+
+### 2. Create and configure the database
+
+Connect using an administrative MySQL account (replace `root` if necessary; `-p` prompts for its password):
+
+```bash
+mysql -u root -p
+```
+
+At the MySQL prompt:
 
 ```sql
 CREATE DATABASE rosewood_royale CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Also set frontend / CORS / AI placeholders for local work:
+Exit MySQL and set `.env` to match the database and an account with schema/data permissions on it:
 
-```bash
-APP_URL=http://localhost:8000
-FRONTEND_URL=http://localhost:5173
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
-AI_SERVICE_BASE_URL=http://127.0.0.1:8001
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=rosewood_royale
+DB_USERNAME=your_local_database_user
+DB_PASSWORD=your_local_database_password
+MAIL_MAILER=log
 ```
 
-Do not commit real secrets (`APP_KEY`, `RESEND_API_KEY`, DB passwords, `AI_SERVICE_INTERNAL_KEY`, …).
+The credentials above are placeholders. Do not copy them unchanged. `.env.example` uses `root` with an empty password; change those values if your server requires authentication. The documented application setup uses MySQL even though Laravel's database configuration falls back to SQLite when no connection is configured.
 
-### 4. Migrate and seed (safe for first setup)
+### 3. Initialize schema, demo data, and public files
 
 ```bash
+php artisan config:clear
 php artisan migrate
 php artisan db:seed
+php artisan storage:link
 ```
 
-`DatabaseSeeder` is the single entry point for the demo dataset. It loads roles, users, billing reference data, workflows, buildings, rooms, images, utilities, financial records, maintenance requests, and contact inquiries through the existing domain seeders. Run it only against a database intended for demonstration; the seeders also update deterministic demo records.
+Migrations create application tables and the tables used by database sessions, cache, and queues. The default [DatabaseSeeder](database/seeders/DatabaseSeeder.php) loads roles, users, billing reference data, workflow scenarios, buildings, rooms/images, customer financial histories, maintenance, and contact inquiries. It can update existing demo records, so it is not a production provisioning command.
 
-Staff are ordinary `users` with a `role_id` from the staff employment-role set: `manager`, `accountant`, `receptionist`, `security_guard`, `cleaner`, `maintenance_staff`, `electrician`, or `plumber`. The standard staff seed creates 25 inactive staff records across those roles. Re-running it preserves existing staff identities, profiles, and passwords while reconciling their role assignment. Staff roles are not login roles: only `super_admin`, `admin`, and `customer` can authenticate.
+For local login, use a demo account defined in [UserSeeder](database/seeders/UserSeeder.php), which declares its initial fixture password. Existing account passwords are preserved on repeat seeding. Only `super_admin`, `admin`, and `customer` are login roles. The 25 seeded inactive staff records use employment roles (`manager`, `accountant`, `receptionist`, `security_guard`, `cleaner`, `maintenance_staff`, `electrician`, `plumber`) and cannot log in.
 
-**Do not use** `migrate:fresh`, `db:wipe`, or truncate commands for normal setup. They destroy existing data.
+`storage:link` exposes `storage/app/public` under `public/storage` for uploaded and seeded media. Do not use `migrate:fresh`, `db:wipe`, or truncation commands for ordinary setup: they delete existing data.
 
-### 5. Sibling services
+## Environment Configuration
 
-Set up and run:
+Use [.env.example](.env.example) as the complete template. Keep `.env`, generated keys, database passwords, and provider credentials out of Git.
 
-- Frontend: https://github.com/Hsu-Hlaing-Htet/em_frontend
-- AI: https://github.com/Hsu-Hlaing-Htet/em_ai
+| Variable | Local value or purpose |
+| --- | --- |
+| `APP_KEY` | Generated once with `php artisan key:generate`; retain it for an existing installation. |
+| `APP_URL` | `http://localhost:8000`; also used for generated public file URLs. |
+| `APP_ENV` / `APP_DEBUG` | `local` / `true` for local development only. |
+| `APP_TIMEZONE` | `Asia/Yangon` in the template. |
+| `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | MySQL connection described above. |
+| `FRONTEND_URL` | `http://localhost:5173`; used in frontend links, including password resets. |
+| `CORS_ALLOWED_ORIGINS` | Exact browser origins, comma-separated. Template allows `http://localhost:5173,http://localhost:5174`. |
+| `CORS_SUPPORTS_CREDENTIALS` | `false` for the current Bearer-token frontend. |
+| `SANCTUM_STATEFUL_DOMAINS` | Cookie/stateful auth host list; not a replacement for CORS origins. |
+| `SESSION_DRIVER` / `CACHE_STORE` / `QUEUE_CONNECTION` | `database` in the template; migrations must run before these stores are used. |
+| `AI_SERVICE_BASE_URL` | `http://127.0.0.1:8001`, with **no `/api` suffix**. |
+| `AI_SERVICE_TIMEOUT_SECONDS` | `60` by default. |
+| `AI_SERVICE_INTERNAL_KEY` | Optional shared secret; must equal AI `AI_INTERNAL_KEY` when that gate is enabled. |
+| `MAIL_MAILER` | Template uses `resend`; use `log` locally to inspect messages in `storage/logs/laravel.log` without delivery. |
+| `RESEND_API_KEY` / `MAIL_FROM_ADDRESS` / `MAIL_FROM_NAME` | Resend delivery requires its SDK, credentials, and an allowed sender; see the dependency note below and template sender restrictions. |
+| `MAIL_LOGO_URL` | Optional public HTTPS logo URL for email branding. |
+| `PASSWORD_RESET_LOCAL_DELIVERY_TEST` | Leave `false` for the normal reset flow; never enable in production. |
+| `DOCUMENTS_CHROME_PATH` | Executable Chrome/Chromium path if automatic discovery fails. |
+| `NODE_PATH_BIN` | Optional Node executable for enhanced list-PDF conversion. |
+| `CHROME_NO_SANDBOX` | Only enable when the runtime requires it, such as the included container configuration. |
 
----
+The template selects Resend, but `resend/resend-php` is not declared in the current Composer dependencies/lockfile. Credentials alone do not enable that transport. Use `MAIL_MAILER=log` for onboarding; real Resend delivery needs the SDK added through a separately reviewed dependency change. A configured SMTP transport is also available through `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_ENCRYPTION` in `config/mail.php`.
 
-## Daily Development
+After editing configuration, run `php artisan config:clear` and restart the server and any queue process. Keep browser origins consistent: `localhost` and `127.0.0.1` are different CORS origins.
 
-When returning to the project:
-
-1. Start MySQL
-2. Start Laravel:
+## Running the Application
 
 ```bash
-php artisan serve
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-3. Start FastAPI (in `em_ai`) if you need AI
-4. Start Vue (in `em_frontend`): `npm run dev`
-5. Optional queue worker if you need email / queued jobs:
+Run a separate queue process for queued work when `QUEUE_CONNECTION=database`:
 
 ```bash
 php artisan queue:listen --tries=1 --timeout=0
 ```
 
-Health check: http://localhost:8000/up
+Then follow the [AI setup](https://github.com/Hsu-Hlaing-Htet/em_ai#readme) for assistant features and the [frontend setup](https://github.com/Hsu-Hlaing-Htet/em_frontend#readme) for the browser UI.
 
----
+### Verify API and AI integration
 
-## Running the Full Rosewood Royale System
-
-### Step 1 — Database
-
-Start MySQL and confirm `rosewood_royale` exists with credentials matching backend `.env`.
-
-### Step 2 — Laravel Backend
+Use the Quick Start HTTP checks, then sign in through the frontend using a seeded login role and confirm dashboard data loads. With FastAPI running:
 
 ```bash
-cd em_backend
-php artisan serve
+curl --fail http://127.0.0.1:8001/health
+curl --fail -X POST http://127.0.0.1:8000/api/public/ai/property/ask \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What rentals are available?","purpose":"rent"}'
 ```
 
-- App: http://localhost:8000  
-- Health: http://localhost:8000/up  
-- API: http://localhost:8000/api  
+The property response should contain `data.answer` and `data.properties`; fallback answers do not prove an OpenAI call succeeded. The public proxy is rate-limited. `POST /api/customer/ai/rent/ask` requires a customer Sanctum Bearer token and answers using that customer's context.
 
-`php artisan serve` defaults to port **8000**.
+Laravel preloads property/customer context before calling FastAPI. This avoids an AI callback to the single-worker local Laravel server while it is waiting for FastAPI. Direct FastAPI calls can instead fetch grounding from Laravel APIs.
 
-### Step 3 — FastAPI AI
+The Composer `setup` and `dev` scripts assume a sibling directory named `../frontend`; `dev` also expects `../frontend/node_modules/.bin/concurrently`, which is not declared by the frontend package manifest. Use the explicit commands above for standalone repositories.
+
+## Running Tests
+
+From the backend root after installing development dependencies:
 
 ```bash
-cd em_ai
-source .venv/bin/activate
-uvicorn app.main:app --reload --port 8001
+php artisan config:clear
+php artisan test --testsuite=Unit
+php artisan test --testsuite=Integration
 ```
 
-URL: http://localhost:8001
+`php artisan test` runs both suites. `composer test` clears configuration and then runs both suites. Focus a run with, for example, `php artisan test tests/Integration/Timebox1`.
 
-### Step 4 — Vue Frontend
+- `tests/Unit/Timebox1`–`Timebox5` run without Laravel/database bootstrapping.
+- `tests/Integration/Timebox1`–`Timebox5` bootstrap Laravel and use database refreshes. [phpunit.xml](phpunit.xml) defaults to SQLite `:memory:`, array mail/cache/session stores, and synchronous queues. Enable `pdo_sqlite`; do not point direct tests at the development database. The safety guard rejects unconfirmed database targets.
+- Testing uses a fake PDF converter and mocked external-service boundaries where specified by the tests. Passing tests do not verify real Chrome rendering, mail delivery, or OpenAI access. Some behavior depends on MySQL semantics; use the isolated runner when checking those paths.
+
+For MySQL integration verification, install Python 3 and make `mysqld`, `mysql`, and `php` available on `PATH`:
 
 ```bash
-cd em_frontend
-npm run dev
+mkdir -p .test-verification
+python3 scripts/verify_timebox_tests.py --group integration
 ```
 
-URL: http://localhost:5173  
-Frontend `.env` should use `VITE_API_BASE_URL=http://localhost:8000/api`.
+The runner initializes a new disposable MySQL data directory, verifies its identity, creates `rosewood_test`, runs tests, and shuts the server down. Results remain under `.test-verification/runs/`. Do not manually set `TEST_DATABASE_DISPOSABLE=1` to bypass isolation. See [the test reorganisation report](docs/testing/reorganisation-report.md) for historical coverage, known failures at that audit, and limitations; it is not a current passing-suite guarantee.
 
----
-
-## Verify Everything Is Working
-
-- [ ] `GET http://localhost:8000/up` returns OK
-- [ ] Frontend login hits `/api/auth/login` successfully
-- [ ] Admin/customer lists load (Laravel ↔ MySQL)
-- [ ] `GET http://localhost:8001/health` returns OK when AI is running
-- [ ] Property AI via Laravel: `POST /api/public/ai/property/ask` reaches FastAPI
-- [ ] Customer rent AI via Laravel: `POST /api/customer/ai/rent/ask` (authenticated) reaches FastAPI
-
----
-
-## Architecture
-
-```text
-Browser
-   |
-   v
-Vue Frontend
-   |
-   v
-Laravel Backend
-   | \
-   |  \--> FastAPI AI
-   |
-   +-----> MySQL
-```
-
-- **Vue** owns the user interface.
-- **Laravel** is the authoritative API, auth, and business/data layer.
-- **MySQL** stores application data.
-- **Laravel** calls FastAPI for AI answers (`config/ai.php`).
-- **FastAPI** reads Laravel APIs for grounding; it does not own the database or replace Laravel.
-
-Note: `config/database.php` falls back to `sqlite` if `DB_CONNECTION` is unset. The project’s `.env.example` documents **MySQL** (`rosewood_royale`) for local Rosewood Royale development. Prefer that setup.
-
----
-
-## Repository Responsibility
-
-This backend owns:
-
-- Authentication / authorization (Laravel Sanctum + `role` middleware)
-- JSON APIs for admin, customer, public, and auth
-- Business rules and Eloquent models
-- MySQL access (buildings, rooms, contracts, utilities, invoices, payments, receipts, maintenance, notifications, contact inquiries, …)
-- Contract / invoice / receipt / utility document generation and PDF export
-- Email / notifications (mailer configured via env; queue when using database queue)
-- Server-side AI proxy to FastAPI (`AiAssistantProxyService`)
-
-Implemented API areas include administration of users, staff, roles, buildings, rooms, contracts, invoices, payments, receipts, utilities, maintenance requests, contact inquiries, and dashboard/list exports; customer portal APIs; public property/contact APIs; and authentication/password flows.
-
-It does **not** own the Vue UI or the LLM prompts inside FastAPI.
-
----
-
-## Environment Configuration
-
-Copy `.env.example` → `.env`. Important variable **names** (never commit real values):
-
-### Application / frontend link
-
-| Variable | Purpose |
-| --- | --- |
-| `APP_URL` | Backend base URL |
-| `FRONTEND_URL` | Frontend origin (password-reset links, etc.) |
-| `APP_KEY` | Encryption key |
-| `APP_TIMEZONE` | Default `Asia/Yangon` in `.env.example` |
-
-### Laravel → MySQL
-
-| Variable | Purpose |
-| --- | --- |
-| `DB_CONNECTION` | Driver (`mysql` in `.env.example`) |
-| `DB_HOST` / `DB_PORT` | MySQL host/port |
-| `DB_DATABASE` | Database name (`rosewood_royale`) |
-| `DB_USERNAME` / `DB_PASSWORD` | Credentials |
-
-### CORS / Sanctum
-
-| Variable | Purpose |
-| --- | --- |
-| `CORS_ALLOWED_ORIGINS` | Exact browser origins allowed |
-| `CORS_SUPPORTS_CREDENTIALS` | Keep `false` with Bearer-token SPA auth |
-| `SANCTUM_STATEFUL_DOMAINS` | Hosts for stateful Sanctum (if used) |
-
-### Laravel → FastAPI
-
-| Variable | Purpose |
-| --- | --- |
-| `AI_SERVICE_BASE_URL` | FastAPI base URL (default `http://127.0.0.1:8001`) |
-| `AI_SERVICE_TIMEOUT_SECONDS` | Proxy timeout (default `60`) |
-| `AI_SERVICE_INTERNAL_KEY` | Optional shared secret (`X-Rosewood-AI-Internal-Key`); must match AI `AI_INTERNAL_KEY` |
-
-### Mail / queue / documents (as needed)
-
-| Variable | Purpose |
-| --- | --- |
-| `MAIL_MAILER` / `RESEND_API_KEY` / `MAIL_FROM_*` | Outbound email |
-| `QUEUE_CONNECTION` | Default `database` in `.env.example` |
-| `DOCUMENTS_CHROME_PATH` / `CHROME_NO_SANDBOX` | Chrome/Chromium for PDF generation |
-
----
+Frontend Playwright testing uses the same runner with `--system-suite` through the frontend npm commands. Each invocation creates `rosewood_system_test` on a newly initialized MySQL instance at a free loopback port, verifies the actual server port/data directory, and isolates Laravel storage, public uploads, cache, and logs. Preparation and cleanup reset only that verified disposable database; the normal server on port 3306 is refused. The runner shuts down its MySQL process and removes its data directory while retaining evidence under `.test-verification/runs/`. Follow the [frontend test instructions](https://github.com/Hsu-Hlaing-Htet/em_frontend#running-tests); do not invoke the preparation/cleanup scripts directly.
 
 ## Project Structure
 
 ```text
-app/
-├── Http/Controllers/   # Admin, Auth, Customer, Public
-├── Http/Middleware/    # Role checks, …
-├── Models/             # Eloquent models
-├── Services/           # Billing, documents, AI proxy, public property, …
-├── Mail/               # Mailables
-├── Notifications/      # Notifications
-└── Policies/           # Authorization
-config/                 # Includes config/ai.php
-database/migrations/
-database/seeders/
-routes/api.php          # Main API (+ auth, admin, customer, public AI)
-routes/web.php          # Public property routes under /api/public, …
-tests/Integration/      # Laravel/API/database integration, Timebox1–Timebox5
-tests/Unit/
+app/Http/               Controllers, requests, resources, middleware
+app/Models/             Eloquent domain models
+app/Services/           Billing, documents, property data, AI proxy
+app/Mail/               Mail messages
+app/Notifications/      Notification delivery
+app/Policies/           Authorization policies
+config/                 Application, AI, database, mail, document settings
+database/migrations/    Schema changes
+database/seeders/        Demo and system-test fixtures
+routes/api.php          Public, auth, customer, and admin APIs
+routes/web.php          Root JSON status response
+resources/documents/    Print styles and branding
+scripts/                Isolated integration and system-test tooling
+tests/                  Unit, Integration, and shared Support fixtures
 ```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-| --- | --- |
-| Language | PHP `^8.2` |
-| Framework | Laravel `^12` |
-| Auth | Laravel Sanctum `^4.3` |
-| Testing | Pest `^4.3` + Pest Laravel plugin |
-| Code style | Laravel Pint |
-| Local DB (documented) | MySQL via `.env.example` |
-| Queue / session / cache (example) | `database` drivers |
-| Container | Optional `Dockerfile` (PHP 8.2 Apache) + `render.yaml` |
-
----
-
-## Common Commands
-
-| Command | Description |
-| --- | --- |
-| `composer install` | Install PHP dependencies |
-| `php artisan key:generate` | Generate `APP_KEY` |
-| `php artisan migrate` | Apply migrations (non-destructive) |
-| `php artisan db:seed` | Seed development/demo data |
-| `php artisan serve` | HTTP server on port 8000 |
-| `php artisan queue:listen --tries=1 --timeout=0` | Process queued jobs |
-| `php artisan test` | Run Pest suite |
-| `composer test` | Config clear + `php artisan test` |
-
-Composer also defines a `dev` script that can start Laravel, queue, logs, and a sibling `../frontend` Vite process together. That assumes a local sibling frontend checkout; for three separate repos, start each terminal manually as shown above.
-
----
-
-## Testing
-
-```bash
-php artisan test
-# or
-composer test
-```
-
-Focused examples:
-
-```bash
-php artisan test --testsuite=Unit
-php artisan test --testsuite=Integration
-php artisan test tests/Integration/Timebox1
-php artisan test tests/Integration/Timebox5/ListExportPdfTest.php
-```
-
-Backend tests use exactly two categories, `tests/Unit/Timebox1`–`Timebox5` and `tests/Integration/Timebox1`–`Timebox5`. Unit checks run without Laravel/database bootstrapping; Integration checks exercise Laravel components and use the dedicated test database. Shared fixtures live in `tests/Support/`; `Pest.php` and `TestCase.php` remain at the test root.
-
-Integration tests use `RefreshDatabase`. The committed test configuration uses SQLite `:memory:`, so the normal direct commands below cannot connect to or modify the local MySQL database:
-
-```bash
-php artisan test tests/Integration/Timebox1
-php artisan test --testsuite=Integration
-```
-
-The test safety guard accepts only SQLite `:memory:` for direct execution. The existing `python3 scripts/verify_timebox_tests.py --group integration` command remains available when MySQL-specific verification is required; it independently verifies a disposable MySQL server before tests can use it. See [the UOG test reorganisation report](docs/testing/reorganisation-report.md) for the full file mapping, restored coverage, verification results and known gaps.
-
-For the isolated MySQL integration verification workflow, use:
-
-```bash
-python3 scripts/verify_timebox_tests.py --group integration
-```
-
-The runner creates a newly initialized disposable MySQL instance under `.test-verification/`, points the test process at it, and shuts it down after the run. It does not use the normal development database. `mysqld`, `mysql`, and `php` must be available locally.
-
----
-
-## AI Integration (Laravel proxy)
-
-Browser → Laravel → FastAPI.
-
-| Method | Laravel path | Proxied FastAPI path |
-| --- | --- | --- |
-| `POST` | `/api/public/ai/property/ask` | `{AI_SERVICE_BASE_URL}/api/v1/property/ask` |
-| `POST` | `/api/customer/ai/rent/ask` | `{AI_SERVICE_BASE_URL}/api/v1/rent/ask` |
-
-Public property ask is throttled (`ai-public`). Customer rent ask requires Sanctum + `customer` role and forwards the Bearer token.
-
----
 
 ## Troubleshooting
 
-**Database connection refused**  
-→ Confirm MySQL is running  
-→ Confirm `DB_*` values and that `rosewood_royale` exists  
-→ Confirm `pdo_mysql` is installed
+| Symptom | Check or resolution |
+| --- | --- |
+| Composer rejects PHP 8.2 | Install PHP 8.3–8.5 for the locked development dependencies; check the PHP executable used by Composer. Do not ignore platform requirements. |
+| `could not find driver` / database connection error | Enable `pdo_mysql` (or `pdo_sqlite` for default tests), start MySQL, and check the database, port, credentials, and permissions. |
+| Missing cache/session table | Run `php artisan migrate` against the intended development database after clearing cached configuration. |
+| Missing app key | Run `php artisan key:generate` on a new local installation. |
+| Images return 404 | Run `php artisan storage:link`; confirm `APP_URL` matches the server and seeded/uploaded files exist. If a link already exists, inspect its target before replacing it. |
+| Browser CORS error | Add the exact frontend origin to `CORS_ALLOWED_ORIGINS`, clear configuration, and restart Laravel. |
+| AI returns 502 / 403 | Check FastAPI `/health`, `AI_SERVICE_BASE_URL`, and the matching internal keys; inspect AI logs for backend/provider failures. |
+| Email is not delivered | `log` intentionally does not deliver. For real delivery, configure the transport/sender and run a worker for queued messages. |
+| PDF export fails | Install Chrome/Chromium, set `DOCUMENTS_CHROME_PATH` if needed, and check executable/temp-directory permissions. |
+| Integration tests refuse the database | Clear cached configuration and remove conflicting exported `DB_*` settings. Use SQLite memory or the isolated runner; never disable the guard. |
 
-**Frontend CORS errors**  
-→ Add the exact frontend origin to `CORS_ALLOWED_ORIGINS`  
-→ Confirm `FRONTEND_URL`  
-→ Restart `php artisan serve` after `.env` changes (`php artisan config:clear` if cached)
+## Deployment Notes
 
-**AI unavailable / 502 from AI routes**  
-→ Confirm FastAPI health: http://localhost:8001/health  
-→ Confirm `AI_SERVICE_BASE_URL`  
-→ Confirm optional `AI_SERVICE_INTERNAL_KEY` matches AI `AI_INTERNAL_KEY`  
-→ Confirm AI `OPENAI_API_KEY` and `BACKEND_BASE_URL`
+[Dockerfile](Dockerfile) builds PHP 8.2/Apache with Chromium; [render.yaml](render.yaml) configures a web service with `/up` as its health check. Supply deployment secrets through the host, use `APP_DEBUG=false`, configure exact frontend origins, and provision the external database separately. Database queues also need a worker process.
 
-**Emails never arrive**  
-→ Confirm mail env (`MAIL_MAILER`, `RESEND_API_KEY`, …)  
-→ Run a queue worker when `QUEUE_CONNECTION=database`
-
-**PDF export fails**  
-→ Confirm Chrome/Chromium is available, or set `DOCUMENTS_CHROME_PATH`  
-→ On restricted environments, `CHROME_NO_SANDBOX=true` may be required (see Docker / Render config)
-
----
-
-## Deployment
-
-Confirmed in-repo:
-
-- `Dockerfile` — PHP 8.2 Apache image with Chromium for PDFs
-- `render.yaml` — Render web service `rosewood-royale-backend`, health check `/up`, MySQL-oriented env keys, AI and mail env placeholders
-- `docker-compose.yml` — optional container run against an external database
-
-Do not put production credentials in git. Set secrets in the host/platform dashboard.
-
----
+The included [docker-compose.yml](docker-compose.yml) and [.env.docker.example](.env.docker.example) default to PostgreSQL, while the Dockerfile installs `pdo_mysql` and does not install `pdo_pgsql`. Treat those defaults as configuration drift: they are not a working PostgreSQL Quick Start. The documented local path is MySQL.
 
 ## Related Repositories
 
-- Frontend: https://github.com/Hsu-Hlaing-Htet/em_frontend
-- Backend: https://github.com/Hsu-Hlaing-Htet/em_backend
-- AI: https://github.com/Hsu-Hlaing-Htet/em_ai
+- [Backend — em_backend](https://github.com/Hsu-Hlaing-Htet/em_backend)
+- [Frontend — em_frontend](https://github.com/Hsu-Hlaing-Htet/em_frontend)
+- [AI — em_ai](https://github.com/Hsu-Hlaing-Htet/em_ai)
 
----
-
-## Developer
-
-Designed and Developed by Hsu_Hlaing_Htet
-
-https://github.com/Hsu-Hlaing-Htet
+Developed by [Hsu-Hlaing-Htet](https://github.com/Hsu-Hlaing-Htet).
