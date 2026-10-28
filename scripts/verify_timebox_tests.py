@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Run Laravel tests only against a newly initialized, disposable MySQL instance."""
+"""Run Laravel or Playwright tests against a verified, disposable MySQL instance."""
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -20,7 +21,7 @@ PHP = shutil.which('php')
 
 
 def mysql(port, sql):
-    return subprocess.run([MYSQL, '--protocol=TCP', '-h127.0.0.1', f'-P{port}', '-uroot', '-N', '-B', '-e', sql],
+    return subprocess.run([MYSQL, '--no-defaults', '--protocol=TCP', '-h127.0.0.1', f'-P{port}', '-uroot', '-N', '-B', '-e', sql],
                           capture_output=True, text=True)
 
 
@@ -74,11 +75,21 @@ def parse_xml(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--group', choices=['focused', 'repeat', 'seed-core', 'seed', 'unit-timeboxes', 'integration-timeboxes', 'integration', 'aggregate', 'all'], default='focused')
-    args = parser.parse_args()
+    parser.add_argument('--system-suite', choices=['all', 'Timebox1', 'Timebox2', 'Timebox3', 'Timebox4', 'Timebox5', 'cross'])
+    args, extra = parser.parse_known_args()
+    if extra and not args.system_suite:
+        parser.error('unrecognized arguments: ' + ' '.join(extra))
+    frontend = ROOT.parent / 'frontend'
+    selection = ('tests/system' if args.system_suite == 'all' else
+                 'tests/system/Timebox4/cross-module.spec.js' if args.system_suite == 'cross' else
+                 f'tests/system/{args.system_suite}/')
+    system_command = [shutil.which('node') or 'node', str(frontend / 'node_modules/@playwright/test/cli.js'), 'test', selection, *extra]
+    # Discovery must remain available without starting services or touching a database.
+    if args.system_suite and '--list' in extra:
+        raise SystemExit(subprocess.call(system_command, cwd=frontend))
     if not all([MYSQLD, MYSQL, PHP]):
         raise SystemExit('mysqld, mysql and php must be installed')
-    if not RUNTIME.is_dir():
-        raise SystemExit('Expected the backend .test-verification directory')
+    RUNTIME.mkdir(exist_ok=True)
     run = RUNTIME / 'runs' / uuid.uuid4().hex
     run.mkdir(parents=True, exist_ok=False)
     data = run / 'mysql-data'
@@ -90,6 +101,12 @@ def main():
     cache.mkdir()
     tmp = run / 'tmp'
     tmp.mkdir()
+    database = 'rosewood_system_test' if args.system_suite else 'rosewood_test'
+    if args.system_suite:
+        public = run / 'public'
+        shutil.copytree(ROOT / 'public', public,
+                        ignore=lambda directory, names: [name for name in names if (Path(directory) / name).is_symlink()])
+        (public / 'storage').symlink_to(storage / 'app/public', target_is_directory=True)
     port = free_port()
     print(f'Isolated runtime: {run}; port: {port}', flush=True)
     init = subprocess.run([MYSQLD, '--no-defaults', '--initialize-insecure', f'--datadir={data}',
@@ -114,13 +131,13 @@ def main():
         actual_port, actual_data = identity.stdout.strip().split('\t')
         if int(actual_port) != port or Path(actual_data).resolve() != data.resolve():
             raise RuntimeError('MySQL identity mismatch; refusing to create test schema or run tests')
-        created = mysql(port, 'CREATE DATABASE rosewood_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
+        created = mysql(port, f'CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
         if created.returncode:
             raise RuntimeError(f'Cannot create isolated schema: {created.stderr[-1000:]}')
-        print('Verified fresh MySQL datadir and new rosewood_test schema.', flush=True)
+        print(f'Verified fresh MySQL datadir and new {database} schema.', flush=True)
         env = os.environ.copy()
         env.update({'APP_ENV': 'testing', 'DB_CONNECTION': 'mysql', 'DB_HOST': '127.0.0.1',
-                    'DB_PORT': str(port), 'DB_DATABASE': 'rosewood_test', 'DB_USERNAME': 'root',
+                    'DB_PORT': str(port), 'DB_DATABASE': database, 'DB_USERNAME': 'root',
                     'DB_PASSWORD': '', 'DB_URL': '', 'DB_SOCKET': '', 'TEST_DATABASE_DISPOSABLE': '1',
                     'TEST_STORAGE_ROOT': str(storage), 'LARAVEL_STORAGE_PATH': str(storage),
                     'CACHE_STORE': 'array', 'SESSION_DRIVER': 'array', 'QUEUE_CONNECTION': 'sync',
@@ -129,7 +146,41 @@ def main():
                     'APP_PACKAGES_CACHE': str(cache / 'packages.php'),
                     'APP_SERVICES_CACHE': str(cache / 'services.php')})
         summary = {}
-        for label, selection in suites(args.group):
+        if args.system_suite:
+            env.pop('NO_COLOR', None)
+            env.update({'APP_ENV': 'local', 'APP_DEBUG': 'true',
+                        'APP_KEY': 'base64:' + base64.b64encode(os.urandom(32)).decode(),
+                        'APP_URL': 'http://127.0.0.1:8010', 'FRONTEND_URL': 'http://localhost:5174',
+                        'PW_SYSTEM_TEST_RUNTIME': str(run), 'PW_SYSTEM_TEST_MYSQL_DATA': str(data),
+                        'PW_SYSTEM_RESULTS_FILE': str(run / 'system-results.json'),
+                        'VIEW_COMPILED_PATH': str(storage / 'framework/views'),
+                        'PASSWORD_RESET_LOCAL_DELIVERY_TEST': 'false',
+                        'CORS_ALLOWED_ORIGINS': 'http://localhost:5174',
+                        'PW_FRONTEND_URL': 'http://localhost:5174', 'PW_BACKEND_URL': 'http://127.0.0.1:8010'})
+            (run / 'database-identity.json').write_text(json.dumps({
+                'database': database, 'port': port, 'datadir': str(data), 'storage': str(storage)}, indent=2))
+            print(f'Running browser suite: {args.system_suite}', flush=True)
+            started = time.monotonic()
+            with (run / 'system-output.txt').open('w') as output:
+                with subprocess.Popen(system_command, cwd=frontend, env=env, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True) as browser:
+                    for line in browser.stdout:
+                        print(line, end='', flush=True)
+                        output.write(line)
+                    code = browser.wait()
+            report = run / 'system-results.json'
+            stats = json.loads(report.read_text()).get('stats', {}) if report.exists() else {}
+            counts = {'passed': stats.get('expected', 0), 'failed': stats.get('unexpected', 0),
+                      'skipped': stats.get('skipped', 0), 'flaky': stats.get('flaky', 0),
+                      'exit_code': code, 'seconds': round(time.monotonic() - started, 1)}
+            counts['total'] = sum(counts[key] for key in ['passed', 'failed', 'skipped', 'flaky'])
+            summary[args.system_suite] = counts
+            (run / 'summary.json').write_text(json.dumps(summary, indent=2))
+            print(f"System {args.system_suite}: {counts['total']} total | {counts['passed']} passed | "
+                  f"{counts['failed']} failed | {counts['skipped']} skipped | {counts['flaky']} flaky", flush=True)
+            if not report.exists() and code == 0:
+                raise RuntimeError('Browser runner produced no JSON evidence')
+        for label, selection in ([] if args.system_suite else suites(args.group)):
             report = run / f'{label}.xml'
             command = [PHP, '-d', f'sys_temp_dir={tmp}', 'artisan', 'test', *selection,
                        '--colors=never', f'--log-junit={report}']

@@ -12,4 +12,4 @@ $info = system_test_assert_safe_database($app);
 fwrite(STDOUT, "guard_ok database={$info["database"]} host={$info["host"]}\n");
 '
 
-exec php -S 127.0.0.1:8010 "$ROOT/scripts/system_test_router.php"
+exec php -S 127.0.0.1:8010 "$ROOT/scripts/system_test_router.php" >> "$PW_SYSTEM_TEST_RUNTIME/backend-server.log" 2>&1

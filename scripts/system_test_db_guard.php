@@ -2,7 +2,7 @@
 
 /**
  * Shared safety guard for Playwright System Testing scripts.
- * Aborts unless the configured database is exactly rosewood_system_test on a local host.
+ * Requires rosewood_system_test on the verified disposable MySQL instance and isolated storage.
  */
 
 declare(strict_types=1);
@@ -51,10 +51,31 @@ function system_test_assert_safe_database(Illuminate\Contracts\Foundation\Applic
         );
     }
 
+    $runtime = realpath((string) getenv('PW_SYSTEM_TEST_RUNTIME'));
+    $expectedData = realpath((string) getenv('PW_SYSTEM_TEST_MYSQL_DATA'));
+    $port = (int) config("database.connections.{$connection}.port");
+    if ($runtime === false || $expectedData !== $runtime.'/mysql-data'
+        || $port <= 0 || $port === 3306
+        || (string) config("database.connections.{$connection}.unix_socket") !== ''
+        || $app->storagePath() !== $runtime.'/storage'
+        || $app->publicPath() !== $runtime.'/public'
+        || config('mail.default') !== 'array') {
+        throw new RuntimeException('System test database/storage isolation is missing or unsafe.');
+    }
+
+    // Verify the connected server, not merely the configured database name.
+    $identity = $app['db']->connection()->selectOne('SELECT DATABASE() AS db, @@port AS port, @@datadir AS datadir');
+    if ($identity->db !== 'rosewood_system_test' || (int) $identity->port !== $port
+        || realpath($identity->datadir) !== $expectedData) {
+        throw new RuntimeException('Connected MySQL identity does not match the disposable system-test runtime.');
+    }
+
     return [
         'connection' => $connection,
         'database' => $database,
         'host' => $host,
+        'port' => $port,
+        'datadir' => $expectedData,
         'app_env' => $app->environment(),
     ];
 }
