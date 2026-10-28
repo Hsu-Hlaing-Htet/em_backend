@@ -1,14 +1,21 @@
 *.log
 .DS_Store
+# Local environment files; retain safe templates.
 .env
-.env.testing
+.env.*
 !.env.example
+!.env.docker.example
 /vendor
 /node_modules
 /storage/*.key
 /public/storage
-/storage/logs
-/storage/framework
+# Ignore runtime contents while preserving directory placeholders.
+/storage/logs/*
+!/storage/logs/.gitignore
+/storage/framework/*
+!/storage/framework/cache/
+!/storage/framework/sessions/
+!/storage/framework/views/
 /bootstrap/cache/.test-verification
 
 # Local verification runs create disposable databases, cached framework files,
